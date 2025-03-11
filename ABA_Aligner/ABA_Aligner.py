@@ -250,7 +250,7 @@ class ABA_Aligner:
         Masks = PrepareMasks(pRF=GUIres.pRF, widef=GUIres.widefield, twophoton=GUIres.twophoton_raw)
         breakpoint()
 
-    def choose_folders(self):
+    def choose_folders(self)->list[str]:
         print('Choose folders with pRF, two-photon and ABA mask and ABA XY coordinates to be aligned')
         parent_folders = []
         
@@ -259,7 +259,7 @@ class ABA_Aligner:
             if not chosen_dir: break
             parent_folders.append(chosen_dir)
         
-        print(parent_folders)
+        return parent_folders
 
     def align_masks(self):
         pass

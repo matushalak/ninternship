@@ -1,4 +1,5 @@
 # @matushalak
+# SPSIG class used for loading any SPSIG file (and even any matlab file) into python class format
 from mat73 import loadmat as hdf_loadmat
 from scipy.io.matlab import loadmat as old_loadmat
 from scipy.io.matlab import matfile_version
