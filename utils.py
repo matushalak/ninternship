@@ -26,9 +26,10 @@ def make_folders():
 
 
 # TODO: generalize for more groups / different experiment structure etc.
-def group_condition_key() -> tuple[dict, dict]:
+def group_condition_key(root:str = False) -> tuple[dict, dict]:
     'Returns 2 dictionaries with'
-    root = filedialog.askdirectory()
+    if not root:
+        root = filedialog.askdirectory()
     spsigs = '**/*_SPSIG.mat'
     
     # for now we only care about SPSIG_Res files
