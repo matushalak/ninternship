@@ -31,9 +31,9 @@ class ImageLoader:
         self.twophoton = resize_image_pt(self.pRF, (389.0883, 334),
                                          self.twophoton_raw, self.twop_mag)
             
-    # TODO
-    def find_2p_magnification()->tuple[float, float]:
-        pass
+    # scaling  = C / zoom; C = dimensions at 1x magnification
+    def find_2p_magnification(zoom:float)->tuple[float, float]:
+        return (75.2019 / zoom, 75.2019 / zoom)
     
     # TODO
     def locate_files(folder:str) -> tuple[str, str, str, str]:

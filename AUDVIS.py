@@ -2,39 +2,103 @@
 # main class that holds and organizes data for the Audio-visual task of Dark-rearing experiment at Levelt Lab
 # requires python > 3.8, preferably newer for := to function
 # aggregates all neurons across recording sessions of same group
-from utils import group_condition_key
+from utils import group_condition_key, default_neuron_index, default_session_index, load_audvis_files
 from collections import defaultdict
 from SPSIG import SPSIG, Dict_to_Class
-from numpy import ndarray, array, stack, save, dstack, zeros_like, zeros
+from numpy import ndarray, array, save, dstack, unique, fromiter, where, concatenate
 from pandas import DataFrame, concat
 import pickle
 from multiprocessing import Pool, cpu_count
+import argparse
+import matplotlib.pyplot as plt
 
 class AUDVIS:
     def __init__(self,
-                 neuron_indexing:dict,
-                 session_indexing:dict,
+                 neuron_indexing:dict[int:dict[str]],
+                 session_indexing:dict[int:dict[str]],
                  ROIs:DataFrame,
                  SIG:ndarray,
-                 Z:ndarray):
+                 Z:ndarray,
+                 TRIALS_ALL:ndarray,
+                 pre_post_trial_time:tuple[float, float] = (1, 2)):
+        # need to be careful when indexing into this
+        # indexes in ABAregion are MATLAB (1-7) and 0 means the neuron is outside the regions of interest!
         ABA_regions = ['VISpm', 'VISam', 'VISa', 'VISrl', 'VISal', 'VISl', 'VISp']
-        pass
+        
+        # Imports
+        self.neurons = neuron_indexing
+        self.sessions = session_indexing
+        self.session_neurons = self.update_session_index()
+        
+        self.rois = ROIs
+        self.signal = SIG
+        self.zsig = Z
+        self.trials = TRIALS_ALL
+        self.trial_window_sec = pre_post_trial_time
+        self.SF = self.signal.shape[1] / sum(self.trial_window_sec)
+        self.trial_window_frames = (self.SF * array(self.trial_window_sec)).round()
 
-# necessary for defining the default dict because lambdas can't be pickled
-def default_neuron_index():
-    return {'overall_id':0,
-            'specific_id':('', 0),
-            'region':0,
-            'trialIDs':array([]),
-            'n_trials':0,
-            'facemap_corrected':False}
+        # Trials
+        self.str_to_int_trials_map, self.int_to_str_trials_map = {s:i for i, s in enumerate(unique(self.trials))}, {i:s for i, s in enumerate(unique(self.trials))}
+        self.trials = self.trials_apply_map(self.trials, self.str_to_int_trials_map)
+        # create masks to separate different trials
+        self.trial_types = {tt : where(self.trials == tt) # this gives the [session (1:9)], [trial (1:720)] indices for each trial type
+                            for tt in unique(self.trials)}
 
-def default_session_index():
-    return {'n_neurons':0,
-            'trialIDs':array([]),
-            'n_trials':0,
-            'behavior':None, #instance of Behavior class
-            'session':''}
+
+    def trials_apply_map(self, trials_array:ndarray[str|int],
+                         tmap:dict[str|int:int|str]) -> ndarray[int|str]:
+        if len(trials_array.shape) == 1:
+            return fromiter(map(lambda s: tmap[s], trials_array), dtype = int)
+        else:
+            return array([fromiter(map(lambda s: tmap[s], trials_array[session, :]), dtype = int) 
+                          for session in range(trials_array.shape[0])])
+
+
+    def update_session_index(self)-> list[tuple[int, int]]:
+        # Update self.sessions
+        iii = 0
+        session_neurons = []
+        
+        for i in list(self.sessions): 
+            session_neurons.append(neurons := (iii, iii + self.sessions[i]['n_neurons']))
+            iii += self.sessions[i]['n_neurons']
+            self.sessions[i]['neurons'] = neurons
+        
+        return session_neurons
+
+
+    def baseline_correct_signal(self, signal:ndarray, baseline_frames:int)->ndarray:
+        '''assumes (trial, time, neuron, ...) dimensionality'''
+        return signal - signal[:,:baseline_frames,:].mean(axis = 1)
+
+
+    def separate_signal_by_trial_types(self, 
+                                       signal:ndarray) -> dict[int:ndarray]:
+        '''Only works on trial-locked signal,
+        signal is assumed to be in (trials_all_conditions, time, neurons_across sessions) format
+        
+        returns a dictionary that stores separate arrays for each trial type (trials_one_condition, time, neurons_across_sessions)
+        '''
+        # split signal from different recordings before joining
+        # split_signal = [self.signal[:,:,n_first:n_last] for n_first, n_last in self.session_neurons]
+        trials_per_TT = round(signal.shape[0] / len(unique(self.trials)))
+        
+        signal_by_trials = dict()
+
+        for tt in list(self.trial_types): # 0-n_trial types
+            signal_tt = []
+            for n_first, n_last in self.session_neurons:
+                _, trials = self.trial_types[tt]
+                trials = trials[tt*trials_per_TT : (tt+1)*trials_per_TT]
+                signal_tt.append(signal[trials,:,n_first:n_last])
+            
+            signal_by_trials[tt] = concatenate(signal_tt,
+                                               axis = 2)
+            
+        return signal_by_trials
+            
+        
 
 class CreateAUDVIS:
     def __init__(self,
@@ -56,12 +120,13 @@ class CreateAUDVIS:
         self.session_index = defaultdict(default_session_index) 
         
         # main step in CreateAUDVIS class
-        self.ROIs, self.SIG, self.Z = self.update_index_and_data()
+        self.ROIs, self.SIG, self.Z, self.TRIALS_ALL = self.update_index_and_data()
 
         # save files that we will use when loading AUDVIS
         self.ROIs.to_pickle(f'{self.NAME}_rois.pkl')
         save(f'{self.NAME}_sig.npy', self.SIG)
         save(f'{self.NAME}_zsig.npy', self.Z)
+        save(f'{self.NAME}_trials.npy', self.TRIALS_ALL)
         
         with open(f'{self.NAME}_indexing.pkl', 'wb') as indx_f:
             pickle.dump({'neuron_index':self.neuron_index,
@@ -71,6 +136,7 @@ class CreateAUDVIS:
         roi_info = [] # collect dataframes here
         signal_corrected = [] # collect neuropil corrected ∆F/F signal for all sessions here
         signal_z = [] # collect z-score (over entire session) of neuropil corrected ∆F/F signal for all sessions here
+        trials_ALL = [] # collect trial IDs for each session
 
         for session_i, file in enumerate(self.files):
             sp = SPSIG(file)
@@ -78,13 +144,13 @@ class CreateAUDVIS:
             # this is consistent across all neurons in one recording
             recording_name = sp.info.strfp.split('\\')[-1]
             n_neurons = sp.Res.CaSig.shape[-1]
-            trialIDs = sp.info.Stim.log.stim
+            trials_ALL.append(trialIDs := sp.info.Stim.log.stim[:720]) # hardcoded because one session had more somehow
             n_trials = len(trialIDs)
             behavior = Behavior(sp.Res.speed, sp.Res.facemap) if hasattr(sp.Res, 'facemap') else (Behavior(sp.Res.speed) if hasattr(sp.Res, 'speed') else None)
             
             # session index
             self.session_index[session_i]['n_neurons'] = n_neurons
-            self.session_index[session_i]['trialIDs'] = trialIDs[:720] # hardcoded because one session had more somehow
+            self.session_index[session_i]['trialIDs'] = trialIDs 
             self.session_index[session_i]['n_trials'] = n_trials
             self.session_index[session_i]['behavior'] = behavior
             self.session_index[session_i]['session'] = recording_name
@@ -96,7 +162,7 @@ class CreateAUDVIS:
             if hasattr(sp.Res, 'CaSigCorrected_Z'):        
                 signal_z.append(sp.Res.CaSigCorrected_Z[:, :720, :])
             else:
-                signal_z.append((sig - sig.mean(axis = (0,1)))/sig.std(axis = (0,1))) # Z-score calculation
+                signal_z.append((sig - sig.mean(axis = (0,1)))/sig.std(axis = (0,1))) # Z-score calculation !!! TODO: change to be based on SPSIG not _SPSIG_Res.mat file
 
             for neuron_i_session in range(n_neurons):
                 neuron_i_overall = neuron_i_session if session_i == 0 else max(list(self.neuron_index)) + 1
@@ -110,19 +176,19 @@ class CreateAUDVIS:
         
         # create the IMPORTANT DFs & Arrays
         return (concat(roi_info), # DataFrane with ABA info & contours & locations
-                dstack(signal_corrected), # ndarray Neuropil corrected ∆F/F
-                dstack(signal_z)) # ndarray Z-Scored (over entire signal) Neuropil corrected ∆F/F
+                dstack(signal_corrected).swapaxes(0,1), # ndarray Neuropil corrected ∆F/F
+                dstack(signal_z).swapaxes(0,1), # ndarray Z-Scored (over entire signal) Neuropil corrected ∆F/F
+                array(trials_ALL)) # ndarray with trial identities of each trial 
 
         
-
 class Behavior:
     def __init__(self,speed:ndarray, 
                  facemap:Dict_to_Class|None = None):
-        self.running = speed
+        self.running = speed.swapaxes(0,1)
         if facemap: # some sessions don't have video & facemap
-            self.whisker = facemap.motion
-            self.blink = facemap.blink
-            self.pupil = facemap.eyeArea
+            self.whisker = facemap.motion.swapaxes(0,1)
+            self.blink = facemap.blink.swapaxes(0,1)
+            self.pupil = facemap.eyeArea.swapaxes(0,1)
     
     # TODO
     def regress_out(signal:ndarray)->ndarray:
@@ -134,12 +200,16 @@ def run_CreateAUDVIS(args):
     g, g_name = args
     return CreateAUDVIS(g, g_name)
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-create_files', type = str, default = 'no')
+    return parser.parse_args()
+
 
 # if ran as a script, initializes 4 AUDVIS classes with loaded data and saves them
 if __name__ == '__main__':
-    answ = input('Do you wish to create (and overwrite) the .npy and .pkl files for your data? (Y/N)   ')
-    
-    if answ.lower() in ('y', 'yes', 'true'):
+    args = parse_args()
+    if args.create_files.lower() in ('y', 'yes', 'true', 't'):
         print('Please select the root directory with your folders containing data to analyze')
         # will ask for directory from which to load
         # g1_files, g2_files = group_condition_key() # general
@@ -151,8 +221,8 @@ if __name__ == '__main__':
         names = ['g1pre', 'g1post', 'g2pre', 'g2post']
 
         # 1 core
-        # for g, g_name in zip((g1pre, g1post, g2pre, g2post), names):
-        #     av = CreateAUDVIS(g, g_name)
+        for g, g_name in zip((g1pre, g1post, g2pre, g2post), names):
+            av = CreateAUDVIS(g, g_name)
 
         # multiprocessing on 4 cores
         params = list(zip([g1pre, g1post, g2pre, g2post], names))
@@ -161,3 +231,27 @@ if __name__ == '__main__':
 
     else:
         print('Okay, not changing anything ;)')
+        # Group - condition
+        data = {1:{'pre':None,
+                   'post':None},
+                2:{'pre':None,
+                   'post':None}}
+
+        names = ['g1pre', 'g1post', 'g2pre', 'g2post']
+
+        for group_name in names:
+            params = load_audvis_files(group_name)
+            AVclass = AUDVIS(*params)
+            by_trials = AVclass.separate_signal_by_trial_types(AVclass.signal)
+
+            g = int(group_name[1])
+            cond = group_name[2:]
+
+            data[g][cond] = AVclass
+
+        av1 = data[1]['pre']
+        av2 = data[1]['post']
+        av3 = data[2]['pre']
+        av4 = data[2]['post']
+        
+        pass

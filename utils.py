@@ -1,18 +1,59 @@
 # @matushalak
 import os
 import re
+import pickle
 from glob import glob
-import pandas as pd
+from pandas import read_csv
+from numpy import array, ndarray, load
 from tkinter import filedialog
-from SPSIG import SPSIG
 from collections import defaultdict
+from pandas import DataFrame, read_pickle
+
+def load_audvis_files(group_condition_name:str)->tuple[dict, dict, DataFrame, ndarray, ndarray, ndarray]:
+    # indexing
+    with open(f'{group_condition_name}_indexing.pkl', 'rb') as indx_f:
+        indexing = pickle.load(indx_f)
+    
+    neur_i = indexing['neuron_index']
+    sess_i = indexing['session_index']
+
+    # roi info
+    with open(f'{group_condition_name}_rois.pkl', 'rb') as roi_f:
+        ROIs = read_pickle(roi_f)
+
+    # numpy arrays, signal, z-scored signal, trials
+    endings = ('_sig.npy', '_zsig.npy', '_trials.npy')
+    sig, z, trials_all =  [load(group_condition_name+ending) for ending in endings]
+
+    return (neur_i,
+            sess_i,
+            ROIs,
+            sig, 
+            z,
+            trials_all)
+
+# necessary for defining the default dict because lambdas can't be pickled
+def default_neuron_index():
+    return {'overall_id':0,
+            'specific_id':('', 0),
+            'region':0,
+            'trialIDs':array([]),
+            'n_trials':0,
+            'facemap_corrected':False}
+
+def default_session_index():
+    return {'n_neurons':0,
+            'trialIDs':array([]),
+            'n_trials':0,
+            'behavior':None, #instance of Behavior class
+            'session':''}
 
 
 def make_folders():
     '''
     main folder organization based on Huub's Lab book
     '''
-    labbook = pd.read_csv('labbook.csv').dropna()
+    labbook = read_csv('labbook.csv').dropna()
 
     lab = labbook.sort_values(by = ['Name', 'Date (YYYYMMDD)'])
 
