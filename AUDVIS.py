@@ -31,7 +31,11 @@ class AUDVIS:
                  SIG:ndarray,
                  Z:ndarray,
                  TRIALS_ALL:ndarray,
+                 NAME:str,
                  pre_post_trial_time:tuple[float, float] = (1, 2)):
+        # Group-condition name of AUDVIS object
+        self.NAME = NAME 
+        
         # need to be careful when indexing into this
         # indexes in ABAregion are MATLAB (1-7) and 0 means the neuron is outside the regions of interest!
         self.ABA_regions = ['VISpm', 'VISam', 'VISa', 'VISrl', 'VISal', 'VISl', 'VISp']
@@ -236,8 +240,8 @@ def load_in_data()->tuple[AUDVIS, AUDVIS, AUDVIS, AUDVIS]:
 
     for group_name in names:
         params = load_audvis_files(os.path.join('pydata', group_name))
-        AVclass = AUDVIS(*params)
-        by_trials = AVclass.separate_signal_by_trial_types(AVclass.signal)
+        AVclass = AUDVIS(*params, NAME = group_name)
+        # by_trials = AVclass.separate_signal_by_trial_types(AVclass.signal)
 
         g = int(group_name[1])
         cond = group_name[2:]
