@@ -30,12 +30,14 @@ for k = 1:length(spsigFiles)
         if ~isempty(coordFiles)
             % Get the full paths (or separate directory and filename)
             spsigFileName = spsigFiles(k).name;
+            
             if startsWith(spsigFileName, '._')
                 continue
             end
-            coordFileName = coordFiles(1).name;  % if multiple, taking the first one
-            sbx_normcorrFileName = sbxFiles(1).name;
-            log_FileName = logFiles(1).name;
+
+            coordFileName = erase(coordFiles(1).name, '._');  % if multiple, taking the first one
+            sbx_normcorrFileName = erase(sbxFiles(1).name, '._');
+            log_FileName = erase(logFiles(1).name, '._');
             
             % Optionally, display info
             fprintf('Processing folder: %s\n', currentFolder);

@@ -2,12 +2,18 @@
 import os
 import re
 import pickle
+import matplotlib.pyplot as plt
 from glob import glob
 from pandas import read_csv
 from numpy import array, ndarray, load
 from tkinter import filedialog
 from collections import defaultdict
 from pandas import DataFrame, read_pickle
+
+
+def show_me(*args:ndarray):
+    plt.plot(args)
+    plt.show()
 
 def load_audvis_files(group_condition_name:str)->tuple[dict, dict, DataFrame, ndarray, ndarray, ndarray]:
     # indexing
@@ -73,7 +79,7 @@ def group_condition_key(root:str = False) -> tuple[dict, dict]:
         root = filedialog.askdirectory()
     spsigs = '**/*_SPSIG.mat'
     
-    # for now we only care about SPSIG_Res files
+    # for now we only care about SPSIG_Res (trial-locked) files
     g1 = {'pre':[],
           'post':[]}
     g2 = {'pre':[],
