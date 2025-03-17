@@ -13,6 +13,7 @@ from SPSIG import SPSIG
 class ImageLoader:
     def __init__(self, folder:str = ''):
         # Find image files
+        # TODO
         # self.locate_files()
 
         # Load your images (update the file paths as needed)

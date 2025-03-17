@@ -198,8 +198,8 @@ end
 % X(horizontal,dimension2) = first color channel (red) coordinatesXY(:,:,1)
 % Y(vertical,dimension 1)  = second color channel(green)coordinatesXY(:,:,2)
 
-x = round(PP.P(1,:));
-y = round(PP.P(2,:));
+x = clip(round(PP.P(1,:)), 0, 796);
+y = clip(round(PP.P(2,:)), 0, 512);
 ABAroi = [];
 ABAroi.Cnt = PP.Cnt;
 ABAroi.X = zeros(1, PP.Cnt);
@@ -208,6 +208,7 @@ ABAroi.region = zeros(1, PP.Cnt);
 ABAroi.Con = PP.Con;
 for i = 1:PP.Cnt
     ABAroi.X(i) = ABACor(y(i), x(i), 1);
+    dbstop if error
     ABAroi.Y(i) = ABACor(y(i), x(i), 2);
     xcon = round(PP.Con(i).x);
     ycon = round(PP.Con(i).y);

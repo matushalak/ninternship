@@ -313,7 +313,7 @@ if isfield(info, 'frame')
                 CaSigRawCorrected(:,i,Ri) = [padbefore; sigrawCorrected(smpl,Ri); padafter];
             end
             if exist('sigCorrected_Z','var')
-                CaSigZscored(:,i,Ri) = [padbefore; sigCorrected_Z(smpl,Ri); padafter];
+                CaSigCorrected_Z(:,i,Ri) = [padbefore; sigCorrected_Z(smpl,Ri); padafter];
             end
             % if exist('den','var')
             %     CaDen(:,i,Ri) = [padbefore; den(smpl,Ri); padafter];
@@ -324,7 +324,7 @@ if isfield(info, 'frame')
             % if exist('decon','var') 
             %     CaDec(:,i,Ri) = [padbefore; decon(smpl,Ri); padafter];
             % end
-            if exist('deconCorrected','var')
+            if exist('deconCorrected','var') && all(size(deconCorrected) == size(sig))
                 CaDeconCorrected(:,i,Ri) = [padbefore; deconCorrected(smpl,Ri); padafter];
             end
             % if exist('seal','var')
