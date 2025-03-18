@@ -41,25 +41,35 @@ class AUDVIS:
         self.ABA_regions = ['VISpm', 'VISam', 'VISa', 'VISrl', 'VISal', 'VISl', 'VISp']
         
         # Imports
-        self.neurons = neuron_indexing
-        self.sessions = session_indexing
+        self.neurons = neuron_indexing # information about each neuron
+        self.sessions = session_indexing # information about each session
+        # ranges of neurons corresponding to one recording session
         self.session_neurons = self.update_session_index()
         
-        self.rois = ROIs
-        self.signal = SIG
-        self.zsig = Z
-        self.trials = TRIALS_ALL
+        # information about all ROI locations
+        self.rois = ROIs 
+        # neuropil-corrected, trial-locked ∆F/F signal
+        self.signal = SIG 
+        # z-scored neuropil-corrected, trial-locked ∆F/F signal
+        self.zsig = Z 
+        # per session, identify of all the presented trials
+        self.trials = TRIALS_ALL 
+        # trial window in seconds
         self.trial_sec = pre_post_trial_time
-        self.SF = self.signal.shape[1] / sum(self.trial_sec) # Sampling Frequency
-        self.trial_frames = (self.SF * array(self.trial_sec)).round().astype(int) # (pre_trial, post_trial) frames
-        self.TRIAL = (self.trial_frames[0], 2*self.trial_frames[0]) # hardcoded TODO: fixed based on indicated trial duration
+        # Sampling Frequency
+        self.SF = self.signal.shape[1] / sum(self.trial_sec) 
+        # Trial window (pre_trial, post_trial) in frames
+        self.trial_frames = (self.SF * array(self.trial_sec)).round().astype(int) 
+        # TRIAL duration between frames hardcoded TODO: fixed based on indicated trial duration
+        self.TRIAL = (self.trial_frames[0], 2*self.trial_frames[0]) 
 
         # Trials
         self.str_to_int_trials_map, self.int_to_str_trials_map = {s:i for i, s in enumerate(unique(self.trials))}, {i:s for i, s in enumerate(unique(self.trials))}
+        # trialIDs as integers 
         self.trials = self.trials_apply_map(self.trials, self.str_to_int_trials_map)
         # create masks to separate different trials
-        self.trial_types = {tt : where(self.trials == tt) # this gives the [session (1:9)], [trial (1:720)] indices for each trial type
-                            for tt in unique(self.trials)}
+        self.trial_types =  self.get_trial_types_dict(all_trials=self.trials)# this gives the [session (1:9)], [trial (1:720)] indices for each trial type
+                            
 
     # Methods: to use on instance of the class in a script
     def baseline_correct_signal(self, signal:ndarray, baseline_frames:int = None)->ndarray:
@@ -68,23 +78,28 @@ class AUDVIS:
             baseline_frames = self.trial_frames[0]
         return signal - signal[:,:baseline_frames,:].mean(axis = 1, keepdims=True)
 
-    def separate_signal_by_trial_types(self, 
-                                       signal:ndarray) -> dict[int:ndarray]:
+    def separate_signal_by_trial_types(self,  
+                                       signal:ndarray,
+                                       **kwargs) -> dict[int:ndarray]:
         '''Only works on trial-locked signal,
         signal is assumed to be in (trials_all_conditions, time, neurons_across sessions) format
         
         returns a dictionary that stores separate arrays for each trial type (trials_one_condition, time, neurons_across_sessions)
         '''
-        # split signal from different recordings before joining
-        # split_signal = [self.signal[:,:,n_first:n_last] for n_first, n_last in self.session_neurons]
-        trials_per_TT = round(signal.shape[0] / len(unique(self.trials)))
+        all_trials : ndarray = self.trials if 'all_trials' not in kwargs else kwargs['all_trials']
+        assert isinstance(all_trials, ndarray), 'all_trials must be (session, trials) array'        
+        trials_per_TT = round(signal.shape[0] / len(unique(all_trials)))
         
         signal_by_trials = dict()
 
-        for tt in list(self.trial_types): # 0-n_trial types
+        # split signal from different recordings before joining
+        ttypes : dict[int:ndarray] = self.trial_types if 'ttypes' not in kwargs else kwargs['ttypes']
+        assert isinstance(ttypes, dict), 'ttypes must be a dictionary with indices for all occurences of each trial type across sessions'
+
+        for tt in list(ttypes): # 0-n_trial types
             signal_tt = []
-            for n_first, n_last in self.session_neurons:
-                _, trials = self.trial_types[tt]
+            for (n_first, n_last) in self.session_neurons:
+                _, trials = ttypes[tt]
                 trials = trials[tt*trials_per_TT : (tt+1)*trials_per_TT]
                 signal_tt.append(signal[trials,:,n_first:n_last])
             
@@ -115,6 +130,10 @@ class AUDVIS:
         else:
             return array([fromiter(map(lambda s: tmap[s], trials_array[session, :]), dtype = dtype) 
                           for session in range(trials_array.shape[0])])
+        
+    def get_trial_types_dict(self, all_trials:ndarray[int]):
+         return {tt : where(all_trials == tt) # this gives the [session (1:9)], [trial (1:720)] indices for each trial type
+                for tt in unique(all_trials)}
 
     # used within __init__ block
     def update_session_index(self)-> list[tuple[int, int]]:

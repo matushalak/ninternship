@@ -12,8 +12,10 @@ from pandas import DataFrame, read_pickle
 
 
 def show_me(*args:ndarray):
+    plt.figure()
     plt.plot(args)
     plt.show()
+    plt.close()
 
 def load_audvis_files(group_condition_name:str)->tuple[dict, dict, DataFrame, ndarray, ndarray, ndarray]:
     # indexing
