@@ -4,9 +4,10 @@ from utils import show_me
 import matplotlib.pyplot as plt
 from matplotlib import artist
 import seaborn as sns
-from numpy import ndarray, arange, where, std, roll, unique, array, zeros, concatenate, save, quantile, argsort
+from numpy import ndarray, arange, where, std, roll, unique, array, zeros, concatenate, save, quantile, argsort, argmax
 from scipy.stats import ttest_rel, sem, norm, _result_classes
 from collections import defaultdict
+from typing import Literal
 import os
 
 class Analyze:
@@ -157,26 +158,45 @@ def plot_avrg_trace(time:ndarray, avrg:ndarray, SEM:ndarray,
 
 def snake_plot(all_neuron_averages:ndarray, 
                stats:_result_classes.TtestResult,
-               time:ndarray,
-               Axis:artist = plt, title:str = False):
+               trial_window_frames:tuple[int, int], time:ndarray,
+               heatmap_range:tuple[int, int] = (None, None),
+               Axis:artist = plt, title:str = False,
+               colorbar:bool = True, SHOW:bool = False,
+               MODE:Literal['onset', 'signif'] = 'onset'):
     '''
     Snake plot for all neurons of one group-condition-trial_type
     (neurons, time) shape heatmap
     '''
+    if title:
+        Axis.set_title(title)  
+
     average_trace_per_neuron = all_neuron_averages.mean(axis = 0).T # transpose so nice shape for heatmap
-    sorted_by_significance = argsort(stats.pvalue)
-    neurons_by_significance = average_trace_per_neuron[sorted_by_significance]
-    # breakpoint()
-    sns.heatmap(neurons_by_significance, xticklabels = False)
-    plt.xticks(timestoplot := [0, 16, 32, 46], time.round()[timestoplot])
-    plt.vlines([16, 32], 0, neurons_by_significance.shape[0])
-    plt.show()
+    
+    # response onset sorting
+    if MODE == 'onset':
+        sorted_by_response_onset = argsort(argmax(average_trace_per_neuron[:,trial_window_frames[0]:trial_window_frames[1]], axis = 1))
+        heatmap_neurons = average_trace_per_neuron[sorted_by_response_onset]
 
+    # significance sorting
+    elif MODE == 'signif':
+        sorted_by_significance = argsort(stats.pvalue)
+        heatmap_neurons = average_trace_per_neuron[sorted_by_significance]
 
+    sns.heatmap(heatmap_neurons, vmin = heatmap_range[0], vmax=heatmap_range[1],
+                xticklabels = False, ax = Axis, cbar = colorbar)
+    
+    Axis.vlines(trial_window_frames, ymin = 0, ymax=heatmap_neurons.shape[0])
+    Axis.set_xticks(timestoplot := [0, trial_window_frames[0], trial_window_frames[1], heatmap_neurons.shape[1]-1], 
+                        time.round()[timestoplot])
+    if SHOW:
+        plt.show()
+
+    
 
 
 ###--------------------------------SPECIFIC analyses----------------------------------------------------
-def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]]):
+def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]],
+                SNAKE_MODE:Literal['onset', 'signif'] = 'onset'):
     ''' 
     need to specify how you want to organize the conditions in the grid plot
     '''
@@ -186,19 +206,39 @@ def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]]):
     fig1, axs1 = plt.subplots(nrows = 2, ncols = 4, sharey = 'row', sharex='col', figsize = (4 * 5, 2*4))
     linestyles = ('-', ':')
     colors = ('royalblue', 'goldenrod')
-    # fig2, axs2 = plt.subplots(nrows = 2, ncols = 4, sharey = 'row', sharex='col', figsize = (4 * 5, 2*4))
+    fig2, axs2 = plt.subplots(nrows = 2*2, ncols = 4*2, sharex='col', figsize = (4 * 5, 2*4))
+    snake_grid = build_snake_grid(tt_grid)
     
-    for i, av in enumerate(avs):
-        ANALYS = Analyze(av)
+    # get cbar range & calculate results
+    analyses = [Analyze(audvis) for audvis in avs]
+    # maxes, mins = [], []
+    # for audvis in avs:
+    #     analysis = Analyze(audvis)
+    #     analyses.append(analysis)
+    #     for iii in range(len(analysis.tt_names)):
+    #         maxes.append(analysis.TTS_BLC_Z[iii].mean(axis = 0).max())
+    #         mins.append(analysis.TTS_BLC_Z[iii].mean(axis = 0).min())
+    
+    # cbar_range = [min(mins), max(maxes)]
+
+    # PLOTTING LOOP
+    for i, (av, ANALYS) in enumerate(zip(avs, analyses)):
+        print(f'Starting analysis of {av.NAME}')
         trial_names = ANALYS.tt_names
         average_traces, sem_traces, responsive_neurs = ANALYS.TT_RES
 
         for i_tt, tt in enumerate(trial_names):
             gridloc = tt_grid[i_tt]
+            snakeloc = snake_grid[i_tt, i]
+            colorbar = True #if snakeloc[1] == 7 else False
+            # Snake PLOT
             snake_plot(all_neuron_averages = ANALYS.TTS_BLC_Z[i_tt], stats=ANALYS.TT_STATS[i_tt],
-                       time = ANALYS.time, title = tt)
+                    #    heatmap_range = cbar_range,
+                       trial_window_frames = ANALYS.TRIAL_FRAMES, Axis = axs2[snakeloc],
+                       colorbar=colorbar, title=f'{av.NAME}_{tt}', time = ANALYS.time,
+                       MODE=SNAKE_MODE)
  
-
+            # Average traces plot
             plot_avrg_trace(ANALYS.time, avrg = average_traces[i_tt], SEM = sem_traces[i_tt],
                             Axis = axs1[gridloc], title = tt, label = f'{av.NAME} ({len(responsive_neurs[i_tt])} / {len(list(av.neurons))})', 
                             vspan = (i == 0), col = colors[i >= 2], lnstl=linestyles[i%2])
@@ -208,11 +248,32 @@ def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]]):
                 axs1[gridloc].set_ylabel('z(∆F/F)')
             if gridloc[0] == 1:
                 axs1[gridloc].set_xlabel('Time (s)')
+            
+            if snakeloc[0] == 3:
+                axs2[snakeloc].set_xlabel('Time (s)')
+            
+    fig2.tight_layout()
+    fig2.savefig(f'TT_snake_{SNAKE_MODE}.png', dpi = 1000)
+    fig2.show()
 
 
     fig1.tight_layout()
-    fig1.savefig('TT_res.png', dpi = 1000)
+    fig1.savefig('TT_average_res.png', dpi = 1000)
     fig1.show()
+
+def build_snake_grid(tt_grid):
+    """
+    Given the original tt_grid (mapping trial_type -> (row, col) in 2x4),
+    produce a dictionary snake_grid that maps (trial_type, heatmap_index)
+    -> (row, col) in a 4x8 figure.
+    """
+    snake_grid = {}
+    for i_tt, (r0, c0) in tt_grid.items():
+        for i in range(4):
+            r_off = i // 2
+            c_off = i % 2
+            snake_grid[(i_tt, i)] = (2*r0 + r_off, 2*c0 + c_off)
+    return snake_grid
 
 
 ### Main block that runs the file as a script

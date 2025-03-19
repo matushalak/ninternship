@@ -20,16 +20,16 @@ class ImageLoader:
         atlas_raw = io.imread('ABA-Mask.png', as_gray = True)          # brain atlas outlines image, 240.51 x 240.42 pt
         coords_raw = io.imread('examples/Eta/AllenBrainAtlasOverlay_Eta_CoordinatesXY.png')
         self.twophoton_raw = io.imread('examples/Eta/AllenBrainAtlasOverlay_Eta_Original.png', as_gray = True) # 1x zoom: 75,2019 x 75,2019 pt; 1.3x zoom: 57,8476 x 57,8476 pt; 1.6x zoom: 47 x 47 pt
-        self.pRF = rot90(io.imread('examples/Eta/pRF_fieldsign.jpg'), k = -1).astype(float) / 255    # pRF image 334 x 389,0883 pt
+        self.pRF = rot90(io.imread('examples/Eta/pRF_fieldsign.jpg'), k = -1).astype(float) / 255    # pRF image 330,9326 pt x 385,515 pt
         self.widefield = rot90(io.imread('examples/Eta/Brain.jpg', as_gray = True), k = -1).astype(float) # will modify later when preparing masks
 
-        self.atlas = resize_image_pt(self.pRF, (389.0883, 334),
+        self.atlas = resize_image_pt(self.pRF, (385.515, 330.9326),
                                      atlas_raw, (240.42, 240.51))
-        self.coords = resize_image_pt(self.pRF, (389.0883, 334),
+        self.coords = resize_image_pt(self.pRF, (385.515, 330.9326),
                                       coords_raw, (240.42, 240.51))
         self.twop_mag = (57.8476, 57.8476) #self.find_2p_magnification()
         
-        self.twophoton = resize_image_pt(self.pRF, (389.0883, 334),
+        self.twophoton = resize_image_pt(self.pRF, (385.515, 330.9326),
                                          self.twophoton_raw, self.twop_mag)
             
     # scaling  = C / zoom; C = dimensions at 1x magnification
