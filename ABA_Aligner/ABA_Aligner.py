@@ -4,47 +4,109 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import imshow
 from matplotlib.widgets import Slider, Button
 from skimage import io, exposure, filters, morphology
-from skimage.transform import AffineTransform, warp, resize, hough_circle, hough_circle_peaks
+from skimage.transform import AffineTransform, warp, resize, rotate #,  hough_circle, hough_circle_peaks
 import skimage as skim # eventually remove
 from skimage.morphology import dilation, disk
 from tkinter import filedialog
 from SPSIG import SPSIG
+import os
+from glob import glob
+from scipy.spatial import distance as sp_distance
+import scipy.optimize as sp_optim
 
 class ImageLoader:
     def __init__(self, folder:str = ''):
-        # Find image files
-        # TODO
-        # self.locate_files()
+        # For development and checking with manual Adobe Illustrator "ground truth"
+        self.coords_check_file, self.ZOOM = None, None
 
-        # Load your images (update the file paths as needed)
+        # Find image files in specified folder
+        prf_file, widefield_file, _2p_file = self.locate_files(folder)
+
+        # atlas and coords provided with the ABA_Aligner package
         atlas_raw = io.imread('ABA-Mask.png', as_gray = True)          # brain atlas outlines image, 240.51 x 240.42 pt
-        coords_raw = io.imread('examples/Eta/AllenBrainAtlasOverlay_Eta_CoordinatesXY.png')
-        self.twophoton_raw = io.imread('examples/Eta/AllenBrainAtlasOverlay_Eta_Original.png', as_gray = True) # 1x zoom: 75,2019 x 75,2019 pt; 1.3x zoom: 57,8476 x 57,8476 pt; 1.6x zoom: 47 x 47 pt
-        self.pRF = rot90(io.imread('examples/Eta/pRF_fieldsign.jpg'), k = -1).astype(float) / 255    # pRF image 330,9326 pt x 385,515 pt
-        self.widefield = rot90(io.imread('examples/Eta/Brain.jpg', as_gray = True), k = -1).astype(float) # will modify later when preparing masks
+        coords = io.imread('ABA_XY.png')
+        
+        # Load your image files 
+        # necessary ingredients in each folder
+        # self.twophoton_raw = io.imread('examples/Eta/AllenBrainAtlasOverlay_Eta_Original.png', as_gray = True) # 1x zoom: 75,2019 x 75,2019 pt; 1.3x zoom: 57,8476 x 57,8476 pt; 1.6x zoom: 47 x 47 pt
+        # self.pRF = rot90(io.imread('examples/Eta/pRF_fieldsign.jpg'), k = -1).astype(float) / 255    # pRF image 330,9326 pt x 385,515 pt
+        # self.widefield = rot90(io.imread('examples/Eta/Brain.jpg', as_gray = True), k = -1).astype(float) # will modify later when preparing masks
+        self.twophoton_raw = io.imread(_2p_file, as_gray = True) # 1x zoom: 75,2019 x 75,2019 pt; 1.3x zoom: 57,8476 x 57,8476 pt; 1.6x zoom: 47 x 47 pt
+        if '_Original' not in _2p_file:
+            # rotate my_mousy image properly
+            self.twophoton_raw = self.preprocess_2p(self.twophoton_raw)
 
+        self.pRF = rot90(io.imread(prf_file), k = -1).astype(float) / 255    # pRF image 330,9326 pt x 385,515 pt
+        self.widefield = rot90(io.imread(widefield_file, as_gray = True), k = -1).astype(float) # will modify later when preparing masks
+
+        # Resize atlas and coords images loaded automatically
+        # 389.0884, 334.0001
         self.atlas = resize_image_pt(self.pRF, (385.515, 330.9326),
                                      atlas_raw, (240.42, 240.51))
         self.coords = resize_image_pt(self.pRF, (385.515, 330.9326),
-                                      coords_raw, (240.42, 240.51))
-        self.twop_mag = (57.8476, 57.8476) #self.find_2p_magnification()
+                                      coords, (240.42, 240.51))
         
-        self.twophoton = resize_image_pt(self.pRF, (385.515, 330.9326),
-                                         self.twophoton_raw, self.twop_mag)
+        # Resize 2-photon images
+        self.twop_mag = self.find_2p_magnification()
+        
+        # self.twophoton = resize_image_pt(self.pRF, (385.515, 330.9326),
+        #                                  self.twophoton_raw, self.twop_mag)
+        
+        # IF you have coords-check, resize to 2-p size to compare with output
+        if self.coords_check_file is not None:
+            coords_check = io.imread(self.coords_check_file)
+            self.COORDS_CHECK = resize_image_pt(self.pRF, (385.515, 330.9326),
+                                                coords_check, self.twop_mag)
             
-    # scaling  = C / zoom; C = dimensions at 1x magnification
-    def find_2p_magnification(zoom:float)->tuple[float, float]:
-        return (75.2019 / zoom, 75.2019 / zoom)
+    def preprocess_2p(self, spsig_2p:ndarray) -> ndarray:
+        return rot90(fliplr(spsig_2p))
     
-    # TODO
-    def locate_files(folder:str) -> tuple[str, str, str, str]:
-        pass
+    # scaling  = C / zoom; C = dimensions at 1x magnification
+    def find_2p_magnification(self)->tuple[float, float]:
+        return (75.2019 / self.ZOOM, 75.2019 / self.ZOOM)
+    
+    def locate_files(self, folder) -> tuple[str, str, str]:
+        folder_files = os.listdir(folder)
+        # TODO: generalize naming convention to user-defined settings
+        assert any(file.lower().endswith('prf_fieldsign.jpg') for file in folder_files), 'Widefield PRF image is required!'
+        assert any(file.lower().endswith('brain.jpg') for file in folder_files), 'Widefield brain image is required!'
+        assert any(file.lower().endswith('mymousy_img.png') or file.lower().endswith('_original.png') for file in folder_files), '2-photon image is required!'
+
+        for file in folder_files:
+            if file.lower().endswith('prf_fieldsign.jpg'):
+                prf_file = os.path.join(folder, file)
+
+            if file.lower().endswith('brain.jpg'):
+                widefield_file = os.path.join(folder, file)
+
+            if file.lower().endswith('mymousy_img.png') or file.lower().endswith('_original.png'):
+                _2p_file = os.path.join(folder, file)
+            
+            if file.lower().endswith('_normcorr.mat'):
+                self.ZOOM = SPSIG(os.path.join(folder, file)).info.config.magnification
+            
+            # Already exported from illustrator
+            if file.lower().endswith('_coordinatesxy.png'):
+                self.coords_check_file = os.path.join(folder, file)
+        
+        # no _normcorr.mat file
+        if self.ZOOM is None:
+            while True:
+                try:
+                    inpt = float(input("Couldn't find ..._normcorr.mat file in your folder, please specify your zoom level (float) manually here:   "))
+                    break
+                except ValueError:
+                    print('You need to input a float for your zoom-level (eg. 2.5)')
+            self.ZOOM = inpt
+
+        return (prf_file, widefield_file, _2p_file)
+            
 
 
 
 class AtlasWidefieldGUI(ImageLoader):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, folder:str):
+        super().__init__(folder=folder)
         # breakpoint()
         # Initial transformation parameters
         init_angle = 0       # in degrees
@@ -57,7 +119,7 @@ class AtlasWidefieldGUI(ImageLoader):
         # Display the pRF image
         ax_main = self.fig.add_axes([0.05, 0.2, 0.9, 0.75])  # left=5%, bottom=20%, width=90%, height=75%
         ax_main.imshow(self.pRF)
-        ax_main.set_title("Adjust Atlas Outlines")
+        ax_main.set_title(f"Adjust Atlas Outlines for {folder}")
         # ax_main.axis('off')
 
         # Apply initial transformation to the atlas outlines and overlay it
@@ -90,6 +152,7 @@ class AtlasWidefieldGUI(ImageLoader):
         def on_confirm(event):
             print("Final parameters: Angle = {:.2f}°, X Translation = {:.2f}, Y Translation = {:.2f}".format(
                 self.s_angle.val, self.s_tx.val, self.s_ty.val))
+            plt.close()
         button.on_clicked(on_confirm)
 
         plt.show()
@@ -164,7 +227,7 @@ class PrepareMasks:
                  pRF:ndarray,
                  widef:ndarray,
                  twophoton:ndarray,
-                 twop_in_points:tuple[float, float] = (75.2019, 75.2019)):
+                 twop_in_points:tuple[float, float]):
         '''
         main output of this class are .WF and ._2P binary masks already in correct scaling used for alignment
         '''
@@ -188,9 +251,9 @@ class PrepareMasks:
         self.mask_2p, self.mask_wf = self.vessel_masks(self.widef, self.twop)
 
         # resize 2-photon mask appropriately
-        self.mask_2p = resize_image_pt(reference_image=rectangle_pRF_pixels, reference_pt_dim=(389.0883, 334),
-                                   target_image=self.mask_2p, target_pt_dim=twop_in_points, 
-                                   AA = False) # Antialiasing must be false for boolean images
+        self.mask_2p = resize_image_pt(reference_image=rectangle_pRF_pixels, reference_pt_dim=(385.515, 330.9326),
+                                       target_image=self.mask_2p, target_pt_dim=twop_in_points, 
+                                       AA = False) # Antialiasing must be false for boolean images
         
 
     def crop_pRF(self, pRF:ndarray)->ndarray:
@@ -209,12 +272,15 @@ class PrepareMasks:
         '''crop away axis labels and whitespace BURNED into (widefield) image...'''
         rows, cols = wf.shape
         for irow in range(rows):
-            if wf[irow,:].mean() > .5:
+            if wf[irow,:].mean() > .3:
                 # print(f'Skip row {irow}')
                 continue
             else:
                 for icol in range(cols):
-                    if wf[irow, icol:icol+100].mean() < .07 and wf[irow, icol] < 0.2:
+                    if wf[irow:,icol].mean() > .3:
+                        continue
+
+                    elif wf[irow, icol:icol+100].mean() < .3 and wf[irow, icol] < 0.2:
                         # indexing cuts away axis labels
                         return self.crop_pRF(wf[irow:, icol:])[0] # crop_pRF cuts away leftover white on the sides
                 
@@ -246,37 +312,126 @@ class PrepareMasks:
 class ABA_Aligner:
     def __init__(self):
         # Ask to choose folders
-        # self.choose_folders()
-        GUIres = AtlasWidefieldGUI()
-        Masks = PrepareMasks(pRF=GUIres.pRF, widef=GUIres.widefield, twophoton=GUIres.twophoton_raw)
-        breakpoint()
+        self.folders = ['examples/Nueve/1']#choose_folders()
 
-    def choose_folders(self)->list[str]:
-        print('Choose folders with pRF, two-photon and ABA mask and ABA XY coordinates to be aligned')
-        parent_folders = []
+        GUIresults = []
+        self.PREPARED_MASKs = []
+        # Initial steps for which user is present
+        # TODO: optimize speed of GUI & image loading (eg. setattrs ?)
+        for fld in self.folders:
+            # 1) Manual alignment on all images of interest from selected folders
+            GUIresults.append(GUIres := AtlasWidefieldGUI(folder=fld))
+            # 2) Automated vessel mask extraction (relatively quick so part of loop)
+            self.PREPARED_MASKs.append(PrepareMasks(pRF=GUIres.pRF, 
+                                                    widef=GUIres.widefield, 
+                                                    twophoton=GUIres.twophoton_raw,
+                                                    twop_in_points = GUIres.twop_mag))
         
-        while True:
-            chosen_dir = filedialog.askdirectory()
-            if not chosen_dir: break
-            parent_folders.append(chosen_dir)
+        # 3) Parallelized registration algorithm
+        parallel_args = self.prepare_parallel_registration_args()
+
+        for wf, tp in parallel_args:
+            align_masks(wf, tp)
+
+    def prepare_parallel_registration_args(self,
+                                           attr_images_used : dict[str:str, 
+                                                                   str:str] = {'wf':'mask_wf',
+                                                                               '2p':'mask_2p'}
+                                          ) -> list[tuple[ndarray, ndarray]]:
+        return [(getattr(Masks, attr_images_used['wf']),
+                getattr(Masks, attr_images_used['2p']))
+                for Masks in self.PREPARED_MASKs]
+    
+
+
+# -------------------------------- REGISTRATION ALGORITHM --------------------------------------
+#               (must consist of picklable functions to be parallelized)
+def align_masks(mask_WF:ndarray, mask_2P:ndarray) -> tuple[float, float, float]:
+    '''
+    Main function that performs alignment using rigid transformations (rotation & translation) 
+    on already properly scaled images
+
+    input arguments: Images / Masks to align
+        mask_WF : ndarray = large widefield image / mask onto which the small two-photon image is registered
+        mask_2P : ndarray = small 2-photon image / mask to be registered onto large widefield image
+    
+    output: Parameters for the best found rigid transformation
+        out : tuple(float, float, float) = (translation_x, translation_y, rotation_angle_deg)
+    '''
+    # to position the 2p image in "center", but actually it's top left
+    wfy, wfx = mask_WF.shape
+    twpy, twpx = mask_2P.shape
+    ini_dx = wfx // 2 - twpx // 2
+    ini_dy = wfy // 2 - twpy // 2
+    
+    # cover whole range
+    rotation_range = (-90,90) # in degrees
+    dx_range = (- ini_dx, ini_dx) # roll axis 1
+    dy_range = (- ini_dy, ini_dx) # roll axis 0
+
+    ini_guess = [0,0,0] 
+    
+    breakpoint()
+    # optimization
+    result = sp_optim.minimize(COST,ini_guess,bounds = [dx_range, dy_range, rotation_range],args=(mask_WF, mask_2P),method='Nelder-Mead')
+    
+
+
+def COST(params:tuple[int, int, float], 
+         WF:ndarray, TWOP:ndarray) -> float:
+    dx, dy, theta = params
+    wfy, wfx = WF.shape
+    twpy, twpx = TWOP.shape
+    # to position the 2p image in "center", but actually it's top left
+    ini_dx = wfx // 2 - twpx // 2
+    ini_dy = wfy // 2 - twpy // 2
+
+    # CONTINUOUS translation, suited for gradient optimization
+    # # Create an affine transform (rotation + translation)
+    # transform = AffineTransform(rotation=np.deg2rad(theta),
+    #                             translation=(ini_dx + dx, ini_dy + dy))
+    # # Warp the widefield image using continuous interpolation
+    # WF_transformed = warp(WF, inverse_map=transform.inverse, preserve_range=True)
+
+    # DISCRETE translation apply transform inuitively (not continuous, can't be optimized)
+    WF_translation = np.roll(WF, shift = (ini_dy + dy, ini_dx + dx), axis = (0, 1))
+    WF_transformed = rotate(WF_translation, angle = theta)
+    
+    return metric(TWOP, WF_transformed[:twpy, :twpx])
+
+
+
+# formulated as MINIMIZATION problem
+def metric(im1:ndarray, im2:ndarray, mode = 'dice') -> float:
+    assert im1.shape == im2.shape, 'Shapes of the 2 images must be identical dimensions (already AFTER transform was applied to widefield image)!'
+
+    match mode:
+        # Dice dissimilarity index
+        case 'dice':
+            return sp_distance.dice(im1.flatten(), im2.flatten())
+        case 'jaccard':
+            return sp_distance.jaccard(im1.flatten(), im2.flatten())
+
+def rgba_2p_overlay():
+    pass        
         
-        return parent_folders
 
-    def align_masks(self):
-        pass
-
+#%% ---------------------------Helper functions--------------------------
 def resize_image_pt(reference_image:ndarray|tuple[int, int], # can also provide pixel size of reference image here
                     reference_pt_dim:tuple[float, float],
                     target_image:ndarray, target_pt_dim:tuple[float, float], AA:bool = True)->ndarray:
-        # ratio the images should be in
-        ratio = array(target_pt_dim) / array(reference_pt_dim)
-        
-        reference_pix = reference_image if isinstance(reference_image, tuple) else reference_image.shape[:2]
-        target_pix_goal = reference_pix * ratio
-        
-        return resize(target_image, output_shape=target_pix_goal, anti_aliasing=AA)
+    # ratio the images should be in
+    ratio = array(target_pt_dim) / array(reference_pt_dim)
+    
+    reference_pix = reference_image if isinstance(reference_image, tuple) else reference_image.shape[:2]
+    target_pix_goal = reference_pix * ratio
+    
+    return resize(target_image, output_shape=target_pix_goal, anti_aliasing=AA)
 
 def show_me(*imgs:ndarray, color = 'gray'):
+    ''''
+    Useful for debugging steps in the algorithm
+    '''
     n_imgs = len(imgs)
     if n_imgs == 1:
         imshow(imgs[0], cmap = color)
@@ -300,6 +455,37 @@ def show_me(*imgs:ndarray, color = 'gray'):
         plt.show()
         plt.close()
 
+def choose_folders()->list[str]:
+    print('Choose (ROOT folders with child) folders containing: ',
+    '\n 1) Widefield PRF image ...pRF_fieldsign.jpg ',
+    '\n 2) Two-photon image ..._Original.png OR ..._myMousy_img.png ',
+    '\n 3) Widefield image of same FOV as the PRF image but greyscale ...Brain.jpg',
+    '\n Recommended (4) File containing magnification info..._normcorr.mat')
+    root_dirs = []
+    file_folders = []
+    
+    # get root folder / folders in which it will look for folders containing
+    while True:
+        chosen_dir = filedialog.askdirectory()
+        if not chosen_dir: 
+            break
+        else:
+            root_dirs.append(chosen_dir)
+    
+    look_for = '**/*pRF_fieldsign.jpg'
+    look_for_all = ('prf_fieldsign.jpg', 'brain.jpg', 'mymousy_img.png', '_original.png')
 
+    for root in root_dirs:
+        for potential_folder in glob(os.path.join(root, look_for), recursive=True):
+            potential_folder = os.path.dirname(potential_folder)
+            yes_no = [any(file.lower().endswith(fn) for fn in look_for_all) for file in os.listdir(potential_folder)]
+
+            if sum(yes_no) in (3, 4):
+                file_folders.append(potential_folder)
+
+    return file_folders
+
+#%% Runs the script
 if __name__ == '__main__':
-    ABA_Aligner()
+    results = ABA_Aligner()
+    print('Done!')
