@@ -40,22 +40,24 @@ class ImageLoader:
         self.widefield = rot90(io.imread(widefield_file, as_gray = True), k = -1).astype(float) # will modify later when preparing masks
 
         # Resize atlas and coords images loaded automatically
-        # 389.0884, 334.0001
-        self.atlas = resize_image_pt(self.pRF, (385.515, 330.9326),
+        # (389.0884, 334.0001)
+        # (385.515, 330.9326)
+        # NOTE: FIX resizing these high res images might be taking up a lot of the runtime
+        self.atlas = resize_image_pt(self.pRF, (389.0884, 334.0001),
                                      atlas_raw, (240.42, 240.51))
-        self.coords = resize_image_pt(self.pRF, (385.515, 330.9326),
+        self.coords = resize_image_pt(self.pRF, (389.0884, 334.0001),
                                       coords, (240.42, 240.51))
         
         # Resize 2-photon images
         self.twop_mag = self.find_2p_magnification()
         
-        # self.twophoton = resize_image_pt(self.pRF, (385.515, 330.9326),
+        # self.twophoton = resize_image_pt(self.pRF, (389.0884, 334.0001),
         #                                  self.twophoton_raw, self.twop_mag)
         
         # IF you have coords-check, resize to 2-p size to compare with output
         if self.coords_check_file is not None:
             coords_check = io.imread(self.coords_check_file)
-            self.COORDS_CHECK = resize_image_pt(self.pRF, (385.515, 330.9326),
+            self.COORDS_CHECK = resize_image_pt(self.pRF, (389.0884, 334.0001),
                                                 coords_check, self.twop_mag)
             
     def preprocess_2p(self, spsig_2p:ndarray) -> ndarray:
@@ -83,7 +85,9 @@ class ImageLoader:
                 _2p_file = os.path.join(folder, file)
             
             if file.lower().endswith('_normcorr.mat'):
-                self.ZOOM = SPSIG(os.path.join(folder, file)).info.config.magnification
+                magnifications = [1.0, 1.3, 1.6, 2.0, 2.5, 3.2, 4.0, 5.0, 6.3, 8.0, 10.1, 12.7, 16.0]
+                mag_index = int(SPSIG(os.path.join(folder, file)).info.config.magnification)
+                self.ZOOM = magnifications[mag_index-1]
             
             # Already exported from illustrator
             if file.lower().endswith('_coordinatesxy.png'):
@@ -243,15 +247,33 @@ class PrepareMasks:
         # Crop widefield to match cropped pRF
         self.widef = self.match_wf_pRF(self.widef, self.pRF)
 
+        # GETTING RID OF NEURONS XXX
+        # WF
+        # show_me(self.widef, bres := morphology.black_tophat(self.widef, disk(8)), 
+        # st := filters.sato(1-bres, sigmas = np.arange(4, 8)), #with this potentially don't even need mask 
+
+        # 2P
+        # show_me(bres := morphology.black_tophat(self.twop, disk(6)), 
+        # wres := morphology.white_tophat(self.twop, disk(6)),self.twop,  
+        # prog := self.twop - wres + bres, 
+        
+        #   fr := filters.frangi(prog, sigmas = np.arange(15, 60, 10))
+        #   nn := morphology.closing(fr, disk(17)), filters.apply_hysteresis_threshold(nn, 0.03,0.1)
+        # also interesting 
+        #   sat := filters.sato(prog, sigmas = np.arange(25, 30))
+        #   op := morphology.opening(sat, disk(11))
+
+        breakpoint()
         # Enhance local contrast -Contrast Limited Adaptive Histogram Equalization (CLAHE), needed before Frangi vesselness filter
         self.widef = exposure.equalize_adapthist(self.widef, clip_limit=0.05)
         self.twop = exposure.equalize_adapthist(self.twop, clip_limit=0.05)
 
         # Main function that extracts the Widefield and Two-photon masks to be aligned
         self.mask_2p, self.mask_wf = self.vessel_masks(self.widef, self.twop)
+        # mask_thick = dilation(mask, disk(2)) # dilation for widefield image
 
         # resize 2-photon mask appropriately
-        self.mask_2p = resize_image_pt(reference_image=rectangle_pRF_pixels, reference_pt_dim=(385.515, 330.9326),
+        self.mask_2p = resize_image_pt(reference_image=rectangle_pRF_pixels, reference_pt_dim = (389.0884, 334.0001),
                                        target_image=self.mask_2p, target_pt_dim=twop_in_points, 
                                        AA = False) # Antialiasing must be false for boolean images
         
@@ -365,16 +387,24 @@ def align_masks(mask_WF:ndarray, mask_2P:ndarray) -> tuple[float, float, float]:
     ini_dy = wfy // 2 - twpy // 2
     
     # cover whole range
-    rotation_range = (-90,90) # in degrees
+    rotation_range = (-45,45) # in degrees
+    rr = np.arange(rotation_range[0], rotation_range[1]+1)
+    
     dx_range = (- ini_dx, ini_dx) # roll axis 1
+    xr = np.arange(dx_range[0], dx_range[1]+1)
+    
     dy_range = (- ini_dy, ini_dx) # roll axis 0
+    yr = np.arange(dy_range[0], dy_range[1]+1)
 
-    ini_guess = [0,0,0] 
+    ini_guess = [np.random.choice(xr),np.random.choice(yr),np.random.choice(rr)] 
+    
+    # optimization
+    result = sp_optim.minimize(COST,ini_guess,
+                               bounds = [dx_range, dy_range, rotation_range],
+                               args=(mask_WF, mask_2P),
+                               method='Nelder-Mead')
     
     breakpoint()
-    # optimization
-    result = sp_optim.minimize(COST,ini_guess,bounds = [dx_range, dy_range, rotation_range],args=(mask_WF, mask_2P),method='Nelder-Mead')
-    
 
 
 def COST(params:tuple[int, int, float], 
@@ -387,15 +417,15 @@ def COST(params:tuple[int, int, float],
     ini_dy = wfy // 2 - twpy // 2
 
     # CONTINUOUS translation, suited for gradient optimization
-    # # Create an affine transform (rotation + translation)
-    # transform = AffineTransform(rotation=np.deg2rad(theta),
-    #                             translation=(ini_dx + dx, ini_dy + dy))
-    # # Warp the widefield image using continuous interpolation
-    # WF_transformed = warp(WF, inverse_map=transform.inverse, preserve_range=True)
+    # Create an affine transform (rotation + translation)
+    transform = AffineTransform(rotation=np.deg2rad(theta),
+                                translation=(ini_dx + dx, ini_dy + dy))
+    # Warp the widefield image using continuous interpolation
+    WF_transformed = warp(WF, inverse_map=transform.inverse, preserve_range=True)
 
     # DISCRETE translation apply transform inuitively (not continuous, can't be optimized)
-    WF_translation = np.roll(WF, shift = (ini_dy + dy, ini_dx + dx), axis = (0, 1))
-    WF_transformed = rotate(WF_translation, angle = theta)
+    # WF_translation = np.roll(WF, shift = (ini_dy + dy, ini_dx + dx), axis = (0, 1))
+    # WF_transformed = rotate(WF_translation, angle = theta)
     
     return metric(TWOP, WF_transformed[:twpy, :twpx])
 
