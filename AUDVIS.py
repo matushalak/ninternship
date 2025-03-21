@@ -5,7 +5,7 @@
 from utils import group_condition_key, default_neuron_index, default_session_index, load_audvis_files
 from collections import defaultdict
 from SPSIG import SPSIG, Dict_to_Class
-from numpy import ndarray, array, save, dstack, unique, fromiter, where, concatenate
+from numpy import ndarray, array, save, dstack, unique, fromiter, where, concatenate, nanmean, nanstd
 from pandas import DataFrame, concat
 import pickle
 from multiprocessing import Pool, cpu_count
@@ -14,13 +14,16 @@ import matplotlib.pyplot as plt
 import os
 
 class Behavior:
-    def __init__(self,speed:ndarray, 
+    def __init__(self,
+                 speed:ndarray, 
+                 continuous:SPSIG | None = None, # needed to Z-score everything
                  facemap:Dict_to_Class|None = None):
         self.running = speed.swapaxes(0,1)
         if facemap: # some sessions don't have video & facemap
-            self.whisker = facemap.motion.swapaxes(0,1)
-            self.blink = facemap.blink.swapaxes(0,1)
-            self.pupil = facemap.eyeArea.swapaxes(0,1)
+            cont_fm : Dict_to_Class = continuous.facemapTraces
+            self.whisker = (facemap.motion.swapaxes(0,1) - nanmean(cont_fm.motion)) / nanstd(cont_fm.motion)
+            self.blink = (facemap.blink.swapaxes(0,1) - nanmean(cont_fm.blink)) / nanstd(cont_fm.blink)
+            self.pupil = (facemap.eyeArea.swapaxes(0,1) - nanmean(cont_fm.eyeArea)) / nanstd(cont_fm.eyeArea)
 
 
 class AUDVIS:
@@ -52,6 +55,11 @@ class AUDVIS:
         self.signal = SIG 
         # z-scored neuropil-corrected, trial-locked ∆F/F signal
         self.zsig = Z 
+
+        # regress out running speed & OR whisker movement
+        self.zsig_CORR = self.regress_out_behavior(self.zsig)
+
+
         # per session, identify of all the presented trials
         self.trials = TRIALS_ALL 
         # trial window in seconds
@@ -174,6 +182,9 @@ class CreateAUDVIS:
         self.ROIs, self.SIG, self.Z, self.TRIALS_ALL = self.update_index_and_data()
 
         # save files that we will use when loading AUDVIS
+        if not os.path.exists(storage_folder):
+            os.makedirs(storage_folder)
+        
         self.ROIs.to_pickle(os.path.join(storage_folder, f'{self.NAME}_rois.pkl'))
         save(os.path.join(storage_folder, f'{self.NAME}_sig.npy'), 
              self.SIG)
@@ -193,14 +204,15 @@ class CreateAUDVIS:
         trials_ALL = [] # collect trial IDs for each session
 
         for session_i, file in enumerate(self.files):
-            sp = SPSIG(file)
+            sp = SPSIG(file) # SPSIG_Res.mat file
+            continuous = SPSIG(file.replace('_Res', '')) # SPSIG.mat file
 
             # this is consistent across all neurons in one recording
             recording_name = sp.info.strfp.split('\\')[-1]
             n_neurons = sp.Res.CaSig.shape[-1]
             trials_ALL.append(trialIDs := sp.info.Stim.log.stim[:720]) # hardcoded because one session had more somehow
             n_trials = len(trialIDs)
-            behavior = Behavior(sp.Res.speed, sp.Res.facemap) if hasattr(sp.Res, 'facemap') else (Behavior(sp.Res.speed) if hasattr(sp.Res, 'speed') else None)
+            behavior = Behavior(sp.Res.speed, continuous ,sp.Res.facemap) if hasattr(sp.Res, 'facemap') else (Behavior(sp.Res.speed) if hasattr(sp.Res, 'speed') else None)
             
             # session index
             self.session_index[session_i]['n_neurons'] = n_neurons
@@ -208,6 +220,9 @@ class CreateAUDVIS:
             self.session_index[session_i]['n_trials'] = n_trials
             self.session_index[session_i]['behavior'] = behavior
             self.session_index[session_i]['session'] = recording_name
+            self.session_index[session_i]['event_times'] = sp.info.Frametimes
+            self.session_index[session_i]['frame_times'] = sp.info.StimTimes
+            # ms_delay info is in ROIs DataFrame
 
             # this is per-neuron
             roi_info.append(roiDF := DataFrame(sp.info.rois))
@@ -216,8 +231,8 @@ class CreateAUDVIS:
             if hasattr(sp.Res, 'CaSigCorrected_Z'):        
                 signal_z.append(sp.Res.CaSigCorrected_Z[:, :720, :])
             else:
-                print(f'Calculating z-score for {recording_name}')
-                signal_z.append((sig - sig.mean(axis = (0,1)))/sig.std(axis = (0,1))) # Z-score calculation !!! TODO: change to be based on SPSIG not _SPSIG_Res.mat file
+                print(f'Calculating z-score for {recording_name} using sigCorrected from {file.replace('_Res', '')}')
+                signal_z.append((sig - continuous.sigCorrected.mean(axis = 0))/ continuous.sigCorrected.std(axis = 0)) # Z-score calculation
 
             for neuron_i_session in range(n_neurons):
                 neuron_i_overall = neuron_i_session if session_i == 0 else max(list(self.neuron_index)) + 1
@@ -233,11 +248,12 @@ class CreateAUDVIS:
         return (concat(roi_info), # DataFrane with ABA info & contours & locations
                 dstack(signal_corrected).swapaxes(0,1), # ndarray Neuropil corrected ∆F/F
                 dstack(signal_z).swapaxes(0,1), # ndarray Z-Scored (over entire signal) Neuropil corrected ∆F/F
-                array(trials_ALL)) # ndarray with trial identities of each trial 
+                array(trials_ALL) # ndarray with trial identities of each trial 
+                ) 
 
 
         
-# Little functions
+#-------------------- Little functions --------------------
 # for multiprocessing
 def run_CreateAUDVIS(args):
     g, g_name = args
@@ -291,10 +307,10 @@ if __name__ == '__main__':
         names = ['g1pre', 'g1post', 'g2pre', 'g2post']
 
         # 1 core
-        for g, g_name in zip((g1pre, g1post, g2pre, g2post), names):
-            av = CreateAUDVIS(g, g_name)
+        # for g, g_name in zip((g1pre, g1post, g2pre, g2post), names):
+        #     av = CreateAUDVIS(g, g_name)
 
-        # multiprocessing on 4 cores
+        # multiprocessing on 4 cores (4 groups)
         params = list(zip([g1pre, g1post, g2pre, g2post], names))
         with Pool(processes=cpu_count()) as pool:
             results = pool.map(run_CreateAUDVIS, params)

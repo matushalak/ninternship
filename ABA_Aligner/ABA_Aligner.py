@@ -1,3 +1,4 @@
+# @matushalak
 from numpy import ndarray, array, deg2rad, fliplr, flipud, rot90
 import numpy as np # eventually remove
 import matplotlib.pyplot as plt
@@ -7,6 +8,7 @@ from skimage import io, exposure, filters, morphology
 from skimage.transform import AffineTransform, warp, resize, rotate #,  hough_circle, hough_circle_peaks
 import skimage as skim # eventually remove
 from skimage.morphology import dilation, disk
+from skimage.registration import phase_cross_correlation
 from tkinter import filedialog
 from SPSIG import SPSIG
 import os
@@ -247,6 +249,7 @@ class PrepareMasks:
         # Crop widefield to match cropped pRF
         self.widef = self.match_wf_pRF(self.widef, self.pRF)
 
+        # TODO: incorporate !!!
         # GETTING RID OF NEURONS XXX
         # WF
         # show_me(self.widef, bres := morphology.black_tophat(self.widef, disk(8)), 
@@ -262,7 +265,7 @@ class PrepareMasks:
         # also interesting 
         #   sat := filters.sato(prog, sigmas = np.arange(25, 30))
         #   op := morphology.opening(sat, disk(11))
-
+        print('Implement BETTER FILTERS!!! & think about CLAHE ON vs BEFORE better filters')
         breakpoint()
         # Enhance local contrast -Contrast Limited Adaptive Histogram Equalization (CLAHE), needed before Frangi vesselness filter
         self.widef = exposure.equalize_adapthist(self.widef, clip_limit=0.05)
@@ -362,12 +365,22 @@ class ABA_Aligner:
                                           ) -> list[tuple[ndarray, ndarray]]:
         return [(getattr(Masks, attr_images_used['wf']),
                 getattr(Masks, attr_images_used['2p']))
-                for Masks in self.PREPARED_MASKs]
-    
+                for Masks in self.PREPARED_MASKs]   
+
+
 
 
 # -------------------------------- REGISTRATION ALGORITHM --------------------------------------
 #               (must consist of picklable functions to be parallelized)
+# TODO: try transformations with rgba of 2-photon image
+# TODO: use cross-correlation to find best translation for each rotation
+# TODO: implement CMA-ES / other EA to optimize non-continuous function without gradient
+# TODO: start in evenly-spaced different regions of search space (different islands etc. w migration)
+        # NOTE: eg. split to 4 or 9 evenly-spaced regions with searching for transformations that will only take place there
+        # regular migration between islands
+        # once region much more promising than others, focus more islands on that region
+# TODO: once converging on solution, finetune with gradient optimization scipy.minimize
+
 def align_masks(mask_WF:ndarray, mask_2P:ndarray) -> tuple[float, float, float]:
     '''
     Main function that performs alignment using rigid transformations (rotation & translation) 

@@ -1,9 +1,13 @@
+# @matushalak
+# For parallelized execution of Zeta test to determine responsive units
 from AUDVIS import AUDVIS
 import zetapy as zeta # test for neuronal responsiveness by Montijn et al.
 from numpy import ndarray, unique, where, array, save, zeros, concatenate
 from numpy.random import default_rng, Generator
 from multiprocessing import Pool, cpu_count
 import os
+
+# TODO: IMPLEMENT
 
 def responsive(signal:ndarray, window:tuple[int, int],
                **kwargs)->ndarray:
