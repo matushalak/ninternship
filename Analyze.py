@@ -30,14 +30,15 @@ class Analyze:
         self.TT_RES, self.TT_STATS, self.TTS_BLC_Z = self.tt_average(av)
 
     # Analyze average response to trial type
+    # TODO: currently for z-score data, better to generalize to any signal
     def tt_average(self, av:AUDVIS,
                    method:str = 'ttest',
-                   criterion:float = 1e-3,
+                   criterion:float = 1e-2, #.01 threshold (bonferroni corrected)
                    **kwargs) -> tuple[list[ndarray], 
                                     list[ndarray], 
                                     list[ndarray]]:
-        # 1. Baseline correct z-scored signal
-        blc_z = av.baseline_correct_signal(signal=av.zsig)
+        # 1. Baseline correct z-scored signal; residual signal without running speed OR whisker movement
+        blc_z = av.baseline_correct_signal(signal=av.zsig_CORR)
     
         # 2. Separate into Trial=types
         tts_z : dict = av.separate_signal_by_trial_types(blc_z)
@@ -54,7 +55,7 @@ class Analyze:
                 # get indices responsive to that trial type
                 responsive_indices, test_res = self.responsive_trial_locked(neurons = tts_z[tt],
                                                                             window = av.TRIAL,
-                                                                            criterion = criterion,
+                                                                            criterion = criterion / len(list(tts_z)), # bonferroni correction
                                                                             method = method)
                 if method == 'ttest':
                     TEST_RESULTS.append(test_res)
@@ -211,15 +212,6 @@ def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]],
     
     # get cbar range & calculate results
     analyses = [Analyze(audvis) for audvis in avs]
-    # maxes, mins = [], []
-    # for audvis in avs:
-    #     analysis = Analyze(audvis)
-    #     analyses.append(analysis)
-    #     for iii in range(len(analysis.tt_names)):
-    #         maxes.append(analysis.TTS_BLC_Z[iii].mean(axis = 0).max())
-    #         mins.append(analysis.TTS_BLC_Z[iii].mean(axis = 0).min())
-    
-    # cbar_range = [min(mins), max(maxes)]
 
     # PLOTTING LOOP
     for i, (av, ANALYS) in enumerate(zip(avs, analyses)):
@@ -254,12 +246,9 @@ def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]],
             
     fig2.tight_layout()
     fig2.savefig(f'TT_snake_{SNAKE_MODE}.png', dpi = 1000)
-    fig2.show()
-
 
     fig1.tight_layout()
     fig1.savefig('TT_average_res.png', dpi = 1000)
-    fig1.show()
 
 def build_snake_grid(tt_grid):
     """

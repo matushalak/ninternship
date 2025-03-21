@@ -5,25 +5,28 @@
 from utils import group_condition_key, default_neuron_index, default_session_index, load_audvis_files
 from collections import defaultdict
 from SPSIG import SPSIG, Dict_to_Class
-from numpy import ndarray, array, save, dstack, unique, fromiter, where, concatenate, nanmean, nanstd
+import numpy as np
+from numpy import ndarray
 from pandas import DataFrame, concat
 import pickle
 from multiprocessing import Pool, cpu_count
 import argparse
 import matplotlib.pyplot as plt
 import os
+from typing import Literal
 
 class Behavior:
     def __init__(self,
                  speed:ndarray, 
                  continuous:SPSIG | None = None, # needed to Z-score everything
                  facemap:Dict_to_Class|None = None):
-        self.running = speed.swapaxes(0,1)
+        # TODO: find where continuous running speed is stored!!!
+        self.running = speed.swapaxes(0,1)[:720,:]
         if facemap: # some sessions don't have video & facemap
             cont_fm : Dict_to_Class = continuous.facemapTraces
-            self.whisker = (facemap.motion.swapaxes(0,1) - nanmean(cont_fm.motion)) / nanstd(cont_fm.motion)
-            self.blink = (facemap.blink.swapaxes(0,1) - nanmean(cont_fm.blink)) / nanstd(cont_fm.blink)
-            self.pupil = (facemap.eyeArea.swapaxes(0,1) - nanmean(cont_fm.eyeArea)) / nanstd(cont_fm.eyeArea)
+            self.whisker = (facemap.motion.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.motion)) / np.nanstd(cont_fm.motion)
+            self.blink = (facemap.blink.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.blink)) / np.nanstd(cont_fm.blink)
+            self.pupil = (facemap.eyeArea.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.eyeArea)) / np.nanstd(cont_fm.eyeArea)
 
 
 class AUDVIS:
@@ -57,7 +60,9 @@ class AUDVIS:
         self.zsig = Z 
 
         # regress out running speed & OR whisker movement
+        print(NAME)
         self.zsig_CORR = self.regress_out_behavior(self.zsig)
+        # self.signal_CORR = self.regress_out_behavior(self.signal)
 
 
         # per session, identify of all the presented trials
@@ -67,12 +72,12 @@ class AUDVIS:
         # Sampling Frequency
         self.SF = self.signal.shape[1] / sum(self.trial_sec) 
         # Trial window (pre_trial, post_trial) in frames
-        self.trial_frames = (self.SF * array(self.trial_sec)).round().astype(int) 
+        self.trial_frames = (self.SF * np.array(self.trial_sec)).round().astype(int) 
         # TRIAL duration between frames hardcoded TODO: fixed based on indicated trial duration
         self.TRIAL = (self.trial_frames[0], 2*self.trial_frames[0]) 
 
         # Trials
-        self.str_to_int_trials_map, self.int_to_str_trials_map = {s:i for i, s in enumerate(unique(self.trials))}, {i:s for i, s in enumerate(unique(self.trials))}
+        self.str_to_int_trials_map, self.int_to_str_trials_map = {s:i for i, s in enumerate(np.unique(self.trials))}, {i:s for i, s in enumerate(np.unique(self.trials))}
         # trialIDs as integers 
         self.trials = self.trials_apply_map(self.trials, self.str_to_int_trials_map)
         # create masks to separate different trials
@@ -96,7 +101,7 @@ class AUDVIS:
         '''
         all_trials : ndarray = self.trials if 'all_trials' not in kwargs else kwargs['all_trials']
         assert isinstance(all_trials, ndarray), 'all_trials must be (session, trials) array'        
-        trials_per_TT = round(signal.shape[0] / len(unique(all_trials)))
+        trials_per_TT = round(signal.shape[0] / len(np.unique(all_trials)))
         
         signal_by_trials = dict()
 
@@ -111,37 +116,77 @@ class AUDVIS:
                 trials = trials[tt*trials_per_TT : (tt+1)*trials_per_TT]
                 signal_tt.append(signal[trials,:,n_first:n_last])
             
-            signal_by_trials[tt] = concatenate(signal_tt,
-                                               axis = 2)
+            signal_by_trials[tt] = np.concatenate(signal_tt,
+                                                  axis = 2)
             
         return signal_by_trials
     
-    # TODO implement
-    def regress_out_behavior(behavior:Behavior, signal:ndarray)->ndarray:
+    def regress_out_behavior(self, signal:ndarray, 
+                             MODE : Literal['all', 'whisker', 'running'] = 'all'
+                             )->ndarray:
         ''''
-        for neuron in range(signal.shape[-1]):
-            MATLAB code to replicate:
-
-            lmPreds = [whiskAmp_On(:,neuron) runSpeed];
-            mdl = fitlm(lmPreds, respAmp_On(:,neuron));
-            respAmp_On(:,neuron) = mdl.Residuals.Raw;
+        Regresses whisker movement and running speed out of all neural signals
         '''
+        sig_by_session, run_by_session, whisk_by_session = [], [], []
+        for i_session, (start, end) in enumerate(self.session_neurons):
+            sig_by_session.append(signal[:,:,start:end])
+            behavior : Behavior = self.sessions[i_session]['behavior']
+            
+            if behavior is None:
+                print(self.sessions[i_session]['session'], ' has no behavioral information to regress out')
+                run_by_session.append(None)
+                whisk_by_session.append(None)
+                continue
+            
+            # if there is behavior, there is running
+            # impute trials missing running data
+            if np.any(np.isnan(behavior.running)): 
+                nan_trials_rs = np.any(np.isnan(behavior.running), axis = 1)
+                print(f'Imputing running speed for {sum(nan_trials_rs)} trials in session {i_session} : {self.sessions[i_session]['session']}')
+                # Compute session means excluding NaNs
+                mean_running = np.nanmean(behavior.running[~nan_trials_rs])
+                behavior.running[nan_trials_rs] = mean_running
+            
+            run_by_session.append(behavior.running)
+            
+            if hasattr(behavior, 'whisker'):
+                # impute trials missing whisker data
+                if np.any(np.isnan(behavior.whisker)): 
+                    nan_trials_wm = np.any(np.isnan(behavior.whisker), axis = 1)
+                    print(f'Imputing whisker movement energy for {sum(nan_trials_wm)} trials in session {i_session} : {self.sessions[i_session]['session']}')
+                    # Compute session means excluding NaNs
+                    mean_whisker = np.nanmean(behavior.whisker[~nan_trials_wm])
+                    behavior.whisker[nan_trials_wm] = mean_whisker
+                
+                whisk_by_session.append(behavior.whisker)
+            else:
+                whisk_by_session.append(None)
         
-        pass
+        # regression parameters 
+        reg_params = prepare_regression_args(sig_by_session, run_by_session, whisk_by_session)
+
+        print('Regressing out running speed and whisker movement energy.')
+        
+        with Pool(processes=cpu_count()) as pool:
+            residual_signals = pool.map(regress_out_neuron, reg_params)
+        print('Done!')
+        
+        return np.dstack(residual_signals)
+
     
     def trials_apply_map(self, trials_array:ndarray[str|int],
                          tmap:dict[str|int:int|str]) -> ndarray[int|str]:
         dtype = int if isinstance(list(tmap)[0], str) else str # depending on which map used want to map from str->int or from int->str
         
         if len(trials_array.shape) == 1:
-            return fromiter(map(lambda s: tmap[s], trials_array), dtype = dtype)
+            return np.fromiter(map(lambda s: tmap[s], trials_array), dtype = dtype)
         else:
-            return array([fromiter(map(lambda s: tmap[s], trials_array[session, :]), dtype = dtype) 
-                          for session in range(trials_array.shape[0])])
+            return np.array([np.fromiter(map(lambda s: tmap[s], trials_array[session, :]), dtype = dtype) 
+                            for session in range(trials_array.shape[0])])
         
     def get_trial_types_dict(self, all_trials:ndarray[int]):
-         return {tt : where(all_trials == tt) # this gives the [session (1:9)], [trial (1:720)] indices for each trial type
-                for tt in unique(all_trials)}
+         return {tt : np.where(all_trials == tt) # this gives the [session (1:9)], [trial (1:720)] indices for each trial type
+                for tt in np.unique(all_trials)}
 
     # used within __init__ block
     def update_session_index(self)-> list[tuple[int, int]]:
@@ -186,11 +231,11 @@ class CreateAUDVIS:
             os.makedirs(storage_folder)
         
         self.ROIs.to_pickle(os.path.join(storage_folder, f'{self.NAME}_rois.pkl'))
-        save(os.path.join(storage_folder, f'{self.NAME}_sig.npy'), 
+        np.save(os.path.join(storage_folder, f'{self.NAME}_sig.npy'), 
              self.SIG)
-        save(os.path.join(storage_folder, f'{self.NAME}_zsig.npy'), 
+        np.save(os.path.join(storage_folder, f'{self.NAME}_zsig.npy'), 
              self.Z)
-        save(os.path.join(storage_folder, f'{self.NAME}_trials.npy'), 
+        np.save(os.path.join(storage_folder, f'{self.NAME}_trials.npy'), 
              self.TRIALS_ALL)
         
         with open(os.path.join(storage_folder, f'{self.NAME}_indexing.pkl'), 'wb') as indx_f:
@@ -246,9 +291,9 @@ class CreateAUDVIS:
         
         # create the IMPORTANT DFs & Arrays
         return (concat(roi_info), # DataFrane with ABA info & contours & locations
-                dstack(signal_corrected).swapaxes(0,1), # ndarray Neuropil corrected ∆F/F
-                dstack(signal_z).swapaxes(0,1), # ndarray Z-Scored (over entire signal) Neuropil corrected ∆F/F
-                array(trials_ALL) # ndarray with trial identities of each trial 
+                np.dstack(signal_corrected).swapaxes(0,1), # ndarray Neuropil corrected ∆F/F
+                np.dstack(signal_z).swapaxes(0,1), # ndarray Z-Scored (over entire signal) Neuropil corrected ∆F/F
+                np.array(trials_ALL) # ndarray with trial identities of each trial 
                 ) 
 
 
@@ -258,6 +303,64 @@ class CreateAUDVIS:
 def run_CreateAUDVIS(args):
     g, g_name = args
     return CreateAUDVIS(g, g_name)
+
+# regressing out
+def regress_out_neuron (args) -> ndarray:
+    '''
+    vectorized regressing out using pseudo-inverse for all trials at once in one neuron
+
+    input:
+    -------
+    args list has 2:
+        args[0] => neuron_mat = (ntrials * n_timepoints) ndarray of neuronal signal across trials and timepoints
+        args[1] => X_movement_flat = (ntrials * n_timepoints, 2 | 3) ndarray | None design matrix with running, (whisker) and intercept columns
+            if None means no behavior information to be regressed
+    '''
+    neuron_mat, X_movement_flat = args
+    if X_movement_flat is None:
+        return neuron_mat # nothing to regress out
+
+    neuron_flat = neuron_mat.reshape(-1)
+
+    assert neuron_flat.shape[0] == X_movement_flat.shape[0], f'Dimensions of neuron ({neuron_flat.shape[0]}) and first axis of design matrix ({X_movement_flat.shape[0]}) do not match, cannot proceed'
+
+    beta = np.linalg.pinv(X_movement_flat) @ neuron_flat
+    predicted = X_movement_flat @ beta
+    residual : ndarray = neuron_flat - predicted
+    
+    return residual.reshape(neuron_mat.shape) # residual signal
+
+def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[ndarray|None]
+                            ) -> list[tuple[ndarray, ndarray | None]]:
+    ''''
+    sbs : signals by session, (n_trials, n_timepoints, n_neurons) 
+    rbs : running by session, (n_trials, n_timepoints) 
+        if None, no behavior information was present for mouse
+    wbs : whisker movement by session, (n_trials, n_timepoints) 
+        if None, facemap video was missing but running wheel information usually still there
+    '''
+    sig_X_args = []
+    for i_sess, args in enumerate(zip(sbs, rbs, wbs)):
+        match args:
+            case neuron_mat, None, None:
+                X_movement_flat = None
+
+            case neuron_mat, running, None:
+                X_movement : ndarray = running  # shape: (n_trials, time_points)
+                X_movement_flat = X_movement.reshape(-1, 1)  # shape: (n_trials*time_points, 1)
+                X_movement_flat = np.column_stack((np.ones(X_movement_flat.shape[0]), X_movement_flat))  # add intercept, (n_trials*time_points, 2)
+
+
+            case neuron_mat, running, whisker:
+                X_movement = np.dstack([running, whisker])  # shape: (n_trials, time_points, 2)
+                X_movement_flat = X_movement.reshape(-1, 2)  # shape: (n_trials*time_points, 2)
+                X_movement_flat = np.column_stack((np.ones(X_movement_flat.shape[0]), X_movement_flat))  # add intercept, (n_trials*time_points, 3)
+        
+        # (signal and design_matrix)
+        sig_X_args.extend([(neuron_mat[:,:,neuron], X_movement_flat) for neuron in range(neuron_mat.shape[-1])])
+
+    return sig_X_args # arguments for parallelized execution
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
