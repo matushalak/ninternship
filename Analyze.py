@@ -70,7 +70,7 @@ class Analyze:
                                                     PLOT=False) # for testing set to True to see
             average_traces.append(tt_avrg)
             sem_traces.append(tt_sem)
-        
+        breakpoint()
         return (average_traces, sem_traces, 
                 responsive_neurs # ndarray at each tt idex gives neurons responsive to that tt
                 ), TEST_RESULTS, tts_z
@@ -96,9 +96,19 @@ class Analyze:
                 bls, trls = neurons[:,:self.TRIAL_FRAMES[0],:].mean(axis = 1), neurons[:,self.TRIAL_FRAMES[0]:self.TRIAL_FRAMES[1],:].mean(axis = 1)
                 TTEST = ttest_rel(bls, trls, alternative = 'two-sided')
                 return where(TTEST.pvalue < criterion)[0], TTEST
-            
-            
 
+    def neuron_groups(responsive:list[ndarray]) -> list[ndarray]:
+        '''
+        Input:
+            for each trial type, gives neurons significantly responsive to it
+        Output:
+            returns VIS neurons, AUD neurons and MST neurons
+        '''            
+        resp_sets = [set(arr) for arr in responsive]
+        # AUD: union between TT 0 (Al) and 3 (Ar)
+        
+        # VIS: union between TT 6 (Vl) and 7 (Vr)
+        # MST: union between TT 1 (AlVl) 2 (AlVr) 4 (ArVl) and 5 (ArVr)
 
 
 ###-------------------------------- GENERAL Helper functions --------------------------------
@@ -270,5 +280,5 @@ if __name__ == '__main__':
     tt_grid = {0:(0,2),1:(0,0),2:(0,1),3:(1,2),
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     
-    TT_ANALYSIS(tt_grid=tt_grid)
+    TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='signif')
     

@@ -75,7 +75,8 @@ def make_folders():
 
 
 # TODO: generalize for more groups / different experiment structure etc.
-def group_condition_key(root:str = False) -> tuple[dict, dict]:
+def group_condition_key(root:str = False,
+                        raw : bool = False) -> tuple[dict, dict]:
     'Returns 2 dictionaries with'
     if not root:
         root = filedialog.askdirectory()
@@ -91,7 +92,7 @@ def group_condition_key(root:str = False) -> tuple[dict, dict]:
 
     for spsig_path in glob(os.path.join(root,spsigs), recursive = True):
         res_file = spsig_path[:-4] + '_Res.mat' if os.path.exists(spsig_path[:-4] + '_Res.mat') else False
-        
+
         if not res_file:
             continue # skip this
         
@@ -107,9 +108,10 @@ def group_condition_key(root:str = False) -> tuple[dict, dict]:
         # /.*                => followed by a slash and the rest of the path
         group_name_date = r'.*/(g[12])/([^/]+)/(\d{8})/(Bar_Tone_LR(?:2)?)/.*'
         re_match = re.match(group_name_date, spsig_path)
+        assert re_match is not None, f'something wrong with: {spsig_path}'
         group, name, date, bartone = re_match.groups()
 
-        animals[group][name][int(date)].append(res_file)# path
+        animals[group][name][int(date)].append(res_file if not raw else spsig_path)# path
 
     group_dicts = (g1, g2)
     group_keys = ('g1', 'g2')

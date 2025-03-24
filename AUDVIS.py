@@ -24,6 +24,7 @@ class Behavior:
         self.running = speed.swapaxes(0,1)[:720,:]
         if facemap: # some sessions don't have video & facemap
             cont_fm : Dict_to_Class = continuous.facemapTraces
+            # TODO: baseline correction & z-scoring based on the trials
             self.whisker = (facemap.motion.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.motion)) / np.nanstd(cont_fm.motion)
             self.blink = (facemap.blink.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.blink)) / np.nanstd(cont_fm.blink)
             self.pupil = (facemap.eyeArea.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.eyeArea)) / np.nanstd(cont_fm.eyeArea)
@@ -173,8 +174,8 @@ class AUDVIS:
         
         return np.dstack(residual_signals)
 
-    
-    def trials_apply_map(self, trials_array:ndarray[str|int],
+    @staticmethod
+    def trials_apply_map(trials_array:ndarray[str|int],
                          tmap:dict[str|int:int|str]) -> ndarray[int|str]:
         dtype = int if isinstance(list(tmap)[0], str) else str # depending on which map used want to map from str->int or from int->str
         
@@ -265,8 +266,8 @@ class CreateAUDVIS:
             self.session_index[session_i]['n_trials'] = n_trials
             self.session_index[session_i]['behavior'] = behavior
             self.session_index[session_i]['session'] = recording_name
-            self.session_index[session_i]['event_times'] = sp.info.Frametimes
-            self.session_index[session_i]['frame_times'] = sp.info.StimTimes
+            self.session_index[session_i]['event_times'] = sp.info.StimTimes
+            self.session_index[session_i]['frame_times'] = sp.info.Frametimes
             # ms_delay info is in ROIs DataFrame
 
             # this is per-neuron

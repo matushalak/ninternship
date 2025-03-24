@@ -1,115 +1,135 @@
 # @matushalak
 # For parallelized execution of Zeta test to determine responsive units
-from AUDVIS import AUDVIS
-import zetapy as zeta # test for neuronal responsiveness by Montijn et al.
-from numpy import ndarray, unique, where, array, save, zeros, concatenate
-from numpy.random import default_rng, Generator
-from multiprocessing import Pool, cpu_count
+from SPSIG import SPSIG
+from utils import group_condition_key
+from matplotlib_venn import venn3
+from collections import defaultdict
+from pandas import DataFrame
+from zetapy import zetatstest, zetatstest2 # test for neuronal responsiveness by Montijn et al.
+import numpy as np
+import multiprocessing as mp
 import os
-
-# TODO: IMPLEMENT
-
-def responsive(signal:ndarray, window:tuple[int, int],
-               **kwargs)->ndarray:
-        '''
-        accepts (trials, times, neurons) type data structure for neurons within session or across sessions
-                OR (times, neurons) for already aggregated average traces
-        
-        returns indices of responsive neurons (TO ONE CONDITION)
-        '''
-        # TODO: need neurons responsive AT LEAST to one condition, & keep track of which is which
-        # TODO: figure out how to handle responsive by suppression
-        match (criterion, neurons.shape):
-            # simply checking average traces of neurons and screening for neurons > criterion (can also look at >= abs(criterion) with .__abs__()
-            case (criterion, (n_times, n_nrns)):
-                return unique(where(neurons[window[0]:window[1],:] >= criterion)[1])
-            
-            # trial_shuffle procedure (all_trials, times, neurons), criterion = percentile of shuffled distribution
-            case (('trial_shuffle', crit), (n_all_trials, n_times, n_nrns)):
-                # 0) setup
-                assert 'av' in kwargs and isinstance(kwargs['av'], AUDVIS) and 'n_shuffles' in kwargs, 'For trial_shuffle method, need AUDVIS object with all its attributes'
-                AV : AUDVIS = kwargs['av']
-                n_shuffles : int = kwargs['n_shuffles']
-                rng = default_rng()
-                random_shifts = rng.integers(low = 0, high = neurons.shape[1], size = n_shuffles)
-
-                trials_real :ndarray = AV.trials # reference
-
-                # 1) get distributions for each neuron and condition
-                # parallelized execution
-                sess_neur = AV.session_neurons
-                args_list = [(neurons, sess_neur , trials_real, r_shift, window, i_shift) for i_shift, r_shift in enumerate(random_shifts)]
-                with Pool(processes = 10) as pool:
-                    max_distributions = pool.starmap(shuffle_loop, args_list, chunksize=100)
-                
-                # for each neuron and each condition will have a distribution of maximum values in trial window
-                # (n_shuffles, n_trial_types, n_neurons)
-                distributions : ndarray = array(max_distributions)
-                save(os.path.join(self.storage_folder, AV.NAME + 'shuffle_dist.npy'), distributions)
-
-                # 2) get responsive neurons       
-                tts_z : dict = AV.separate_signal_by_trial_types(neurons)
-                breakpoint()
-    
+import pickle
 
 
-
-###-------------------------------- functions for CPU Parallelization--------------------------------
-def shuffle_loop(neurons:ndarray, session_neurons:list[tuple[int, int]], trials_real:ndarray, 
-                rand_shift:int, window:tuple[int, int], i:int):
-    rng : Generator = default_rng()
-    trial_types_list = unique(trials_real[0,:])
-    max_distribution : list[ndarray] = [zeros(neurons.shape[-1]) # max for each neuron
-                                        for tt in trial_types_list] # max for each condition 
-    # shuffles trial IDs in each session
-    trials_shuffled : ndarray = rng.permuted(trials_real, axis = 1)
-    # dictionary specifying which trial type where
-    trial_types_shuffled : dict = {tt : where(trials_shuffled == tt) # this gives the [session (1:9)], [trial (1:720)] indices for each trial type
-                                    for tt in unique(trials_shuffled)}
-    # shuffle calcium traces for all neurons across sessions by a random shift
-    signal_shuffled : ndarray = roll(neurons, shift = rand_shift, axis = 1)
-    
-    tt_signals_shuffled : dict[int : ndarray] = signal_by_TT(signal= signal_shuffled,
-                                                            all_trials = trials_shuffled,
-                                                            ttypes = trial_types_shuffled,
-                                                            session_neurons = session_neurons)
-    # get the maximum in the trial window of the trial-averaged TRIAL-SHUFFLED & CIRCULARLY TIME-SHUFFLED trace
-    for tt in trial_types_list:
-        average_shuffled_signal :ndarray = tt_signals_shuffled[tt].mean(axis = 0)
-        max_distribution[tt] = average_shuffled_signal[window[0]:window[1], :].max(axis = 0)
-
-    print('shuffle', i, ' done')
-    return max_distribution
-
-# Repeated here because AUDVIS object cannot be passed to workers to be parallelized
-def signal_by_TT(signal:ndarray,
-                **kwargs) -> dict[int:ndarray]:
-    '''Only works on trial-locked signal,
-    signal is assumed to be in (trials_all_conditions, time, neurons_across sessions) format
-    
-    returns a dictionary that stores separate arrays for each trial type (trials_one_condition, time, neurons_across_sessions)
+def run_ZETA(signals:np.ndarray,
+             frame_times_corrected:np.ndarray,
+             event_IDs:np.ndarray,
+             event_times:np.ndarray,
+             maxDur:float = 1.4):
     '''
-    all_trials : ndarray = kwargs['all_trials']
-    assert isinstance(all_trials, ndarray), 'all_trials must be (session, trials) array'        
-    trials_per_TT = round(signal.shape[0] / len(unique(all_trials)))
+    inputs:
+    Runs zeta test for each ROI for each trial type in a session
+        signals : ndarray (n_neurons, all_times) =  contains the full-recording signals for all neurons 
+        frame_times_corrected : ndarray (n_neurons, all_times) = contains corrected frame times for each ROI
+        event_IDs : ndarray (n_trials, ) = IDs for all trials
+        event_times : ndarray (n_trials, ) = event times for each trial
+    ---------------
+    outputs:
+    results : list[int:dict] = list of dictionaries with Zeta test results for each neuron for each condition
+    '''
+    results = [dict() for _ in range(signals.shape[0])]
+    ttwhere = {tt : np.where(event_IDs == tt)
+                for tt in np.unique(event_IDs)}
     
-    signal_by_trials = dict()
+    # progress bar to not go crazy
+    total_iterations = len(list(ttwhere)) * signals.shape[0]
+    iteration = 0
+    for tt in list(ttwhere):
+        for neuron in range(signals.shape[0]):  
+            _, res = zetatstest(vecTime = frame_times_corrected[neuron,:],
+                                vecValue = signals[neuron,:],
+                                arrEventTimes = event_times[ttwhere[tt]],
+                                dblUseMaxDur=maxDur)
+            results[neuron][tt] = res # results for that trial type
+            progress_bar(iteration, total_iterations)
+            iteration += 1
+    print(f'Zeta test for {signals.shape[0]} neurons and {len(list(ttwhere))} trial types.')
+    return results
+    
+def prepare_zeta_params(spsig_file:str
+                        ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    '''
+    Prepares parameters for zeta test for all ROIs in a given session
+    '''
+    res_file = spsig_file[:-4] + '_Res.mat'
 
-    # split signal from different recordings before joining
-    ttypes : dict[int:ndarray] = kwargs['ttypes']
-    assert isinstance(ttypes, dict), 'ttypes must be a dictionary with indices for all occurences of each trial type across sessions'
+    SPSG = SPSIG(spsig_file)
+    RES = SPSIG(res_file)
+
+    signal : np.ndarray = SPSG.sigCorrected.T # (neurons, all_times)
+    event_times : np.ndarray = RES.info.StimTimes[:720] # (n_trials, )
+    event_IDs_str : np.ndarray = np.array(RES.info.Stim.log.stim[:720]) # (n_trials, )
+    event_IDs : np.ndarray = trials_apply_map(event_IDs_str, 
+                                              {s:i for i, s in enumerate(np.unique(event_IDs_str))})
+    assert event_IDs.shape == event_times.shape and all(isinstance(ID, np.int64) for ID in event_IDs
+                                                        ), f'Mismatch in event times {event_times.shape} & IDs {event_IDs.shape} or event IDs not correctly mapped to ints {np.unique(event_IDs)}'
+
+    # correct frame times for each ROI
+    frame_times_1D :np.ndarray = RES.info.Frametimes # (all_times, )
+    rois : DataFrame = DataFrame(RES.info.rois)
+    ms_delays_1D : np.ndarray = np.array([*rois['msdelay']]) * 1e-3
+    assert np.size(ms_delays_1D) == signal.shape[0], f'Mismatch between ROI info {ms_delays_1D.shape} and signal array {signal.shape}'
+    frame_times_corrected_2D : np.ndarray = frame_times_1D[np.newaxis, :] + ms_delays_1D[:, np.newaxis] # using broadcasting, get corrected frame times for all neurons
+    assert frame_times_corrected_2D.shape == signal.shape, f'Corrected frame times {frame_times_corrected_2D.shape} dont match signal array {signal.shape}'
+
+    print(spsig_file, 'zeta parameters prepared!')
+    return (signal, frame_times_corrected_2D,
+            event_IDs, event_times)
+
+def responsive_zeta () -> dict[str:dict[int:np.ndarray]]:
+    # get files (without specifying root will popup asking for directory)
+    g1spsig_files, g2spsig_files = group_condition_key(root = '/Volumes/my_SSD/NiNdata/data',
+                                                       raw=True)
     
-    # session_neurons
-    session_neurons : list[tuple[int, int]] = kwargs['session_neurons']
-    assert isinstance(session_neurons, list), 'session_neurons must be a nested list of tuples with indices for neuron ranges for each session'
+    g1pre, g1post = g1spsig_files['pre'], g1spsig_files['post']
+    g2pre, g2post = g2spsig_files['pre'], g2spsig_files['post']
+    sessions = [g1pre, g1post, g2pre, g2post]
+    session_ranges = []
+    indx = 0
+    for session in sessions:
+        session_ranges.append((indx, indx := indx + len(session)))
+    all_sessions = g1pre + g1post + g2pre + g2post
     
-    for tt in list(ttypes): # 0-n_trial types
-        signal_tt = []
-        for (n_first, n_last) in session_neurons:
-            _, trials = ttypes[tt]
-            trials = trials[tt*trials_per_TT : (tt+1)*trials_per_TT]
-            signal_tt.append(signal[trials,:,n_first:n_last])
+    print('preparing parameters to run zeta test')
+    with mp.Pool(processes=mp.cpu_count()) as pool:
+        session_params = pool.map(prepare_zeta_params, all_sessions)
+    
+    print('\nRunning Zeta test on all sessions!\n')
+    
+    # takes really long time
+    with mp.Pool(processes=mp.cpu_count()) as pool:
+        results = pool.starmap(run_ZETA, session_params) 
+    print('Zeta tests finished!')
+    
+    if not os.path.exists('pydata'):
+        os.makedirs('pydata')
+
+    # save    
+    with open(os.path.join('pydata', 'zeta_results.pkl'), 'wb') as zetaRES:
+        pickle.dump(results, zetaRES)
+
+#---------------------------------- helper functions -------------------------------   
+def trials_apply_map(trials_array:np.ndarray[str|int],
+                    tmap:dict[str|int:int|str]) -> np.ndarray[int|str]:
+        dtype = int if isinstance(list(tmap)[0], str) else str # depending on which map used want to map from str->int or from int->str
         
-        signal_by_trials[tt] = concatenate(signal_tt,
-                                            axis = 2)
-    return signal_by_trials
+        if len(trials_array.shape) == 1:
+            return np.fromiter(map(lambda s: tmap[s], trials_array), dtype = dtype)
+        else:
+            return np.array([np.fromiter(map(lambda s: tmap[s], trials_array[session, :]), dtype = dtype) 
+                            for session in range(trials_array.shape[0])])
+
+def progress_bar(current_iteration: int,
+                 total_iterations: int,
+                 character: str = '🍎'):
+    bar_length = 50
+    filled_length = round(bar_length * current_iteration / total_iterations)
+    # Build the progress bar
+    bar = character * filled_length
+    no_bar = ' -' * (bar_length - filled_length)
+    progress = round((current_iteration / total_iterations) * 100)
+    print(bar + no_bar, f'{progress} %', end='\r')
+
+if __name__ == '__main__':
+    resp_indices = responsive_zeta()

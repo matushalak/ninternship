@@ -15,6 +15,7 @@ import os
 from glob import glob
 from scipy.spatial import distance as sp_distance
 import scipy.optimize as sp_optim
+import multiprocessing as mp
 
 class ImageLoader:
     def __init__(self, folder:str = ''):
@@ -34,7 +35,7 @@ class ImageLoader:
         # self.pRF = rot90(io.imread('examples/Eta/pRF_fieldsign.jpg'), k = -1).astype(float) / 255    # pRF image 330,9326 pt x 385,515 pt
         # self.widefield = rot90(io.imread('examples/Eta/Brain.jpg', as_gray = True), k = -1).astype(float) # will modify later when preparing masks
         self.twophoton_raw = io.imread(_2p_file, as_gray = True) # 1x zoom: 75,2019 x 75,2019 pt; 1.3x zoom: 57,8476 x 57,8476 pt; 1.6x zoom: 47 x 47 pt
-        if '_Original' not in _2p_file:
+        if 'original' not in _2p_file.lower():
             # rotate my_mousy image properly
             self.twophoton_raw = self.preprocess_2p(self.twophoton_raw)
 
@@ -76,16 +77,21 @@ class ImageLoader:
         assert any(file.lower().endswith('brain.jpg') for file in folder_files), 'Widefield brain image is required!'
         assert any(file.lower().endswith('mymousy_img.png') or file.lower().endswith('_original.png') for file in folder_files), '2-photon image is required!'
 
-        for file in folder_files:
+        twopOriginalfilefound = False
+        for file in sorted(folder_files):
             if file.lower().endswith('prf_fieldsign.jpg'):
                 prf_file = os.path.join(folder, file)
 
             if file.lower().endswith('brain.jpg'):
                 widefield_file = os.path.join(folder, file)
 
-            if file.lower().endswith('mymousy_img.png') or file.lower().endswith('_original.png'):
+            if file.lower().endswith('_original.png'):
                 _2p_file = os.path.join(folder, file)
-            
+                twopOriginalfilefound = True
+
+            if file.lower().endswith('_mymousy_img.png'):
+                _2p_file = os.path.join(folder, file)
+
             if file.lower().endswith('_normcorr.mat'):
                 magnifications = [1.0, 1.3, 1.6, 2.0, 2.5, 3.2, 4.0, 5.0, 6.3, 8.0, 10.1, 12.7, 16.0]
                 mag_index = int(SPSIG(os.path.join(folder, file)).info.config.magnification)
@@ -252,19 +258,24 @@ class PrepareMasks:
         # TODO: incorporate !!!
         # GETTING RID OF NEURONS XXX
         # WF
-        # show_me(self.widef, bres := morphology.black_tophat(self.widef, disk(8)), 
-        # st := filters.sato(1-bres, sigmas = np.arange(4, 8)), #with this potentially don't even need mask 
+        show_me(self.widef, wfbres := morphology.black_tophat(self.widef, disk(8)), 
+        # this seems already very good for WF
+        wfst := filters.sato(1-wfbres, sigmas = np.arange(4, 8))) #with this potentially don't even need mask 
 
         # 2P
-        # show_me(bres := morphology.black_tophat(self.twop, disk(6)), 
-        # wres := morphology.white_tophat(self.twop, disk(6)),self.twop,  
-        # prog := self.twop - wres + bres, 
+        show_me(bres2p := morphology.black_tophat(self.twop, disk(6)), 
+        wres2p := morphology.white_tophat(self.twop, disk(6)),self.twop,  
+        prog2p := self.twop - wres2p + bres2p)
         
-        #   fr := filters.frangi(prog, sigmas = np.arange(15, 60, 10))
-        #   nn := morphology.closing(fr, disk(17)), filters.apply_hysteresis_threshold(nn, 0.03,0.1)
+        # for 2p frangi probably better, puts less stuff on the image
+        fr2p = filters.frangi(prog2p, sigmas = np.arange(15, 60, 10))
+        nn2p = morphology.closing(fr2p, disk(17)) 
+        thresh2p = filters.apply_hysteresis_threshold(nn2p, 0.03,0.1)
+        
         # also interesting 
-        #   sat := filters.sato(prog, sigmas = np.arange(25, 30))
-        #   op := morphology.opening(sat, disk(11))
+        sat2p = filters.sato(prog2p, sigmas = np.arange(25, 30))
+        op2p = morphology.opening(sat2p, disk(11))
+
         print('Implement BETTER FILTERS!!! & think about CLAHE ON vs BEFORE better filters')
         breakpoint()
         # Enhance local contrast -Contrast Limited Adaptive Histogram Equalization (CLAHE), needed before Frangi vesselness filter
@@ -278,7 +289,7 @@ class PrepareMasks:
         # resize 2-photon mask appropriately
         self.mask_2p = resize_image_pt(reference_image=rectangle_pRF_pixels, reference_pt_dim = (389.0884, 334.0001),
                                        target_image=self.mask_2p, target_pt_dim=twop_in_points, 
-                                       AA = False) # Antialiasing must be false for boolean images
+                                       AA = False if all(self.mask_2p in (0,1)) else True) # Antialiasing must be false for boolean images
         
 
     def crop_pRF(self, pRF:ndarray)->ndarray:
@@ -337,7 +348,7 @@ class PrepareMasks:
 class ABA_Aligner:
     def __init__(self):
         # Ask to choose folders
-        self.folders = ['examples/Nueve/1']#choose_folders()
+        self.folders = ['examples/Eta']#choose_folders()
 
         GUIresults = []
         self.PREPARED_MASKs = []
@@ -355,8 +366,13 @@ class ABA_Aligner:
         # 3) Parallelized registration algorithm
         parallel_args = self.prepare_parallel_registration_args()
 
+        # loop for debugging
         for wf, tp in parallel_args:
             align_masks(wf, tp)
+        
+        # this would be parallelized over all the images selected
+        # with mp.Pool(processes=mp.cpu_count()) as pool:
+        #     AlignedRes = pool.starmap(align_masks, parallel_args)
 
     def prepare_parallel_registration_args(self,
                                            attr_images_used : dict[str:str, 
