@@ -3,12 +3,18 @@ from AUDVIS import AUDVIS, Behavior, load_in_data
 from utils import show_me
 import matplotlib.pyplot as plt
 from matplotlib import artist
+from matplotlib_venn import venn3
 import seaborn as sns
 from numpy import ndarray, arange, where, std, roll, unique, array, zeros, concatenate, save, quantile, argsort, argmax
 from scipy.stats import ttest_rel, sem, norm, _result_classes
 from collections import defaultdict
 from typing import Literal
 import os
+
+# TODO: by brain area (average, snake, Venn Diagram / PieChart)
+# TODO: multisensory integration (for modulated VIS and AUD neurons), response selectivity index
+# TODO: congruent vs incongruent -> FOR MODULATED neurons & for MST_only neurons
+# TODO: anova for detecting responsiveness higher yield?
 
 class Analyze:
     ''' 
@@ -27,10 +33,10 @@ class Analyze:
         # Trial names
         self.tt_names = list(av.str_to_int_trials_map)
         # Analyze by trial type
-        self.TT_RES, self.TT_STATS, self.TTS_BLC_Z = self.tt_average(av)
+        self.TT_RES, self.TT_STATS, self.TTS_BLC_Z, self.NEURON_groups = self.tt_average(av)
 
     # Analyze average response to trial type
-    # TODO: currently for z-score data, better to generalize to any signal
+    # NOTE: currently for z-score data, better to generalize to any signal
     def tt_average(self, av:AUDVIS,
                    method:str = 'ttest',
                    criterion:float = 1e-2, #.01 threshold (bonferroni corrected)
@@ -70,10 +76,10 @@ class Analyze:
                                                     PLOT=False) # for testing set to True to see
             average_traces.append(tt_avrg)
             sem_traces.append(tt_sem)
-        breakpoint()
+        
         return (average_traces, sem_traces, 
                 responsive_neurs # ndarray at each tt idex gives neurons responsive to that tt
-                ), TEST_RESULTS, tts_z
+                ), TEST_RESULTS, tts_z, self.neuron_groups(responsive = responsive_neurs)
 
     def responsive_trial_locked(self, neurons:ndarray, window:tuple[int, int],
                                 criterion:float|tuple[str,float], method:str, **kwargs)->ndarray:
@@ -96,19 +102,46 @@ class Analyze:
                 bls, trls = neurons[:,:self.TRIAL_FRAMES[0],:].mean(axis = 1), neurons[:,self.TRIAL_FRAMES[0]:self.TRIAL_FRAMES[1],:].mean(axis = 1)
                 TTEST = ttest_rel(bls, trls, alternative = 'two-sided')
                 return where(TTEST.pvalue < criterion)[0], TTEST
-
-    def neuron_groups(responsive:list[ndarray]) -> list[ndarray]:
+    
+    @staticmethod
+    def neuron_groups(responsive:list[ndarray]) -> dict[str : set]:
         '''
         Input:
             for each trial type, gives neurons significantly responsive to it
         Output:
-            returns VIS neurons, AUD neurons and MST neurons
+            returns VIS neurons, AUD neurons and MST neurons for further Venn diagram analysis
         '''            
         resp_sets = [set(arr) for arr in responsive]
+        # First define the big sets as all neurons that showed response to ONE of the AUD / VIS / MST trials
         # AUD: union between TT 0 (Al) and 3 (Ar)
-        
+        AUD_set = resp_sets[0] | resp_sets[3] 
         # VIS: union between TT 6 (Vl) and 7 (Vr)
+        VIS_set = resp_sets[6] | resp_sets[7] 
         # MST: union between TT 1 (AlVl) 2 (AlVr) 4 (ArVl) and 5 (ArVr)
+        MST_set = resp_sets[1] | resp_sets[2] | resp_sets[4] | resp_sets[5]
+        
+        # Modulated
+        AUD_modulated = AUD_set & MST_set
+        VIS_modulated = VIS_set & MST_set 
+
+        # Always responding (most)
+        ALWAYS_responding = VIS_set & MST_set & AUD_set
+
+        # venn3(subsets=(VIS_set, AUD_set, MST_set), set_labels = ('VIS', 'AUD', 'MST'), set_colors = ('g', 'r', 'purple'))
+
+        # TODO: potentially add congruent / incongruent distinction
+        return {'VIS':VIS_set,
+                'VIS_modulated':VIS_modulated,
+                'VIS_only':VIS_set - (MST_set | AUD_set),
+                'AUD':AUD_set,
+                'AUD_modulated':AUD_modulated,
+                'AUD_only':AUD_set - (MST_set | VIS_set),
+                'MST':MST_set,
+                'MST_only': MST_set - (AUD_set | VIS_set),
+                'ALWAYS_responding' : ALWAYS_responding,
+                'TOTAL' : MST_set | AUD_set | VIS_set,
+                'diagram_setup' : [(VIS_set, AUD_set, MST_set), ('VIS', 'AUD', 'MST'), ('g', 'r', 'purple')]}
+    
 
 
 ###-------------------------------- GENERAL Helper functions --------------------------------
@@ -260,6 +293,26 @@ def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]],
     fig1.tight_layout()
     fig1.savefig('TT_average_res.png', dpi = 1000)
 
+
+def neuron_types_analysis():
+    avs : AUDVIS = load_in_data() # -> av1, av2, av3, av4
+    fig3, axs3 = plt.subplots(nrows = 2, ncols = 2, figsize = (8, 8))
+
+    for i, (av, ax) in enumerate(zip(avs, axs3.flatten())):
+        ANALYSIS : Analyze = Analyze(av)
+        neuronGROUPS = ANALYSIS.NEURON_groups
+        plot_args = neuronGROUPS['diagram_setup']
+        ax.set_title(av.NAME)
+        total_responsive = len(neuronGROUPS['TOTAL'])
+        venn3(*plot_args, ax = ax,
+              # percentage of responsive neurons
+              subset_label_formatter=lambda x: str(x) + "\n(" + f"{(x/total_responsive):1.0%}" + ")")
+    
+    fig3.tight_layout()
+    fig3.savefig('VennDiagram.png', dpi = 1000)
+    plt.show()
+
+
 def build_snake_grid(tt_grid):
     """
     Given the original tt_grid (mapping trial_type -> (row, col) in 2x4),
@@ -280,5 +333,9 @@ if __name__ == '__main__':
     tt_grid = {0:(0,2),1:(0,0),2:(0,1),3:(1,2),
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     
-    TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='signif')
+    # Neuron types analysis
+    neuron_types_analysis()
+
+    # Trial type analysis (average & snake plot)
+    # TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='signif')
     

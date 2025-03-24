@@ -128,51 +128,59 @@ class AUDVIS:
         ''''
         Regresses whisker movement and running speed out of all neural signals
         '''
-        sig_by_session, run_by_session, whisk_by_session = [], [], []
-        for i_session, (start, end) in enumerate(self.session_neurons):
-            sig_by_session.append(signal[:,:,start:end])
-            behavior : Behavior = self.sessions[i_session]['behavior']
-            
-            if behavior is None:
-                print(self.sessions[i_session]['session'], ' has no behavioral information to regress out')
-                run_by_session.append(None)
-                whisk_by_session.append(None)
-                continue
-            
-            # if there is behavior, there is running
-            # impute trials missing running data
-            if np.any(np.isnan(behavior.running)): 
-                nan_trials_rs = np.any(np.isnan(behavior.running), axis = 1)
-                print(f'Imputing running speed for {sum(nan_trials_rs)} trials in session {i_session} : {self.sessions[i_session]['session']}')
-                # Compute session means excluding NaNs
-                mean_running = np.nanmean(behavior.running[~nan_trials_rs])
-                behavior.running[nan_trials_rs] = mean_running
-            
-            run_by_session.append(behavior.running)
-            
-            if hasattr(behavior, 'whisker'):
-                # impute trials missing whisker data
-                if np.any(np.isnan(behavior.whisker)): 
-                    nan_trials_wm = np.any(np.isnan(behavior.whisker), axis = 1)
-                    print(f'Imputing whisker movement energy for {sum(nan_trials_wm)} trials in session {i_session} : {self.sessions[i_session]['session']}')
-                    # Compute session means excluding NaNs
-                    mean_whisker = np.nanmean(behavior.whisker[~nan_trials_wm])
-                    behavior.whisker[nan_trials_wm] = mean_whisker
+        if os.path.exists(res := os.path.join('pydata', f'{self.NAME}_zsig_CORRECTED.npy')):
+            # once created, loaded immediately
+            result = np.load(res)
+        
+        else:
+            sig_by_session, run_by_session, whisk_by_session = [], [], []
+            for i_session, (start, end) in enumerate(self.session_neurons):
+                sig_by_session.append(signal[:,:,start:end])
+                behavior : Behavior = self.sessions[i_session]['behavior']
                 
-                whisk_by_session.append(behavior.whisker)
-            else:
-                whisk_by_session.append(None)
-        
-        # regression parameters 
-        reg_params = prepare_regression_args(sig_by_session, run_by_session, whisk_by_session)
+                if behavior is None:
+                    print(self.sessions[i_session]['session'], ' has no behavioral information to regress out')
+                    run_by_session.append(None)
+                    whisk_by_session.append(None)
+                    continue
+                
+                # if there is behavior, there is running
+                # impute trials missing running data
+                if np.any(np.isnan(behavior.running)): 
+                    nan_trials_rs = np.any(np.isnan(behavior.running), axis = 1)
+                    print(f'Imputing running speed for {sum(nan_trials_rs)} trials in session {i_session} : {self.sessions[i_session]['session']}')
+                    # Compute session means excluding NaNs
+                    mean_running = np.nanmean(behavior.running[~nan_trials_rs])
+                    behavior.running[nan_trials_rs] = mean_running
+                
+                run_by_session.append(behavior.running)
+                
+                if hasattr(behavior, 'whisker'):
+                    # impute trials missing whisker data
+                    if np.any(np.isnan(behavior.whisker)): 
+                        nan_trials_wm = np.any(np.isnan(behavior.whisker), axis = 1)
+                        print(f'Imputing whisker movement energy for {sum(nan_trials_wm)} trials in session {i_session} : {self.sessions[i_session]['session']}')
+                        # Compute session means excluding NaNs
+                        mean_whisker = np.nanmean(behavior.whisker[~nan_trials_wm])
+                        behavior.whisker[nan_trials_wm] = mean_whisker
+                    
+                    whisk_by_session.append(behavior.whisker)
+                else:
+                    whisk_by_session.append(None)
+            
+            # regression parameters 
+            reg_params = prepare_regression_args(sig_by_session, run_by_session, whisk_by_session)
 
-        print('Regressing out running speed and whisker movement energy.')
-        
-        with Pool(processes=cpu_count()) as pool:
-            residual_signals = pool.map(regress_out_neuron, reg_params)
-        print('Done!')
-        
-        return np.dstack(residual_signals)
+            print('Regressing out running speed and whisker movement energy.')
+            
+            with Pool(processes=cpu_count()) as pool:
+                residual_signals = pool.map(regress_out_neuron, reg_params)
+            print('Done!')
+            
+            result = np.dstack(residual_signals)
+            np.save(os.path.join('pydata', f'{self.NAME}_zsig_CORRECTED.npy'), result)
+
+        return result
 
     @staticmethod
     def trials_apply_map(trials_array:ndarray[str|int],
