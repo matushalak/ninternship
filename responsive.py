@@ -1,7 +1,7 @@
 # @matushalak
 # For parallelized execution of Zeta test to determine responsive units
 from SPSIG import SPSIG
-from utils import group_condition_key
+from utils import group_condition_key, progress_bar
 from matplotlib_venn import venn3
 from collections import defaultdict
 from pandas import DataFrame
@@ -120,16 +120,6 @@ def trials_apply_map(trials_array:np.ndarray[str|int],
             return np.array([np.fromiter(map(lambda s: tmap[s], trials_array[session, :]), dtype = dtype) 
                             for session in range(trials_array.shape[0])])
 
-def progress_bar(current_iteration: int,
-                 total_iterations: int,
-                 character: str = '🍎'):
-    bar_length = 50
-    filled_length = round(bar_length * current_iteration / total_iterations)
-    # Build the progress bar
-    bar = character * filled_length
-    no_bar = ' -' * (bar_length - filled_length)
-    progress = round((current_iteration / total_iterations) * 100)
-    print(bar + no_bar, f'{progress} %', end='\r')
 
 if __name__ == '__main__':
     resp_indices = responsive_zeta()

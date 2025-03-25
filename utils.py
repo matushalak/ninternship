@@ -17,6 +17,18 @@ def show_me(*args:ndarray):
     plt.show()
     plt.close()
 
+def progress_bar(current_iteration: int,
+                 total_iterations: int,
+                 character: str = '🍎'):
+    bar_length = 50
+    filled_length = round(bar_length * current_iteration / total_iterations)
+    # Build the progress bar
+    bar = character * filled_length
+    no_bar = ' -' * (bar_length - filled_length)
+    progress = round((current_iteration / total_iterations) * 100)
+    print(bar + no_bar, f'{progress} %', end='\r')
+    
+
 def load_audvis_files(group_condition_name:str)->tuple[dict, dict, DataFrame, ndarray, ndarray, ndarray]:
     # indexing
     with open(f'{group_condition_name}_indexing.pkl', 'rb') as indx_f:

@@ -2,7 +2,7 @@
 # main class that holds and organizes data for the Audio-visual task of Dark-rearing experiment at Levelt Lab
 # requires python > 3.8, preferably newer for := to function
 # aggregates all neurons across recording sessions of same group
-from utils import group_condition_key, default_neuron_index, default_session_index, load_audvis_files
+from utils import group_condition_key, default_neuron_index, default_session_index, load_audvis_files, progress_bar
 from collections import defaultdict
 from SPSIG import SPSIG, Dict_to_Class
 import numpy as np
@@ -18,14 +18,28 @@ from typing import Literal
 class Behavior:
     def __init__(self,
                  speed:ndarray, 
-                 continuous:SPSIG | None = None, # needed to Z-score everything
-                 facemap:Dict_to_Class|None = None):
-        # TODO: find where continuous running speed is stored!!!
-        self.running = speed.swapaxes(0,1)[:720,:]
+                 continuous:SPSIG | None = None, # needed to Z-score everything (not if we do the trial-evoked Z-scoring / baseline correction)
+                 facemap:Dict_to_Class|None = None,
+                 baseline_frames:int = 16):
+        # NOTE: baseline frames (16) hardcoded now!
+        run = speed.swapaxes(0,1)[:720,:]
+        nans_run = np.any(np.isnan(run), axis = 1)
+        run_correct = run[~nans_run]
+        self.running =  np.zeros_like(run)
+        self.running[:len(run_correct), :] = run_correct - np.nanmean(run_correct[:,:baseline_frames], axis = 1, keepdims=True) #baseline corrected
+        self.running[len(run_correct):, :] = run[nans_run]
         if facemap: # some sessions don't have video & facemap
             cont_fm : Dict_to_Class = continuous.facemapTraces
-            # TODO: baseline correction & z-scoring based on the trials
-            self.whisker = (facemap.motion.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.motion)) / np.nanstd(cont_fm.motion)
+            # take care of NANs
+            motion = facemap.motion.swapaxes(0,1)[:720,:]
+            nans_motion = np.any(np.isnan(motion), axis = 1)
+            motion_correct = motion[~ nans_motion]
+
+            # Z-scored and baseline-corrected whisker movement on trial level, to control for trial-evoked whisker movements
+            self.whisker = np.zeros_like(motion)
+            self.whisker[:len(motion_correct),:] = (motion_correct - np.nanmean(motion_correct[:,:baseline_frames], axis = 1, keepdims=True)
+                                                    ) / np.nanstd(motion_correct[:,:baseline_frames],axis = 1, keepdims=True)
+            self.whisker[len(motion_correct):,:] = motion[nans_motion]
             self.blink = (facemap.blink.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.blink)) / np.nanstd(cont_fm.blink)
             self.pupil = (facemap.eyeArea.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.eyeArea)) / np.nanstd(cont_fm.eyeArea)
 
@@ -73,7 +87,7 @@ class AUDVIS:
         # Sampling Frequency
         self.SF = self.signal.shape[1] / sum(self.trial_sec) 
         # Trial window (pre_trial, post_trial) in frames
-        self.trial_frames = (self.SF * np.array(self.trial_sec)).round().astype(int) 
+        self.trial_frames = (self.SF * np.array(self.trial_sec)).round().astype(int)
         # TRIAL duration between frames hardcoded TODO: fixed based on indicated trial duration
         self.TRIAL = (self.trial_frames[0], 2*self.trial_frames[0]) 
 
@@ -123,11 +137,13 @@ class AUDVIS:
         return signal_by_trials
     
     def regress_out_behavior(self, signal:ndarray, 
-                             MODE : Literal['all', 'whisker', 'running'] = 'all'
+                             MODE : Literal['all', 'whisker', 'running'] = 'all',
+                             PLOT:bool = False
                              )->ndarray:
         ''''
         Regresses whisker movement and running speed out of all neural signals
         '''
+        # TODO: remove not, jsut for testing now
         if os.path.exists(res := os.path.join('pydata', f'{self.NAME}_zsig_CORRECTED.npy')):
             # once created, loaded immediately
             result = np.load(res)
@@ -168,13 +184,24 @@ class AUDVIS:
                 else:
                     whisk_by_session.append(None)
             
+            if PLOT:
+                if os.path.exists(plot_dir := os.path.join('/Volumes/my_SSD/NiNdata', 'single_neuron_plots', self.NAME)):
+                    pass
+                else:
+                    os.makedirs(plot_dir)
+            
             # regression parameters 
-            reg_params = prepare_regression_args(sig_by_session, run_by_session, whisk_by_session)
+            reg_params = prepare_regression_args(sig_by_session, run_by_session, whisk_by_session, plot_dir=None if not PLOT else plot_dir)
 
             print('Regressing out running speed and whisker movement energy.')
-            
+
+            # for i, rp in enumerate(reg_params):
+            #     residual_signals = regress_out_neuron(*rp)
+            #     progress_bar(i, len(reg_params))
+
+            # return residual_signals
             with Pool(processes=cpu_count()) as pool:
-                residual_signals = pool.map(regress_out_neuron, reg_params)
+                residual_signals = pool.starmap(regress_out_neuron, reg_params)
             print('Done!')
             
             result = np.dstack(residual_signals)
@@ -307,14 +334,15 @@ class CreateAUDVIS:
 
 
         
-#-------------------- Little functions --------------------
+#-------------------- Little / Parallelizable functions --------------------
 # for multiprocessing
 def run_CreateAUDVIS(args):
     g, g_name = args
     return CreateAUDVIS(g, g_name)
 
 # regressing out
-def regress_out_neuron (args) -> ndarray:
+def regress_out_neuron (neuron_mat : np.ndarray ,X_movement_flat : np.ndarray,
+                        plot_dir:str | None = None) -> ndarray:
     '''
     vectorized regressing out using pseudo-inverse for all trials at once in one neuron
 
@@ -324,8 +352,8 @@ def regress_out_neuron (args) -> ndarray:
         args[0] => neuron_mat = (ntrials * n_timepoints) ndarray of neuronal signal across trials and timepoints
         args[1] => X_movement_flat = (ntrials * n_timepoints, 2 | 3) ndarray | None design matrix with running, (whisker) and intercept columns
             if None means no behavior information to be regressed
+    plot_dir enables saving single neuron figures into specified directory, None by default
     '''
-    neuron_mat, X_movement_flat = args
     if X_movement_flat is None:
         return neuron_mat # nothing to regress out
 
@@ -336,11 +364,16 @@ def regress_out_neuron (args) -> ndarray:
     beta = np.linalg.pinv(X_movement_flat) @ neuron_flat
     predicted = X_movement_flat @ beta
     residual : ndarray = neuron_flat - predicted
+
+    # plotting (normally disabled)
+    if plot_dir is not None:
+        plot_single_neuron_regression(neuron_mat, X_movement_flat, predicted, residual,
+                                      plot_dir)
     
     return residual.reshape(neuron_mat.shape) # residual signal
 
-def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[ndarray|None]
-                            ) -> list[tuple[ndarray, ndarray | None]]:
+def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[ndarray|None],
+                            plot_dir:str|None = None) -> list[tuple[ndarray, ndarray | None]]:
     ''''
     sbs : signals by session, (n_trials, n_timepoints, n_neurons) 
     rbs : running by session, (n_trials, n_timepoints) 
@@ -349,6 +382,7 @@ def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[
         if None, facemap video was missing but running wheel information usually still there
     '''
     sig_X_args = []
+    add_neurons = 0
     for i_sess, args in enumerate(zip(sbs, rbs, wbs)):
         match args:
             case neuron_mat, None, None:
@@ -359,17 +393,73 @@ def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[
                 X_movement_flat = X_movement.reshape(-1, 1)  # shape: (n_trials*time_points, 1)
                 X_movement_flat = np.column_stack((np.ones(X_movement_flat.shape[0]), X_movement_flat))  # add intercept, (n_trials*time_points, 2)
 
-
             case neuron_mat, running, whisker:
                 X_movement = np.dstack([running, whisker])  # shape: (n_trials, time_points, 2)
                 X_movement_flat = X_movement.reshape(-1, 2)  # shape: (n_trials*time_points, 2)
                 X_movement_flat = np.column_stack((np.ones(X_movement_flat.shape[0]), X_movement_flat))  # add intercept, (n_trials*time_points, 3)
         
         # (signal and design_matrix)
-        sig_X_args.extend([(neuron_mat[:,:,neuron], X_movement_flat) for neuron in range(neuron_mat.shape[-1])])
+        if plot_dir is not None: # return filenames for plots
+            sig_X_args.extend([(neuron_mat[:,:,neuron], X_movement_flat, os.path.join(plot_dir, f'neuron{neuron + add_neurons}')) for neuron in range(neuron_mat.shape[-1])])
+        else:
+            sig_X_args.extend([(neuron_mat[:,:,neuron], X_movement_flat) for neuron in range(neuron_mat.shape[-1])])
+
+        add_neurons += neuron_mat.shape[-1]
 
     return sig_X_args # arguments for parallelized execution
 
+def plot_single_neuron_regression(neuron_mat : np.ndarray, X_movement_flat : np.ndarray, 
+                                  predicted : np.ndarray, residual : np.ndarray,
+                                  plot_dir : str):
+    X_mat = X_movement_flat.reshape((neuron_mat.shape[0], neuron_mat.shape[1], -1))[:,:,1:] # first dimension is just intercept
+    run_mat = X_mat[:,:,0]
+    whisk_mat = X_mat[:,:,1] if X_mat.shape[2] == 2 else None
+    pred_mat = predicted.reshape(neuron_mat.shape)
+    res_mat = residual.reshape(neuron_mat.shape) # residual signal
+    
+    # axes / rows: 
+    #   timeseries_raw traces + average raw trace + final corrected average trace + average predicted trace
+    #   running traces + average running trace
+    #   whiker traces + average whisker trace
+    rows = 3 if whisk_mat is not None else 2
+    fig, ax = plt.subplots(nrows = rows, ncols = 1, figsize = (8, rows * 5), sharex=True)
+    for trial in range(neuron_mat.shape[0]):
+        # timeseries
+        ax[0].plot(neuron_mat[trial,:], color = 'lavender', alpha = 0.025)#, label = 'z∆F/F0' if trial == neuron_mat.shape[0]-1 else '')
+        # ax[0].plot(pred_mat[trial,:], color = 'orange', alpha = 0.025, label = 'predicted z∆F/F0'if trial == neuron_mat.shape[0]-1 else '')
+        # running
+        ax[1].plot(run_mat[trial,:], color = 'lightgreen', alpha = 0.08)#, label = 'running speed'if trial == neuron_mat.shape[0]-1 else '')
+        # whisker energy
+        if whisk_mat is not None:
+            ax[2].plot(whisk_mat[trial,:], alpha = .08, color = 'lightpink')#), label = 'trial-evoked whisker-energy'if trial == neuron_mat.shape[0]-1 else '')
+    
+    # averages
+    ax[0].plot(neuron_mat.mean(axis = 0), color = 'slateblue', label = 'average z∆F/F0')
+    ax[0].plot(pred_mat.mean(axis = 0), color = 'darkorange', label = 'average predicted z∆F/F0')
+    ax[0].plot(res_mat.mean(axis = 0), color = 'blue', label = 'average residual z∆F/F0', linewidth = 3)
+    ax[0].set_ylabel('z(∆F/F), symlog')
+    ax[0].legend(loc = 2)
+    ax[0].set_yscale('symlog')
+    ax[0].vlines([15,31], ymin = neuron_mat.min(), ymax=neuron_mat.max(), linestyle = '--', color = 'saddlebrown')
+
+    ax[1].plot(run_mat.mean(axis = 0), color = 'limegreen', label = 'average running speed')
+    ax[1].set_ylabel('a.u., symlog')
+    ax[1].set_yscale('symlog')
+    ax[1].legend(loc = 2)
+    ax[1].vlines([15,31], ymin = run_mat.min(), ymax=run_mat.max(), linestyle = '--', color = 'saddlebrown')
+    
+    if whisk_mat is not None:
+        ax[2].plot(whisk_mat.mean(axis = 0), color = 'crimson', label = 'average whisker energy')
+        ax[2].legend(loc = 2)
+        ax[2].set_yscale('symlog')       
+        ax[2].set_ylabel('a.u., symlog')
+        ax[2].vlines([15,31], ymin = whisk_mat.min(), ymax=whisk_mat.max(), linestyle = '--', color = 'saddlebrown')
+    
+    ax[-1].set_xticks([0, 15, 31, 46], ['-1', '0', '1', '2']) # NOTE: hardcoded
+    ax[-1].set_xlabel('Time (s)')
+    plt.tight_layout()
+    plt.savefig(plot_dir, dpi = 200)
+    plt.close()
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -418,7 +508,7 @@ if __name__ == '__main__':
         g2pre, g2post = g2_files['pre'], g2_files['post']
         names = ['g1pre', 'g1post', 'g2pre', 'g2post']
 
-        # 1 core
+        # 1 core (for debugging)
         # for g, g_name in zip((g1pre, g1post, g2pre, g2post), names):
         #     av = CreateAUDVIS(g, g_name)
 

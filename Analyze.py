@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 from matplotlib import artist
 from matplotlib_venn import venn3
 import seaborn as sns
-from numpy import ndarray, arange, where, std, roll, unique, array, zeros, concatenate, save, quantile, argsort, argmax
+from numpy import ndarray, arange, where, unique, argsort, argmax
+import numpy as np
 from scipy.stats import ttest_rel, sem, norm, _result_classes
 from collections import defaultdict
 from typing import Literal
@@ -117,12 +118,12 @@ class Analyze:
         AUD_set = resp_sets[0] | resp_sets[3] 
         # VIS: union between TT 6 (Vl) and 7 (Vr)
         VIS_set = resp_sets[6] | resp_sets[7] 
-        # MST: union between TT 1 (AlVl) 2 (AlVr) 4 (ArVl) and 5 (ArVr)
-        MST_set = resp_sets[1] | resp_sets[2] | resp_sets[4] | resp_sets[5]
+        # MST: union between TT {1 (AlVl) and 5 (ArVr) = CONGRUENT} && {2 (AlVr) and 4 (ArVl) = INCONGRUENT}
+        MST_set = resp_sets[1] | resp_sets[5] | resp_sets[2] | resp_sets[4] 
         
         # Modulated
-        AUD_modulated = AUD_set & MST_set
-        VIS_modulated = VIS_set & MST_set 
+        AUD_modulated = (AUD_set & MST_set) - VIS_set
+        VIS_modulated = (VIS_set & MST_set) - AUD_set 
 
         # Always responding (most)
         ALWAYS_responding = VIS_set & MST_set & AUD_set
@@ -142,6 +143,35 @@ class Analyze:
                 'TOTAL' : MST_set | AUD_set | VIS_set,
                 'diagram_setup' : [(VIS_set, AUD_set, MST_set), ('VIS', 'AUD', 'MST'), ('g', 'r', 'purple')]}
     
+    def tt_BY_neuron_group(self, 
+                           GROUP:Literal['VIS', 'AUD', 'MST'] = 'VIS',
+                           GROUP_type:Literal['modulated', 'modality_specific', 'all'] = 'modulated'
+                           ) -> list[tuple[ndarray, ndarray]]:
+        # combine stimuli VIS trials (6, 7), AUD trials (0, 3), MST congruent (1, 5) MST incongruent trials (2, 4)
+        VIS_trials = np.concatenate([self.TTS_BLC_Z[6], self.TTS_BLC_Z[7]]) # 0
+        AUD_trials = np.concatenate([self.TTS_BLC_Z[0], self.TTS_BLC_Z[3]]) # 1
+        MST_congruent_trials = np.concatenate([self.TTS_BLC_Z[1], self.TTS_BLC_Z[5]]) # 2
+        MST_incongruent_trials = np.concatenate([self.TTS_BLC_Z[2], self.TTS_BLC_Z[4]]) # 3
+        
+        signals = (VIS_trials, AUD_trials, MST_congruent_trials, MST_incongruent_trials)
+
+        # can't use set as index for ndarray
+        match GROUP_type:
+            case 'modulated':
+                # for all trial select the neurons from that group
+                # only neurons on intersections
+                assert GROUP in {'AUD','VIS'}, 'only visual (VIS) and auditory (AUD) neurons can be modulated by multisensory input, does not make sense for MST neurons'
+                indices = np.fromiter(ind := self.NEURON_groups[f'{GROUP}_{GROUP_type}'], int, len(ind))
+                
+            case 'modality_specific':
+                indices = np.fromiter(ind := self.NEURON_groups[f'{GROUP}_only'], int, len(ind))
+            
+            case 'all':
+                indices = np.fromiter(ind := self.NEURON_groups[f'{GROUP}'], int, len(ind))
+        
+        neurons_to_study = [sig[:,:, indices] for sig in signals]
+        return [(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
+                                                for trace in neurons_to_study)], len(indices)
 
 
 ###-------------------------------- GENERAL Helper functions --------------------------------
@@ -181,7 +211,7 @@ def plot_avrg_trace(time:ndarray, avrg:ndarray, SEM:ndarray,
         Axis.set_title(title)  
     
     if vspan:
-        Axis.axvspan(0,1,alpha = 0.05, color = 'g') # HARDCODED TODO: change based on trial duration
+        Axis.axvspan(0,1,alpha = 0.05, color = 'navajowhite') # HARDCODED TODO: change based on trial duration
     
     Axis.fill_between(time, 
                     avrg - SEM,
@@ -199,6 +229,19 @@ def plot_avrg_trace(time:ndarray, avrg:ndarray, SEM:ndarray,
         plt.plot()
         plt.fill_between
 
+def build_snake_grid(tt_grid):
+    """
+    Given the original tt_grid (mapping trial_type -> (row, col) in 2x4),
+    produce a dictionary snake_grid that maps (trial_type, heatmap_index)
+    -> (row, col) in a 4x8 figure.
+    """
+    snake_grid = {}
+    for i_tt, (r0, c0) in tt_grid.items():
+        for i in range(4):
+            r_off = i // 2
+            c_off = i % 2
+            snake_grid[(i_tt, i)] = (2*r0 + r_off, 2*c0 + c_off)
+    return snake_grid
 
 def snake_plot(all_neuron_averages:ndarray, 
                stats:_result_classes.TtestResult,
@@ -208,7 +251,7 @@ def snake_plot(all_neuron_averages:ndarray,
                colorbar:bool = True, SHOW:bool = False,
                MODE:Literal['onset', 'signif'] = 'onset'):
     '''
-    Snake plot for all neurons of one group-condition-trial_type
+    One snake plot for all neurons of one group-condition-trial_type
     (neurons, time) shape heatmap
     '''
     if title:
@@ -235,10 +278,10 @@ def snake_plot(all_neuron_averages:ndarray,
     if SHOW:
         plt.show()
 
-    
 
 
 ###--------------------------------SPECIFIC analyses----------------------------------------------------
+# overall, not split into neuron groups based on Venn diagram
 def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]],
                 SNAKE_MODE:Literal['onset', 'signif'] = 'onset'):
     ''' 
@@ -293,17 +336,18 @@ def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]],
     fig1.tight_layout()
     fig1.savefig('TT_average_res.png', dpi = 1000)
 
-
-def neuron_types_analysis():
+# overall responsive neuron groups, not by brain region
+def neuron_typesVENN_analysis():
     avs : AUDVIS = load_in_data() # -> av1, av2, av3, av4
+    # venn diagram figure
     fig3, axs3 = plt.subplots(nrows = 2, ncols = 2, figsize = (8, 8))
 
     for i, (av, ax) in enumerate(zip(avs, axs3.flatten())):
         ANALYSIS : Analyze = Analyze(av)
         neuronGROUPS = ANALYSIS.NEURON_groups
         plot_args = neuronGROUPS['diagram_setup']
-        ax.set_title(av.NAME)
         total_responsive = len(neuronGROUPS['TOTAL'])
+        ax.set_title(f'{av.NAME} ({total_responsive}/{av.rois.shape[0]})')
         venn3(*plot_args, ax = ax,
               # percentage of responsive neurons
               subset_label_formatter=lambda x: str(x) + "\n(" + f"{(x/total_responsive):1.0%}" + ")")
@@ -311,21 +355,63 @@ def neuron_types_analysis():
     fig3.tight_layout()
     fig3.savefig('VennDiagram.png', dpi = 1000)
     plt.show()
+    plt.close()
 
+# snake plot and average plot for different neuron types (based on venn diagram)
+def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated', 
+                                                'modality_specific', 
+                                                'all'] = 'modulated'):
+    # Load in all data and perform necessary calculations
+    AVS : list[AUDVIS] = load_in_data() # -> av1, av2, av3, av4
+    ANS : list[Analyze] = [Analyze(av) for av in AVS]
 
-def build_snake_grid(tt_grid):
-    """
-    Given the original tt_grid (mapping trial_type -> (row, col) in 2x4),
-    produce a dictionary snake_grid that maps (trial_type, heatmap_index)
-    -> (row, col) in a 4x8 figure.
-    """
-    snake_grid = {}
-    for i_tt, (r0, c0) in tt_grid.items():
-        for i in range(4):
-            r_off = i // 2
-            c_off = i % 2
-            snake_grid[(i_tt, i)] = (2*r0 + r_off, 2*c0 + c_off)
-    return snake_grid
+    # prepare everything for plotting
+    if GROUP_type == 'modulated':
+        tsnrows = 2
+        GROUPS = ('VIS', 'AUD')
+    else:
+        tsnrows = 3
+        GROUPS = ('VIS', 'AUD', 'MST')
+
+    linestyles = ('-', '--', '-', '--') # pre -, post :
+    colors = {'VIS':('darkgreen', 'darkgreen' ,'mediumseagreen', 'mediumseagreen'),
+              'AUD':('darkred', 'darkred', 'coral', 'coral'),
+              'MST':('darkmagenta','darkmagenta', 'orchid', 'orchid')}
+
+    tsncols = 4 # 4 combined trial types
+    snake_rows, snake_cols = 2, 2
+
+    # prepare timeseries figure and axes
+    ts_fig, ts_ax = plt.subplots(nrows=tsnrows, ncols=tsncols, 
+                                 sharex='col', sharey='row', figsize = ((tsncols * 3) + .8, tsnrows * 3))
+    trials = ['VT', 'AT', 'MS+', 'MS-']
+    for ig, group in enumerate(GROUPS):
+        for icond, (AV, AN) in enumerate(zip(AVS, ANS)):
+            TT_info, group_size = AN.tt_BY_neuron_group(group, GROUP_type)
+            for itt, (avr, sem) in enumerate(TT_info):
+                plot_avrg_trace(time = AN.time, avrg=avr, SEM = sem, Axis=ts_ax[ig, itt],
+                                title = trials[itt] if ig == 0 else False,
+                                label = f'{AV.NAME} ({group_size})' if itt == len(list(TT_info)) - 1 else None, col = colors[group][icond], lnstl=linestyles[icond])
+
+                if icond == len(AVS) - 1:
+                    if ig == len(GROUPS) - 1:
+                        ts_ax[ig, itt].set_xlabel('Time (s)')
+
+                    if itt == 0:
+                        ts_ax[ig, itt].set_ylabel('z(∆F/F)')
+
+                    if itt == len(list(TT_info)) - 1:
+                        twin = ts_ax[ig, itt].twinx()
+                        twin.set_ylabel(GROUPS[ig], rotation = 270, 
+                                                    va = 'bottom', 
+                                                    color = colors[group][0],
+                                                    fontsize = 20)
+                        twin.set_yticks([])
+
+    ts_fig.tight_layout(rect = [0,0,0.85,1])
+    ts_fig.legend(loc = 'outside center right')
+    ts_fig.savefig(f'Neuron_type({GROUP_type})_average_res.png', dpi = 1000)
+
 
 
 ### Main block that runs the file as a script
@@ -333,9 +419,12 @@ if __name__ == '__main__':
     tt_grid = {0:(0,2),1:(0,0),2:(0,1),3:(1,2),
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     
-    # Neuron types analysis
-    neuron_types_analysis()
+    # Neuron types analysis (venn diagrams)
+    # neuron_typesVENN_analysis()
+    NEURON_TYPES_TT_ANALYSIS('modulated')
+    NEURON_TYPES_TT_ANALYSIS('modality_specific')
+    NEURON_TYPES_TT_ANALYSIS('all')
 
-    # Trial type analysis (average & snake plot)
-    # TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='signif')
+    # Trial type analysis (average & snake plot) - all neurons, not taking into account neuron types groups
+    # TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='onset')
     
