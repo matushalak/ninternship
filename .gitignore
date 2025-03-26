@@ -11,6 +11,7 @@ __pycache__/
 *.npz
 *.pkl
 *.mat
+*.png
 
 # Distribution / packaging
 .Python

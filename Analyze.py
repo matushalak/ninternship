@@ -7,7 +7,7 @@ from matplotlib_venn import venn3
 import seaborn as sns
 from numpy import ndarray, arange, where, unique, argsort, argmax
 import numpy as np
-from scipy.stats import ttest_rel, sem, norm, _result_classes
+from scipy.stats import wilcoxon, ttest_rel, sem, norm, _result_classes
 from collections import defaultdict
 from typing import Literal
 import os
@@ -33,14 +33,15 @@ class Analyze:
 
         # Trial names
         self.tt_names = list(av.str_to_int_trials_map)
+        
         # Analyze by trial type
         self.TT_RES, self.TT_STATS, self.TTS_BLC_Z, self.NEURON_groups = self.tt_average(av)
 
     # Analyze average response to trial type
     # NOTE: currently for z-score data, better to generalize to any signal
     def tt_average(self, av:AUDVIS,
-                   method:str = 'ttest',
-                   criterion:float = 1e-2, #.01 threshold (bonferroni corrected)
+                   method:str = 'wilcoxon',
+                   criterion:float = 0.01, #.01 threshold (bonferroni corrected)
                    **kwargs) -> tuple[list[ndarray], 
                                     list[ndarray], 
                                     list[ndarray]]:
@@ -62,9 +63,9 @@ class Analyze:
                 # get indices responsive to that trial type
                 responsive_indices, test_res = self.responsive_trial_locked(neurons = tts_z[tt],
                                                                             window = av.TRIAL,
-                                                                            criterion = criterion / len(list(tts_z)), # bonferroni correction
+                                                                            criterion = criterion / len(list(tts_z)) if method != 'zscore' else criterion, # bonferroni correction
                                                                             method = method)
-                if method == 'ttest':
+                if method != 'zscore':
                     TEST_RESULTS.append(test_res)
             else:
                 responsive_indices = kwargs['RESPONSIVE'][tt]
@@ -103,7 +104,14 @@ class Analyze:
                 bls, trls = neurons[:,:self.TRIAL_FRAMES[0],:].mean(axis = 1), neurons[:,self.TRIAL_FRAMES[0]:self.TRIAL_FRAMES[1],:].mean(axis = 1)
                 TTEST = ttest_rel(bls, trls, alternative = 'two-sided')
                 return where(TTEST.pvalue < criterion)[0], TTEST
-    
+            
+            case ('wilcoxon', criterion, (n_trials, n_times, n_nrns)):
+                bls, trls = np.median(neurons[:,:self.TRIAL_FRAMES[0],:],axis = 1), np.median(neurons[:,self.TRIAL_FRAMES[0]:self.TRIAL_FRAMES[1],:], axis = 1)
+                WCOX = wilcoxon(bls, trls, alternative='two-sided')
+                return where(WCOX.pvalue < criterion)[0], WCOX
+            
+            # TODO: z-score proportion trials (zscore > x in X proportion of trials)
+            
     @staticmethod
     def neuron_groups(responsive:list[ndarray]) -> dict[str : set]:
         '''
@@ -145,7 +153,8 @@ class Analyze:
     
     def tt_BY_neuron_group(self, 
                            GROUP:Literal['VIS', 'AUD', 'MST'] = 'VIS',
-                           GROUP_type:Literal['modulated', 'modality_specific', 'all'] = 'modulated'
+                           GROUP_type:Literal['modulated', 'modality_specific', 'all'] = 'modulated',
+                           BrainRegionIndices : np.ndarray | None = None
                            ) -> list[tuple[ndarray, ndarray]]:
         # combine stimuli VIS trials (6, 7), AUD trials (0, 3), MST congruent (1, 5) MST incongruent trials (2, 4)
         VIS_trials = np.concatenate([self.TTS_BLC_Z[6], self.TTS_BLC_Z[7]]) # 0
@@ -169,6 +178,17 @@ class Analyze:
             case 'all':
                 indices = np.fromiter(ind := self.NEURON_groups[f'{GROUP}'], int, len(ind))
         
+        # incorporate brain region indices if provided
+        if BrainRegionIndices is not None:
+            indices = np.intersect1d(BrainRegionIndices, indices)
+
+        # to plot single neurons
+        for index in indices:
+            plot_1neuron(all_trials_signal=self.TTS_BLC_Z,
+                         single_neuron=index,
+                         trial_names=self.tt_names,
+                         time = self.time)
+        # breakpoint()
         neurons_to_study = [sig[:,:, indices] for sig in signals]
         return [(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
                                                 for trace in neurons_to_study)], len(indices)
@@ -225,9 +245,32 @@ def plot_avrg_trace(time:ndarray, avrg:ndarray, SEM:ndarray,
         Axis.plot(time, avrg, color = col if col else 'k', linestyle = lnstl if lnstl else '-')
 
     if Axis == plt:
+        plt.tight_layout()
         plt.show()
-        plt.plot()
-        plt.fill_between
+        plt.close()
+
+def plot_1neuron(all_trials_signal:list[np.ndarray], 
+                single_neuron:int,
+                trial_names:list[str], time:ndarray):
+    tt_grid = {0:(0,2),1:(0,0),2:(0,1),3:(1,2),
+               4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
+    plt.close()
+    fig, axs = plt.subplots(nrows = 2, ncols = 4, sharey = 'row', sharex='col', 
+                            figsize = (4 * 5, 2*4))
+    # for each trial type
+    for itt, ttsig in enumerate(all_trials_signal.values()):
+        axs[tt_grid[itt]].axvspan(0,1,alpha = 0.1, color = 'navajowhite')
+        neuron_all_trials = ttsig[:,:,single_neuron] 
+        # plot all raw traces for each trial
+        for i_trial in range(neuron_all_trials.shape[0]):
+            axs[tt_grid[itt]].plot(time, neuron_all_trials[i_trial, :], alpha = 0.1)
+        # as well as the average trace across trials
+        axs[tt_grid[itt]].plot(time, neuron_all_trials.mean(axis = 0), color = 'blue')
+        axs[tt_grid[itt]].set_title(trial_names[itt])
+    fig.tight_layout()
+    plt.show()
+    plt.close()
+    
 
 def build_snake_grid(tt_grid):
     """
@@ -277,7 +320,6 @@ def snake_plot(all_neuron_averages:ndarray,
                         time.round()[timestoplot])
     if SHOW:
         plt.show()
-
 
 
 ###--------------------------------SPECIFIC analyses----------------------------------------------------
@@ -357,6 +399,7 @@ def neuron_typesVENN_analysis():
     plt.show()
     plt.close()
 
+# TODO: add snake plot
 # snake plot and average plot for different neuron types (based on venn diagram)
 def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated', 
                                                 'modality_specific', 
@@ -391,7 +434,8 @@ def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated',
             for itt, (avr, sem) in enumerate(TT_info):
                 plot_avrg_trace(time = AN.time, avrg=avr, SEM = sem, Axis=ts_ax[ig, itt],
                                 title = trials[itt] if ig == 0 else False,
-                                label = f'{AV.NAME} ({group_size})' if itt == len(list(TT_info)) - 1 else None, col = colors[group][icond], lnstl=linestyles[icond])
+                                label = f'{AV.NAME} ({group_size})' if itt == len(list(TT_info)) - 1 else None, 
+                                col = colors[group][icond], lnstl=linestyles[icond])
 
                 if icond == len(AVS) - 1:
                     if ig == len(GROUPS) - 1:
