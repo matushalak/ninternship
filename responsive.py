@@ -1,6 +1,7 @@
 # @matushalak
 # For parallelized execution of Zeta test to determine responsive units
 from SPSIG import SPSIG
+from AUDVIS import Behavior
 from utils import group_condition_key, progress_bar
 from matplotlib_venn import venn3
 from collections import defaultdict
@@ -10,7 +11,7 @@ import numpy as np
 import multiprocessing as mp
 import os
 import pickle
-
+import argparse
 
 def run_ZETA(signals:np.ndarray,
              frame_times_corrected:np.ndarray,
@@ -41,7 +42,10 @@ def run_ZETA(signals:np.ndarray,
                                 vecValue = signals[neuron,:],
                                 arrEventTimes = event_times[ttwhere[tt]],
                                 dblUseMaxDur=maxDur)
-            results[neuron][tt] = res # results for that trial type
+            # get rid of most returned arrays that is just memory BLOAT
+            Res_stat = {'zetaP':res['dblZetaP'],
+                        'ZETA':res['dblZETA']}
+            results[neuron][tt] = Res_stat # results for that trial type
             progress_bar(iteration, total_iterations)
             iteration += 1
     print(f'Zeta test for {signals.shape[0]} neurons and {len(list(ttwhere))} trial types.')
@@ -77,37 +81,98 @@ def prepare_zeta_params(spsig_file:str
     return (signal, frame_times_corrected_2D,
             event_IDs, event_times)
 
-def responsive_zeta () -> dict[str:dict[int:np.ndarray]]:
-    # get files (without specifying root will popup asking for directory)
-    g1spsig_files, g2spsig_files = group_condition_key(root = '/Volumes/my_SSD/NiNdata/data',
-                                                       raw=True)
-    
-    g1pre, g1post = g1spsig_files['pre'], g1spsig_files['post']
-    g2pre, g2post = g2spsig_files['pre'], g2spsig_files['post']
-    sessions = [g1pre, g1post, g2pre, g2post]
-    session_ranges = []
-    indx = 0
-    for session in sessions:
-        session_ranges.append((indx, indx := indx + len(session)))
-    all_sessions = g1pre + g1post + g2pre + g2post
-    
-    print('preparing parameters to run zeta test')
-    with mp.Pool(processes=mp.cpu_count()) as pool:
-        session_params = pool.map(prepare_zeta_params, all_sessions)
-    
-    print('\nRunning Zeta test on all sessions!\n')
-    
-    # takes really long time
-    with mp.Pool(processes=mp.cpu_count()) as pool:
-        results = pool.starmap(run_ZETA, session_params) 
-    print('Zeta tests finished!')
-    
-    if not os.path.exists('pydata'):
-        os.makedirs('pydata')
+def responsive_zeta (RUN:bool = False, savedir:str = 'pydata', SPECIFIEDcond : str | None = None
+                     ) -> dict[int:np.ndarray]:
+    # runs zeta test and saves results in pickle file
+    if RUN:
+        if not os.path.exists(zeta_path := savedir):
+            os.makedirs(zeta_path)
+            print('Created directory for output:', zeta_path)
 
-    # save    
-    with open(os.path.join('pydata', 'zeta_results.pkl'), 'wb') as zetaRES:
-        pickle.dump(results, zetaRES)
+        # get files (without specifying root will popup asking for directory)
+        g1spsig_files, g2spsig_files = group_condition_key(root = '/Volumes/my_SSD/NiNdata/data',
+                                                           raw=True)
+        
+        g1pre, g1post = g1spsig_files['pre'], g1spsig_files['post']
+        g2pre, g2post = g2spsig_files['pre'], g2spsig_files['post']
+        sessions = [g1pre, g1post, g2pre, g2post]
+        session_ranges = []
+        indx = 0
+        for session in sessions:
+            session_ranges.append((indx, indx := indx + len(session)))
+        all_sessions = g1pre + g1post + g2pre + g2post
+        print('preparing parameters to run zeta test')
+        with mp.Pool(processes=mp.cpu_count()) as pool:
+            session_params = pool.map(prepare_zeta_params, all_sessions)
+        
+        print('\nRunning Zeta test on all sessions!\n')
+        
+        # takes really long time
+        with mp.Pool(processes=mp.cpu_count()) as pool:
+            results = pool.starmap(run_ZETA, session_params) 
+        print('Zeta tests finished!')
+        
+        # save    
+        with open(os.path.join(zeta_path, 'zeta_results.pkl'), 'wb') as zetaRES:
+            pickle.dump(results, zetaRES)
+        
+        return results
+    
+    # preprocess results of existing zeta test results file
+    else:
+        print('Fetching ZETA results:')
+        conditions = ('g1pre', 'g1post', 'g2pre', 'g2post')
+        # zeta res just contains sessions
+        assert os.path.exists(zeta_file := os.path.join(savedir, 'zeta_results.pkl')), 'Need zeta results file to preprocess them'
+        assert all(os.path.exists(os.path.join(savedir, f'{condition}_indexing.pkl')) 
+                   for condition in conditions), 'Need session indexing files for each condition to correctly split zeta results'
+
+        # load files
+        with open(zeta_file, 'rb') as zet:
+            zeta_res = pickle.load(zet)
+        cond_info_files = []
+        for cond in conditions:
+            with open(os.path.join(savedir, f'{cond}_indexing.pkl'), 'rb') as cond_info:
+                COND_info = pickle.load(cond_info)
+            cond_info_files.append(COND_info['session_index'])
+
+        # dimensions per condition
+        dims = {g_name:0 for g_name in conditions}
+        for i in range(len(conditions)):
+            condition_all_sessions_info = cond_info_files[i]
+            for s in list(condition_all_sessions_info):
+                dims[conditions[i]] += condition_all_sessions_info[s]['n_neurons']
+        drr = 0
+        # find out which neurons belong to which session
+        dim_ranges = [(drr, drr := drr + c_range) for c_range in list(dims.values())]
+        # prepare output dictionary
+        # for each condition have dictionary with tt : (p-values and zeta scores) for all neurons in that condition
+        preprocessed_zeta = {cond:{tt : [] for tt in range(len(zeta_res[0][0]))} 
+                             for cond in conditions}
+        if SPECIFIEDcond is not None: # return preprocessed zeta for CHOSEN condition
+            assert SPECIFIEDcond in conditions, f'Your specified condition is NOT in {conditions}'
+        
+        # flatten zeta output
+        flat_zeta = []
+        for ss in range(len(zeta_res)) : flat_zeta = flat_zeta + [*zeta_res[ss]]
+        iteration = 0 # for progress bar
+        # loop over dimension ranges for each condition
+        for icond,  (start, end) in enumerate(dim_ranges):
+            cond_zeta = flat_zeta[start:end]            
+            # loop over neurons and add their info to the TTL organized DF
+            for ineuron, neuron in enumerate(cond_zeta):
+                for tt in neuron:
+                    preprocessed_zeta[conditions[icond]][tt].append((neuron[tt]['zetaP'], 
+                                                        neuron[tt]['ZETA']))
+                    progress_bar(current_iteration = (iteration := iteration + 1),
+                                 total_iterations = sum(dims.values()) * len(neuron))
+        
+        cond_message =  f' for {SPECIFIEDcond}' if SPECIFIEDcond is not None else ''
+        print(f'\nDone preprocessing zeta{cond_message}!')
+        
+        return preprocessed_zeta[SPECIFIEDcond] if SPECIFIEDcond is not None else preprocessed_zeta
+
+
 
 #---------------------------------- helper functions -------------------------------   
 def trials_apply_map(trials_array:np.ndarray[str|int],
@@ -120,6 +185,17 @@ def trials_apply_map(trials_array:np.ndarray[str|int],
             return np.array([np.fromiter(map(lambda s: tmap[s], trials_array[session, :]), dtype = dtype) 
                             for session in range(trials_array.shape[0])])
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-run_zeta', type = str, default = 'no')
+    parser.add_argument('-savedir', type = str, default = '/Volumes/my_SSD/NiNdata/zeta')
+    return parser.parse_args()
 
 if __name__ == '__main__':
-    resp_indices = responsive_zeta()
+    args = parse_args()
+    if args.run_zeta.lower() in ('y', 'yes', 'true', 't'):
+        resp_indices = responsive_zeta(RUN = True)#, savedir=args.savedir)
+        print('Zeta test finished, results saved!')
+    else:
+        neuron_significance_by_group_and_TT = responsive_zeta(SPECIFIEDcond='g2pre')
+        # breakpoint()
