@@ -76,7 +76,6 @@ def prepare_zeta_params(spsig_file:str,
         else:
             whisker = None
 
-
     # Get arrays important for zeta test
     signal : np.ndarray = SPSG.sigCorrected.T # (neurons, all_times)
     event_times : np.ndarray = RES.info.StimTimes[:720] # (n_trials, )
@@ -97,6 +96,11 @@ def prepare_zeta_params(spsig_file:str,
     # Regress out z-whisker movement and z-running speed
     if regress_OUT:
         signal, discard_trials = regress_out_raw(signal=signal, running=running, whisker=whisker)
+        frame_times_corrected_2D  = frame_times_corrected_2D[:discard_trials]
+        # for purpose of zeta test, throw out those trials where we didn't regress out behavior
+        keep_events = event_times < frame_times_corrected_2D[:, discard_trials].min()
+        event_IDs = event_IDs[keep_events]
+        event_times = event_times[keep_events]
 
     # print(spsig_file, 'zeta parameters prepared!')
     return (signal, frame_times_corrected_2D,
@@ -123,10 +127,7 @@ def responsive_zeta (RUN:bool = False, savedir:str = 'pydata', SPECIFIEDcond : s
             session_ranges.append((indx, indx := indx + len(session)))
         all_sessions = g1pre + g1post + g2pre + g2post
         print('preparing parameters to run zeta test')
-        for ss in all_sessions:
-            prepare_zeta_params(ss)
-        breakpoint()
-
+        
         with mp.Pool(processes=mp.cpu_count()) as pool:
             session_params = pool.map(prepare_zeta_params, all_sessions)
         print('\nRunning Zeta test on all sessions!\n')
@@ -222,12 +223,11 @@ def parse_args():
 
 def regress_out_raw(signal:np.ndarray,
                     running:np.ndarray | None = None,
-                    whisker:np.ndarray | None = None) -> tuple[np.ndarray, tuple[int, float] | None]:
+                    whisker:np.ndarray | None = None) -> tuple[np.ndarray, int | None]:
     '''
     Returns: 
-        regressed-out signal np.ndarray, 
-        as well as, 
-        the trials to be discarded for the zeta calculation (frame index, trial index) | None if no trials discarded
+        1) regressed-out signal np.ndarray, 
+        2) the trials to be discarded for the zeta calculation (frame index) | None if no trials discarded
     '''
     # make sure everything has correct shape
     assert signal.shape[0] < signal.shape[1], 'signal array must be (neurons, all_times) shaped'
@@ -246,7 +246,29 @@ def regress_out_raw(signal:np.ndarray,
             X_design = np.column_stack((np.ones(running_z.shape[0]), running_z, whisker_z)) # add intercept
             assert X_design.shape == (running_z.shape[0], 3), f'Wrong shape of design matrix {X_design.shape} should be {(running_z.shape[0], 3)}'
 
-    breakpoint()
+    # exclude timestamps with nan behavior    
+    nan_behavior = np.any(np.isnan(X_design), axis = 1)
+    X = X_design[~nan_behavior, :] 
+    SIG = signal[:, ~nan_behavior]
+    # X_design is (timepoints, predictors)
+    t, p = X.shape
+    # signal is (neurons, timepoints)
+    n, ts = SIG.shape
+    assert t == ts, 'Time dimensions of signal ({}) and design matrix ({}) do not match!'.format(ts, t)
+
+    # regress out simultaneously for all neurons 
+    piv = np.linalg.pinv(X)
+    assert piv.shape == (p, t), 'Error with pseudo-inverse calculation, shape should be {}'.format((p,t))
+    # beta coefficients for all neurons
+    beta_neurons = np.einsum('pt, nt -> np', piv, SIG)
+    assert beta_neurons.shape == (n, p), 'Error with beta coefficients calculation, shape should be {}'.format((n,p))
+    # predicted signal for all neurons
+    predicted_neurons = np.einsum('tp, np -> nt', X, beta_neurons)
+    assert predicted_neurons.shape == (n, t), 'Error with predicted signal calculation, shape should be {}'.format((n,t))
+    # residual
+    residual_signal : np.ndarray = SIG - predicted_neurons
+
+    return residual_signal, np.where(np.any(np.isnan(X_design), axis = 1))[0][0] # from which trial onwards nans
 
 def running_wheel_to_speed(quadrature : np.ndarray) -> np.ndarray:
     # % Mouse speed
