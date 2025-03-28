@@ -143,7 +143,6 @@ class AUDVIS:
         ''''
         Regresses whisker movement and running speed out of all neural signals
         '''
-        # TODO: remove not, jsut for testing now
         if os.path.exists(res := os.path.join('pydata', f'{self.NAME}_zsig_CORRECTED.npy')):
             # once created, loaded immediately
             result = np.load(res)
@@ -194,10 +193,6 @@ class AUDVIS:
             reg_params = prepare_regression_args(sig_by_session, run_by_session, whisk_by_session, plot_dir=None if not PLOT else plot_dir)
 
             print('Regressing out running speed and whisker movement energy.')
-
-            # for i, rp in enumerate(reg_params):
-            #     residual_signals = regress_out_neuron(*rp)
-            #     progress_bar(i, len(reg_params))
 
             # return residual_signals
             with Pool(processes=cpu_count()) as pool:
@@ -313,7 +308,7 @@ class CreateAUDVIS:
                 signal_z.append(sp.Res.CaSigCorrected_Z[:, :720, :])
             else:
                 print(f'Calculating z-score for {recording_name} using sigCorrected from {file.replace('_Res', '')}')
-                signal_z.append((sig - continuous.sigCorrected.mean(axis = 0))/ continuous.sigCorrected.std(axis = 0)) # Z-score calculation
+                signal_z.append((sig - continuous.sigCorrected.mean(axis = 1))/ continuous.sigCorrected.std(axis = 1)) # Z-score calculation (timepoints, rows organization)
 
             for neuron_i_session in range(n_neurons):
                 neuron_i_overall = neuron_i_session if session_i == 0 else max(list(self.neuron_index)) + 1
@@ -341,7 +336,7 @@ def run_CreateAUDVIS(args):
     return CreateAUDVIS(g, g_name)
 
 # regressing out
-def regress_out_neuron (neuron_mat : np.ndarray ,X_movement_flat : np.ndarray,
+def regress_out_neuron (neuron_mat : np.ndarray ,X_movement_trials : np.ndarray,
                         plot_dir:str | None = None) -> ndarray:
     '''
     vectorized regressing out using pseudo-inverse for all trials at once in one neuron
@@ -349,25 +344,40 @@ def regress_out_neuron (neuron_mat : np.ndarray ,X_movement_flat : np.ndarray,
     input:
     -------
     args list has 2:
-        args[0] => neuron_mat = (ntrials * n_timepoints) ndarray of neuronal signal across trials and timepoints
-        args[1] => X_movement_flat = (ntrials * n_timepoints, 2 | 3) ndarray | None design matrix with running, (whisker) and intercept columns
+        args[0] => neuron_mat = (ntrials, n_timepoints) 2D ndarray of neuronal signal across trials and timepoints
+        args[1] => X_movement_trials = (ntrials, 2 | 3, n_timepoints) 3D ndarray | None design matrix with running, (whisker) and intercept columns for each trial
             if None means no behavior information to be regressed
     plot_dir enables saving single neuron figures into specified directory, None by default
+
+    returns:
+    ---------
+    residual => (ntrials, ntimepoints) 2D ndarray = signal left after regressing out movement on TRIAL LEVEL
     '''
-    if X_movement_flat is None:
+    if X_movement_trials is None:
         return neuron_mat # nothing to regress out
 
-    neuron_flat = neuron_mat.reshape(-1)
-
-    assert neuron_flat.shape[0] == X_movement_flat.shape[0], f'Dimensions of neuron ({neuron_flat.shape[0]}) and first axis of design matrix ({X_movement_flat.shape[0]}) do not match, cannot proceed'
-
-    beta = np.linalg.pinv(X_movement_flat) @ neuron_flat
-    predicted = X_movement_flat @ beta
-    residual : ndarray = neuron_flat - predicted
+    assert neuron_mat.shape[0] == X_movement_trials.shape[0], f'Dimensions of neuron ({neuron_mat.shape[0]}) and first axis of design matrix ({X_movement_trials.shape[0]}) do not match, cannot proceed'
+    
+    # reshape to prepare for multidimensional array operations -> n trials, t timepoints, p predictors
+    # this is necassary because batched pseudoinverse accepts stacked arrays in the 1st dimension
+    X_movement_trials = X_movement_trials.transpose(0,2,1) 
+    # n trials, t timepoints, p predictors
+    n, t, p = X_movement_trials.shape
+    
+    # batched pseudoinverse on (n-trials, TIMEPOINTS x PREDICTRORS) -> n x p x t
+    PIV_mat_all = np.linalg.pinv(X_movement_trials) 
+    assert PIV_mat_all.shape == (n,p,t), f'Error with batched pseudo-inverse, shape {PIV_mat_all.shape} instead of {(n,p,t)}'
+    # n (trials) p (predictors) t (timepoints); performs matrix multiplication of 3D tensor w 2D matrix
+    beta_all = np.einsum('npt, nt -> np', PIV_mat_all, neuron_mat) # beta_all has shape (n,p)
+    assert beta_all.shape == (n,p), f'Error with beta_all calculation, shape {beta_all.shape} instead of {(n,p)}'
+    # ntp @ np -> nt
+    predicted_all =  np.einsum('ntp, np -> nt', X_movement_trials, beta_all) # predicted_all has shape (n, t)
+    assert predicted_all.shape == neuron_mat.shape, f'Error with predicted_all calculation, shape {predicted_all.shape} instead of {neuron_mat.shape}'
+    residual : ndarray = neuron_mat - predicted_all
 
     # plotting (normally disabled)
     if plot_dir is not None:
-        plot_single_neuron_regression(neuron_mat, X_movement_flat, predicted, residual,
+        plot_single_neuron_regression(neuron_mat, X_movement_trials, predicted_all, residual,
                                       plot_dir)
     
     return residual.reshape(neuron_mat.shape) # residual signal
@@ -375,14 +385,15 @@ def regress_out_neuron (neuron_mat : np.ndarray ,X_movement_flat : np.ndarray,
 def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[ndarray|None],
                             plot_dir:str|None = None) -> list[tuple[ndarray, ndarray | None]]:
     ''''
-    sbs : signals by session, (n_trials, n_timepoints, n_neurons) 
-    rbs : running by session, (n_trials, n_timepoints) 
+    sbs : signals by session, list[ (n_trials, n_timepoints, n_neurons),...] 
+    rbs : running by session, list[ (n_trials, n_timepoints), ...] 
         if None, no behavior information was present for mouse
-    wbs : whisker movement by session, (n_trials, n_timepoints) 
+    wbs : whisker movement by session, list[ (n_trials, n_timepoints), ...] 
         if None, facemap video was missing but running wheel information usually still there
     '''
     sig_X_args = []
     add_neurons = 0
+    n_trials, n_timepoints = sbs[0].shape[:2]
     for i_sess, args in enumerate(zip(sbs, rbs, wbs)):
         match args:
             case neuron_mat, None, None:
@@ -390,13 +401,13 @@ def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[
 
             case neuron_mat, running, None:
                 X_movement : ndarray = running  # shape: (n_trials, time_points)
-                X_movement_flat = X_movement.reshape(-1, 1)  # shape: (n_trials*time_points, 1)
-                X_movement_flat = np.column_stack((np.ones(X_movement_flat.shape[0]), X_movement_flat))  # add intercept, (n_trials*time_points, 2)
+                X_movement_flat = X_movement.reshape(n_trials, 1, n_timepoints)  # shape: (n_trials, 1, n_time_points)
+                X_movement_flat = np.column_stack((np.ones(X_movement_flat.shape), X_movement_flat))  # add intercept, (n-trials, 2, n_timepoints)
 
             case neuron_mat, running, whisker:
                 X_movement = np.dstack([running, whisker])  # shape: (n_trials, time_points, 2)
-                X_movement_flat = X_movement.reshape(-1, 2)  # shape: (n_trials*time_points, 2)
-                X_movement_flat = np.column_stack((np.ones(X_movement_flat.shape[0]), X_movement_flat))  # add intercept, (n_trials*time_points, 3)
+                X_movement_flat = X_movement.reshape(n_trials, 2, n_timepoints)  # shape: (n_trials, 2, n_timepoints)
+                X_movement_flat = np.column_stack((np.ones(X_movement_flat.shape), X_movement_flat))  # add intercept, (n_trials, 3,n_timepoints )
         
         # (signal and design_matrix)
         if plot_dir is not None: # return filenames for plots

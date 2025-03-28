@@ -55,8 +55,8 @@ class Analyze:
         BLC_SIG = av.baseline_correct_signal(signal=SIG)
 
         # 2. Separate into Trial=types
-        tts_z : dict = av.separate_signal_by_trial_types(SIG)
-        blc_tts_z : dict = av.separate_signal_by_trial_types(BLC_SIG)
+        tts_z : dict = av.separate_signal_by_trial_types(SIG) # z-scored signal
+        blc_tts_z : dict = av.separate_signal_by_trial_types(BLC_SIG) # baseline-corrected z-scored signal
 
         # get significantly responding neurons for each trial type
         # 3. collect average and sem of traces of responsive neurons for each condition
@@ -196,22 +196,22 @@ class Analyze:
             indices = np.intersect1d(BrainRegionIndices, indices)
 
         # to plot single neurons for debugging
-        # STATS = {i:[] for i in range(8)}
-        # for trial in range(8):
-        #     for test in ('zeta', 'ttest', 'wilcoxon'):
-        #         sig = self.TTS_Z[trial] if test != 'zeta' else self.TT_zeta[trial]
-        #         _, stat = self.responsive_trial_locked(neurons = sig,
-        #                                                window = (16, 32),
-        #                                                criterion = 0.01 / 8,
-        #                                                method=test)
-        #         STATS[trial].append(stat)
+        STATS = {i:[] for i in range(8)}
+        for trial in range(8):
+            for test in ('zeta', 'ttest', 'wilcoxon'):
+                sig = self.TTS_Z[trial] if test != 'zeta' else self.TT_zeta[trial]
+                _, stat = self.responsive_trial_locked(neurons = sig,
+                                                       window = (16, 32),
+                                                       criterion = 0.01 / 8,
+                                                       method=test)
+                STATS[trial].append(stat)
 
-        # for index in indices:
-        #     plot_1neuron(all_trials_signal=self.TTS_BLC_Z,
-        #                  single_neuron=index,
-        #                  trial_names=self.tt_names,
-        #                  time = self.time,
-        #                  STATS=STATS)
+        for index in indices:
+            plot_1neuron(all_trials_signal=self.TTS_BLC_Z,
+                         single_neuron=index,
+                         trial_names=self.tt_names,
+                         time = self.time,
+                         STATS=STATS)
             
         neurons_to_study = [sig[:,:, indices] for sig in signals]
         return [(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
@@ -361,7 +361,7 @@ def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]],
     ''' 
     need to specify how you want to organize the conditions in the grid plot
     '''
-    avs = load_in_data() # -> av1, av2, av3, av4
+    avs : list[AUDVIS] = load_in_data() # -> av1, av2, av3, av4
     TT_RESULTS = defaultdict(dict)
     
     fig1, axs1 = plt.subplots(nrows = 2, ncols = 4, sharey = 'row', sharex='col', figsize = (4 * 5, 2*4))
@@ -496,11 +496,11 @@ if __name__ == '__main__':
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     
     # Neuron types analysis (venn diagrams)
-    # neuron_typesVENN_analysis()
+    neuron_typesVENN_analysis()
     # NEURON_TYPES_TT_ANALYSIS('modulated')
     # NEURON_TYPES_TT_ANALYSIS('modality_specific')
     # NEURON_TYPES_TT_ANALYSIS('all')
 
     # Trial type analysis (average & snake plot) - all neurons, not taking into account neuron types groups
-    TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='onset')
+    # TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='onset')
     
