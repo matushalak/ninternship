@@ -36,9 +36,11 @@ class Analyze:
         self.tt_names = list(av.str_to_int_trials_map)
 
         if include_zeta:
-            # Zeta test results
-            self.TT_zeta = responsive_zeta(SPECIFIEDcond = av.NAME)
-        
+            # Zeta test results dF/F0
+            self.TT_zeta = responsive_zeta(SPECIFIEDcond = av.NAME, signal_to_use = 'dF/F0')
+            # Zeta test results CASCADE
+            self.TT_spikes_zeta = responsive_zeta(SPECIFIEDcond = av.NAME, signal_to_use = 'spike_prob')
+
         # Analyze by trial type
         self.TT_RES, self.TT_STATS, self.TTS_BLC_Z, self.TTS_Z, self.NEURON_groups = self.tt_average(av)
 
@@ -46,7 +48,7 @@ class Analyze:
     # NOTE: currently for z-score data, better to generalize to any signal
     def tt_average(self, av:AUDVIS,
                    method:str = 'zeta',
-                   criterion:float = 0.01 # p-value threshold (bonferroni corrected)
+                   criterion:float = 0.01 # p-value threshold .05 or .01 (bonferroni corrected - consider different correction)
                    ) -> tuple[list[ndarray], 
                               list[ndarray], 
                               list[ndarray]]:
@@ -206,12 +208,13 @@ class Analyze:
                                                        method=test)
                 STATS[trial].append(stat)
 
-        for index in indices:
-            plot_1neuron(all_trials_signal=self.TTS_BLC_Z,
-                         single_neuron=index,
-                         trial_names=self.tt_names,
-                         time = self.time,
-                         STATS=STATS)
+        # print(GROUP, GROUP_type, indices.size)
+        # for index in indices:
+        #     plot_1neuron(all_trials_signal=self.TTS_BLC_Z,
+        #                  single_neuron=index,
+        #                  trial_names=self.tt_names,
+        #                  time = self.time,
+        #                  STATS=STATS)
             
         neurons_to_study = [sig[:,:, indices] for sig in signals]
         return [(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
@@ -496,10 +499,10 @@ if __name__ == '__main__':
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     
     # Neuron types analysis (venn diagrams)
-    neuron_typesVENN_analysis()
-    # NEURON_TYPES_TT_ANALYSIS('modulated')
-    # NEURON_TYPES_TT_ANALYSIS('modality_specific')
-    # NEURON_TYPES_TT_ANALYSIS('all')
+    # neuron_typesVENN_analysis()
+    NEURON_TYPES_TT_ANALYSIS('modulated')
+    NEURON_TYPES_TT_ANALYSIS('modality_specific')
+    NEURON_TYPES_TT_ANALYSIS('all')
 
     # Trial type analysis (average & snake plot) - all neurons, not taking into account neuron types groups
     # TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='onset')

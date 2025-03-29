@@ -53,6 +53,7 @@ class AUDVIS:
                  Z:ndarray,
                  TRIALS_ALL:ndarray,
                  NAME:str,
+                 CASCADE : ndarray | None,
                  pre_post_trial_time:tuple[float, float] = (1, 2)):
         # Group-condition name of AUDVIS object
         self.NAME = NAME 
@@ -74,11 +75,15 @@ class AUDVIS:
         # z-scored neuropil-corrected, trial-locked ∆F/F signal
         self.zsig = Z 
 
+        # load spike probability estimated using CASCADE algorithm
+        if CASCADE is not None:
+            self.CASCADE = CASCADE
+
         # regress out running speed & OR whisker movement
         print(NAME)
-        self.zsig_CORR = self.regress_out_behavior(self.zsig)
-        # self.signal_CORR = self.regress_out_behavior(self.signal)
-
+        self.zsig_CORR = self.regress_out_behavior(self.zsig, signalname='zsig')
+        # self.signal_CORR = self.regress_out_behavior(self.signal, signalname = 'sig')
+        # self.CASCADE_CORR = self.regress_out_behavior(self.CASCADE, signalname = 'CASCADE')
 
         # per session, identify of all the presented trials
         self.trials = TRIALS_ALL 
@@ -138,12 +143,13 @@ class AUDVIS:
     
     def regress_out_behavior(self, signal:ndarray, 
                              MODE : Literal['all', 'whisker', 'running'] = 'all',
+                             signalname : str = 'zsig', 
                              PLOT:bool = False
                              )->ndarray:
         ''''
         Regresses whisker movement and running speed out of all neural signals
         '''
-        if os.path.exists(res := os.path.join('pydata', f'{self.NAME}_zsig_CORRECTED.npy')):
+        if os.path.exists(res := os.path.join('pydata', f'{self.NAME}_{signalname}_CORRECTED.npy')):
             # once created, loaded immediately
             result = np.load(res)
         
@@ -200,7 +206,7 @@ class AUDVIS:
             print('Done!')
             
             result = np.dstack(residual_signals)
-            np.save(os.path.join('pydata', f'{self.NAME}_zsig_CORRECTED.npy'), result)
+            np.save(os.path.join('pydata', f'{self.NAME}_{signalname}_CORRECTED.npy'), result)
 
         return result
 
@@ -255,7 +261,7 @@ class CreateAUDVIS:
         self.session_index = defaultdict(default_session_index) 
         
         # main step in CreateAUDVIS class
-        self.ROIs, self.SIG, self.Z, self.TRIALS_ALL = self.update_index_and_data()
+        self.ROIs, self.SIG, self.Z, self.CASCADE, self.TRIALS_ALL = self.update_index_and_data()
 
         # save files that we will use when loading AUDVIS
         if not os.path.exists(storage_folder):
@@ -266,6 +272,8 @@ class CreateAUDVIS:
              self.SIG)
         np.save(os.path.join(storage_folder, f'{self.NAME}_zsig.npy'), 
              self.Z)
+        np.save(os.path.join(storage_folder, f'{self.NAME}_CASCADE.npy'), 
+             self.CASCADE)
         np.save(os.path.join(storage_folder, f'{self.NAME}_trials.npy'), 
              self.TRIALS_ALL)
         
@@ -277,6 +285,7 @@ class CreateAUDVIS:
         roi_info = [] # collect dataframes here
         signal_corrected = [] # collect neuropil corrected ∆F/F signal for all sessions here
         signal_z = [] # collect z-score (over entire session) of neuropil corrected ∆F/F signal for all sessions here
+        CASCADE_probs = [] # collect CASCADE spike probability
         trials_ALL = [] # collect trial IDs for each session
 
         for session_i, file in enumerate(self.files):
@@ -308,7 +317,10 @@ class CreateAUDVIS:
                 signal_z.append(sp.Res.CaSigCorrected_Z[:, :720, :])
             else:
                 print(f'Calculating z-score for {recording_name} using sigCorrected from {file.replace('_Res', '')}')
-                signal_z.append((sig - continuous.sigCorrected.mean(axis = 1))/ continuous.sigCorrected.std(axis = 1)) # Z-score calculation (timepoints, rows organization)
+                signal_z.append((sig - continuous.sigCorrected.mean(axis = 0))/ continuous.sigCorrected.std(axis = 0)) # Z-score calculation (timepoints, rows organization)
+
+            if hasattr(sp.Res, 'CaSpike_prob'):
+                CASCADE_probs.append(sp.Res.CaSpike_prob[:,:720,:])
 
             for neuron_i_session in range(n_neurons):
                 neuron_i_overall = neuron_i_session if session_i == 0 else max(list(self.neuron_index)) + 1
@@ -324,6 +336,7 @@ class CreateAUDVIS:
         return (concat(roi_info), # DataFrane with ABA info & contours & locations
                 np.dstack(signal_corrected).swapaxes(0,1), # ndarray Neuropil corrected ∆F/F
                 np.dstack(signal_z).swapaxes(0,1), # ndarray Z-Scored (over entire signal) Neuropil corrected ∆F/F
+                np.dstack(CASCADE_probs).swapaxes(0,1), # ndarray of Spike Probabilities for each neuron (obtained with CASCADE algorithm)
                 np.array(trials_ALL) # ndarray with trial identities of each trial 
                 ) 
 
@@ -487,8 +500,8 @@ def load_in_data()->tuple[AUDVIS, AUDVIS, AUDVIS, AUDVIS]:
     names = ['g1pre', 'g1post', 'g2pre', 'g2post']
 
     for group_name in names:
-        params = load_audvis_files(os.path.join('pydata', group_name))
-        AVclass = AUDVIS(*params, NAME = group_name)
+        params, Cascade = load_audvis_files(os.path.join('pydata', group_name))
+        AVclass = AUDVIS(*params, NAME = group_name, CASCADE=Cascade)
         # by_trials = AVclass.separate_signal_by_trial_types(AVclass.signal)
 
         g = int(group_name[1])

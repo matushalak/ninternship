@@ -7,6 +7,7 @@ from matplotlib_venn import venn3
 from collections import defaultdict
 from pandas import DataFrame
 from zetapy import zetatstest, zetatstest2 # test for neuronal responsiveness by Montijn et al.
+from typing import Literal
 import numpy as np
 import multiprocessing as mp
 import os
@@ -52,7 +53,8 @@ def run_ZETA(signals:np.ndarray,
     return results
     
 def prepare_zeta_params(spsig_file:str,
-                        regress_OUT : bool = True
+                        signal_to_use : Literal['dF/F0', 'spike_prob'],
+                        regress_OUT : bool
                         ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     '''
     Prepares parameters for zeta test for all ROIs in a given session
@@ -64,20 +66,8 @@ def prepare_zeta_params(spsig_file:str,
     # all sessions should have running speed and only 3 should lack facemap
     print(res_file.split('/')[-1], 'facemap', hasattr(resres, 'facemap'), 'speed', hasattr(resres, 'speed'))
     
-    # get RAW running speed and whisker movements
-    if regress_OUT:
-        parts_of_file = spsig_file.split('/')[-1].split('_')
-        quadrature_file = '_'.join(parts_of_file[:3]) + '_quadrature.mat'
-        assert os.path.exists(running_raw_file := os.path.join(spsig_file.removesuffix(spsig_file.split('/')[-1]
-                                                              ),quadrature_file)), 'Quadrature file (running speed) should exist for each session'
-        running : np.ndarray = running_wheel_to_speed(quadrature = SPSIG(running_raw_file).quad_data)
-        if hasattr(SPSG, 'facemapTraces'):
-            whisker : np.ndarray = SPSG.facemapTraces.motion
-        else:
-            whisker = None
-
     # Get arrays important for zeta test
-    signal : np.ndarray = SPSG.sigCorrected.T # (neurons, all_times)
+    signal : np.ndarray = SPSG.sigCorrected.T if signal_to_use == 'dF/F0' else SPSG.spike_prob.T # (neurons, all_times)
     event_times : np.ndarray = RES.info.StimTimes[:720] # (n_trials, )
     event_IDs_str : np.ndarray = np.array(RES.info.Stim.log.stim[:720]) # (n_trials, )
     event_IDs : np.ndarray = trials_apply_map(event_IDs_str, 
@@ -95,24 +85,42 @@ def prepare_zeta_params(spsig_file:str,
 
     # Regress out z-whisker movement and z-running speed
     if regress_OUT:
+        # get running speed and whisker movements
+        parts_of_file = spsig_file.split('/')[-1].split('_')
+        quadrature_file = '_'.join(parts_of_file[:3]) + '_quadrature.mat'
+        assert os.path.exists(running_raw_file := os.path.join(spsig_file.removesuffix(spsig_file.split('/')[-1]
+                                                              ),quadrature_file)), 'Quadrature file (running speed) should exist for each session'
+        running : np.ndarray = running_wheel_to_speed(quadrature = SPSIG(running_raw_file).quad_data)
+        if hasattr(SPSG, 'facemapTraces'):
+            whisker : np.ndarray = SPSG.facemapTraces.motion
+        else:
+            whisker = None
+        
+        # REGRESSING OUT BEHAVIOR
         signal, discard_trials = regress_out_raw(signal=signal, running=running, whisker=whisker)
-        frame_times_corrected_2D  = frame_times_corrected_2D[:discard_trials]
-        # for purpose of zeta test, throw out those trials where we didn't regress out behavior
-        keep_events = event_times < frame_times_corrected_2D[:, discard_trials].min()
-        event_IDs = event_IDs[keep_events]
-        event_times = event_times[keep_events]
+        if discard_trials is not None: # throw out timepoints with behavior NANs
+            # for purpose of zeta test, throw out those trials where we didn't regress out behavior
+            keep_events = event_times < frame_times_corrected_2D[:, discard_trials].min() - 1 # to make sure enough pad left for zeta
+            frame_times_corrected_2D  = frame_times_corrected_2D[:,:discard_trials]
+            event_IDs = event_IDs[keep_events]
+            event_times = event_times[keep_events]
+            # make sure still correct dimensions even after discarding trials
+            assert signal.shape == frame_times_corrected_2D.shape, f'Corrected frame times {frame_times_corrected_2D.shape} dont match signal array {signal.shape}'
+            assert event_IDs.shape == event_times.shape, f'Mismatch in event times {event_times.shape} & IDs {event_IDs.shape}'
 
     # print(spsig_file, 'zeta parameters prepared!')
     return (signal, frame_times_corrected_2D,
             event_IDs, event_times)
 
-def responsive_zeta (RUN:bool = False, savedir:str = 'pydata', SPECIFIEDcond : str | None = None
-                     ) -> dict[int:np.ndarray]:
-    # runs zeta test and saves results in pickle file
+def responsive_zeta (RUN:bool = False, savedir:str = 'pydata', SPECIFIEDcond : str | None = None,
+                     RegressOUT_behavior : bool = True,
+                     signal_to_use : Literal['dF/F0', 'spike_prob'] = 'dF/F0') -> dict[int:np.ndarray]:
+    print('Using {} signal for zeta responsiveness'.format(signal_to_use))
+    #  runs zeta test and saves results in pickle file
     if RUN:
-        if not os.path.exists(zeta_path := savedir):
-            os.makedirs(zeta_path)
-            print('Created directory for output:', zeta_path)
+        if not os.path.exists(savedir):
+            os.makedirs(savedir)
+            print('Created directory for output:', savedir)
 
         # get files (without specifying root will popup asking for directory)
         g1spsig_files, g2spsig_files = group_condition_key(root = '/Volumes/my_SSD/NiNdata/data',
@@ -126,10 +134,11 @@ def responsive_zeta (RUN:bool = False, savedir:str = 'pydata', SPECIFIEDcond : s
         for session in sessions:
             session_ranges.append((indx, indx := indx + len(session)))
         all_sessions = g1pre + g1post + g2pre + g2post
+        file_signal_info = [(file, signal_to_use, RegressOUT_behavior) for file in all_sessions]
         print('preparing parameters to run zeta test')
         
         with mp.Pool(processes=mp.cpu_count()) as pool:
-            session_params = pool.map(prepare_zeta_params, all_sessions)
+            session_params = pool.starmap(prepare_zeta_params, file_signal_info)
         print('\nRunning Zeta test on all sessions!\n')
         
         # takes really long time
@@ -138,22 +147,25 @@ def responsive_zeta (RUN:bool = False, savedir:str = 'pydata', SPECIFIEDcond : s
         print('Zeta tests finished!')
         
         # save    
-        with open(os.path.join(zeta_path, 'zeta_results.pkl'), 'wb') as zetaRES:
+        with open(os.path.join(savedir, f'zeta_results(regressed-{RegressOUT_behavior}_{signal_to_use.replace('/', '|')}).pkl'), 'wb') as zetaRES:
             pickle.dump(results, zetaRES)
     
 
     # preprocess results of existing zeta test results file
     else:
-        results = process_zeta_output(savedir, SPECIFIEDcond)
+        results = process_zeta_output(savedir, SPECIFIEDcond, zeta_on_regressed=RegressOUT_behavior, signal_used = signal_to_use)
     
     return results
         
 
-def process_zeta_output(savedir:str = 'pydata', SPECIFIEDcond : str | None = None):
+def process_zeta_output(savedir:str = 'pydata', SPECIFIEDcond : str | None = None,
+                        zeta_on_regressed : bool = True, signal_used : Literal['dF/F0', 'spike_prob'] = 'dF/F0'):
     print('Fetching ZETA results:')
     conditions = ('g1pre', 'g1post', 'g2pre', 'g2post')
     # zeta res just contains sessions
-    assert os.path.exists(zeta_file := os.path.join(savedir, 'zeta_results.pkl')), 'Need zeta results file to preprocess them'
+    zeta_f = f'zeta_results(regressed-{zeta_on_regressed}_{signal_used.replace('/', '|')}).pkl'
+    print('Using {}'.format(zeta_f))
+    assert os.path.exists(zeta_file := os.path.join(savedir, zeta_f)), 'Need zeta results file to preprocess them'
     assert all(os.path.exists(os.path.join(savedir, f'{condition}_indexing.pkl')) 
                 for condition in conditions), 'Need session indexing files for each condition to correctly split zeta results'
 
@@ -215,16 +227,12 @@ def trials_apply_map(trials_array:np.ndarray[str|int],
             return np.array([np.fromiter(map(lambda s: tmap[s], trials_array[session, :]), dtype = dtype) 
                             for session in range(trials_array.shape[0])])
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-run_zeta', type = str, default = 'no')
-    parser.add_argument('-savedir', type = str, default = '/Volumes/my_SSD/NiNdata/zeta')
-    return parser.parse_args()
 
 def regress_out_raw(signal:np.ndarray,
                     running:np.ndarray | None = None,
                     whisker:np.ndarray | None = None) -> tuple[np.ndarray, int | None]:
     '''
+    Regresses out z-scored running speed and whisker energy out of ∆F/F signal
     Returns: 
         1) regressed-out signal np.ndarray, 
         2) the trials to be discarded for the zeta calculation (frame index) | None if no trials discarded
@@ -248,6 +256,8 @@ def regress_out_raw(signal:np.ndarray,
 
     # exclude timestamps with nan behavior    
     nan_behavior = np.any(np.isnan(X_design), axis = 1)
+    # discard trials from this index onwards
+    discard = None if nan_behavior.sum() == 0 else np.where(np.any(np.isnan(X_design), axis = 1))[0][0]
     X = X_design[~nan_behavior, :] 
     SIG = signal[:, ~nan_behavior]
     # X_design is (timepoints, predictors)
@@ -255,6 +265,7 @@ def regress_out_raw(signal:np.ndarray,
     # signal is (neurons, timepoints)
     n, ts = SIG.shape
     assert t == ts, 'Time dimensions of signal ({}) and design matrix ({}) do not match!'.format(ts, t)
+    # print(discard, t, ts, signal.shape[1])
 
     # regress out simultaneously for all neurons 
     piv = np.linalg.pinv(X)
@@ -268,7 +279,7 @@ def regress_out_raw(signal:np.ndarray,
     # residual
     residual_signal : np.ndarray = SIG - predicted_neurons
 
-    return residual_signal, np.where(np.any(np.isnan(X_design), axis = 1))[0][0] # from which trial onwards nans
+    return residual_signal, discard # from which trial onwards nans
 
 def running_wheel_to_speed(quadrature : np.ndarray) -> np.ndarray:
     # % Mouse speed
@@ -279,11 +290,18 @@ def running_wheel_to_speed(quadrature : np.ndarray) -> np.ndarray:
     return Speed
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-run_zeta', type = str, default = 'no')
+    parser.add_argument('-savedir', type = str, default = '/Volumes/my_SSD/NiNdata/zeta')
+    parser.add_argument('-signal', type = Literal['dF', 'spikeP'], default = 'dF')
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
     args = parse_args()
     if args.run_zeta.lower() in ('y', 'yes', 'true', 't'):
-        resp_indices = responsive_zeta(RUN = True)#, savedir=args.savedir)
+        resp_indices = responsive_zeta(RUN = True, savedir=args.savedir, signal_to_use=args.signal)
         print('Zeta test finished, results saved!')
     else:
         neuron_significance_by_group_and_TT = responsive_zeta(SPECIFIEDcond='g2pre')
-        # breakpoint()

@@ -193,12 +193,12 @@ if strfind(fnSig, '_CASE') % CASE is for file created with CAIMAN
         [info.rois.(fnSig{i})] = tmp.T;
     end
 else % ROIs via SpecSeg
-    load(nameSig, 'den', 'decon', 'sig', 'sigraw',...
+    load(nameSig, 'sig', 'sigraw',...
         'sigCorrected', 'sigrawCorrected', 'sigCorrected_Z',...
-        'denCorrected', 'deconCorrected',...
-        'seal', 'sealBack', 'sealCorrected',...
-        'spike_prob', 'spike_times',...
-        'facemapTraces')
+        'spike_prob', 'facemapTraces')    
+    % 'spike_times','den', 'decon', 'denCorrected', 'deconCorrected',...
+        % 'seal', 'sealBack', 'sealCorrected',...
+        
 end
 
 
@@ -207,15 +207,35 @@ if ~exist('facemapTraces', 'var') % was it in the SPSIG already?
     % Check if facemap data file is present
     fnfacemap = [pnInfo fnbase '_proc.mat'];
     if exist(fnfacemap, 'file')
-        answer = questdlg('Facemap file detected. Data not yet in SPSIG. Put into SPSIG and extract?',...
-                'Facemap?', 'yes', 'no','yes');
-        if strcmp(answer, 'yes')
-            EyeFacemap_RetrieveTraces(fnfacemap, nameSig)
-            load(nameSig, 'facemapTraces')
-        end
+        % answer = questdlg('Facemap file detected. Data not yet in SPSIG. Put into SPSIG and extract?',...
+        %         'Facemap?', 'yes', 'no','yes');
+        % if strcmp(answer, 'yes')
+        fprintf('Adding facemap traces \n')
+        EyeFacemap_RetrieveTraces(fnfacemap, nameSig)
+        load(nameSig, 'facemapTraces')
+        % end
     end
 else
     % Facemap data was in SPSIG and is loaded already
+end
+
+% Check running speed
+if ~isfield(info, 'Run') % running info not present
+    fnquadrature = [pnInfo fnbase '_quadrature.mat'];
+    if exist(fnquadrature, 'file')
+        quad_data = load([fnquadrature '_quadrature.mat'], 'quad_data'); %loads quad_data!
+        fprintf('Adding running speed \n');
+        info.Run.Times = (1:length(quad_data))'*Tframe;
+        quad_data(quad_data < 0) = 0; %get rid of negative artifacts
+        
+        % Mouse speed
+        % quad_data is delta angular value per second
+        % full rotation is 1000 (for 360 degrees)
+        HeadPosRadius = 8.5; % in cms
+        Speed = 2* pi* HeadPosRadius * double(quad_data)/1024;
+        %             info.Run.Speed = smoothG(Speed(:), 5);
+        info.Run.Speed = Speed(:);
+    end
 end
 
 
@@ -258,13 +278,13 @@ if isfield(info, 'frame')
     if exist('sigCorrected','var');   CaSigCorrected = zeros(nStimFrames, nStim, nRois); end
     if exist('sigrawCorrected','var');CaSigRawCorrected = zeros(nStimFrames, nStim, nRois); end
     if exist('sigCorrected_Z','var'); CaSigCorrected_Z = zeros(nStimFrames, nStim, nRois); end
-    if exist('den','var');            CaDen = zeros(nStimFrames, nStim, nRois); end
-    if exist('denCorrected','var');   CaDenCorrected = zeros(nStimFrames, nStim, nRois); end
-    if exist('decon','var');          CaDec = zeros(nStimFrames, nStim, nRois); end
-    if exist('deconCorrected','var'); CaDeconCorrected = zeros(nStimFrames, nStim, nRois); end
-    if exist('seal','var');           CaSeal = zeros(nStimFrames, nStim, nRois); end
-    if exist('sealBack','var');       CaSealBack = zeros(nStimFrames, nStim, nRois); end
-    if exist('sealCorrected','var');  CaSealCorrected = zeros(nStimFrames, nStim, nRois); end
+    % if exist('den','var');            CaDen = zeros(nStimFrames, nStim, nRois); end
+    % if exist('denCorrected','var');   CaDenCorrected = zeros(nStimFrames, nStim, nRois); end
+    % if exist('decon','var');          CaDec = zeros(nStimFrames, nStim, nRois); end
+    % if exist('deconCorrected','var'); CaDeconCorrected = zeros(nStimFrames, nStim, nRois); end
+    % if exist('seal','var');           CaSeal = zeros(nStimFrames, nStim, nRois); end
+    % if exist('sealBack','var');       CaSealBack = zeros(nStimFrames, nStim, nRois); end
+    % if exist('sealCorrected','var');  CaSealCorrected = zeros(nStimFrames, nStim, nRois); end
     if exist('spike_prob', 'var');    CaSpike_prob = zeros(nStimFrames, nStim, nRois); end
     if exist('spike_times', 'var');   CaSpike_times = zeros(nStimFrames, nStim, nRois); end
 
@@ -324,9 +344,9 @@ if isfield(info, 'frame')
             % if exist('decon','var') 
             %     CaDec(:,i,Ri) = [padbefore; decon(smpl,Ri); padafter];
             % end
-            if exist('deconCorrected','var') && all(size(deconCorrected) == size(sig))
-                CaDeconCorrected(:,i,Ri) = [padbefore; deconCorrected(smpl,Ri); padafter];
-            end
+            % if exist('deconCorrected','var') && all(size(deconCorrected) == size(sig))
+            %     CaDeconCorrected(:,i,Ri) = [padbefore; deconCorrected(smpl,Ri); padafter];
+            % end
             % if exist('seal','var')
             %     CaSeal(:,i,Ri) = [padbefore; seal(smpl,Ri); padafter];
             % end
@@ -336,11 +356,11 @@ if isfield(info, 'frame')
             % if exist('sealCorrected','var')
             %     CaSealCorrected(:,i,Ri) = [padbefore; sealCorrected(smpl,Ri); padafter];
             % end
-            if exist('spike_prob', 'var')
+            if exist('spike_prob', 'var') % CASCADE
                 CaSpike_prob(:,i,Ri) = [padbefore; spike_prob(smpl,Ri); padafter];
             end
-            if exist('CaSpike_times', 'var')
-                CaSpike_times(:,i,Ri) = [padbefore; spike_times(smpl,Ri); padafter];
+            % if exist('CaSpike_times', 'var')
+            %     CaSpike_times(:,i,Ri) = [padbefore; spike_times(smpl,Ri); padafter];
             end
             if exist('eyepos','var')
                 eyepos(:,i,:) = [[padbefore, padbefore]; info.eye.pos(smpl, :); [padafter, padafter]];
@@ -353,7 +373,7 @@ if isfield(info, 'frame')
             end
         end
         waitbar(Ri/nRois, hWb);
-    end
+    % end
     close(hWb)
     
     Slices = info.Slices;
@@ -385,15 +405,15 @@ if isfield(info, 'frame')
     if exist('sigCorrected','var');   Res.CaSigCorrected = CaSigCorrected; end
     if exist('sigrawCorrected','var');Res.CaSigRawCorrected = CaSigRawCorrected; end
     if exist('sigCorrected_Z','var'); Res.CaSigCorrected_Z = CaSigCorrected_Z; end
-    if exist('den','var');            Res.CaDen = CaDen; end
-    if exist('denCorrected','var');   Res.CaDenCorrected = CaDenCorrected; end
-    if exist('decon','var');          Res.CaDec = CaDec; end
-    if exist('deconCorrected','var'); Res.CaDeconCorrected = CaDeconCorrected; end
-    if exist('seal','var');           Res.CaSeal = CaSeal; end
-    if exist('sealBack','var');       Res.CaSealBack = CaSealBack; end
-    if exist('sealCorrected','var');  Res.CaSealCorrected = CaSealCorrected; end
-    if exist('spike_times', 'var');   Res.CaSpike_times = CaSpike_times; end
-    if exist('spike_prob', 'var');    Res.CaSpike_prob = CaSpike_prob; end
+    % if exist('den','var');            Res.CaDen = CaDen; end
+    % if exist('denCorrected','var');   Res.CaDenCorrected = CaDenCorrected; end
+    % if exist('decon','var');          Res.CaDec = CaDec; end
+    % if exist('deconCorrected','var'); Res.CaDeconCorrected = CaDeconCorrected; end
+    % if exist('seal','var');           Res.CaSeal = CaSeal; end
+    % if exist('sealBack','var');       Res.CaSealBack = CaSealBack; end
+    % if exist('sealCorrected','var');  Res.CaSealCorrected = CaSealCorrected; end
+    % if exist('spike_times', 'var');   Res.CaSpike_times = CaSpike_times; end
+    if exist('spike_prob', 'var');    Res.:= CaSpike_prob; end % cascade
     if exist('eyepos','var'),         Res.eye.pos = eyepos; end
     if exist('eyesz','var'),          Res.eye.sz = eyesz; end
     if exist('speed','var'),          Res.speed = speed; end

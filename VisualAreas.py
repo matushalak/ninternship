@@ -153,5 +153,5 @@ if __name__ == '__main__':
 
     # Timeseries plots for neurons from different regions
     by_areas_TSPLOT(GROUP_type = 'modulated')
-    # by_areas_TSPLOT(GROUP_type = 'modality_specific')
-    # by_areas_TSPLOT(GROUP_type = 'all')
+    by_areas_TSPLOT(GROUP_type = 'modality_specific')
+    by_areas_TSPLOT(GROUP_type = 'all')

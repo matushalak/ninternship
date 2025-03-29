@@ -1,5 +1,5 @@
 function RunAllenTrialLock()
-% Matus Halak
+% Matus Halak (@matushalak)
 % runs Allen Align and Trial lock on all sessions within parent directory
 % session must include _SPSIG.mat, _log.mat, _normcorr.mat and _CoordinatesXY.png files
 % based on these, the AllenAlign script will run for all sessions and
@@ -47,8 +47,12 @@ for k = 1:length(spsigFiles)
             % Call the functions with the folder and file names
             
             % Adjust the arguments as required by your function definitions
+            fprintf('Adding CASCADE info for %s\n', currentFolder)
+            addSpikeProbToSPSIG(currentFolder, spsigFileName)
+
             fprintf('Starting AllenAllign for %s\n', currentFolder)
             AllenAllign({currentFolder, spsigFileName}, {currentFolder, coordFileName});
+            
             fprintf('Starting TrialLock for %s\n', currentFolder)
             popups = false;
             TrialLock({currentFolder, spsigFileName}, {currentFolder, sbx_normcorrFileName}, {currentFolder, log_FileName}, [1 2], popups);    

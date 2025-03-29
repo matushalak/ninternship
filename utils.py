@@ -29,7 +29,9 @@ def progress_bar(current_iteration: int,
     print(bar + no_bar, f'{progress} %', end='\r')
     
 
-def load_audvis_files(group_condition_name:str)->tuple[dict, dict, DataFrame, ndarray, ndarray, ndarray]:
+def load_audvis_files(group_condition_name:str)->tuple[
+                    tuple[dict, dict, DataFrame, ndarray, ndarray, ndarray], 
+                    ndarray | None]:
     # indexing
     with open(f'{group_condition_name}_indexing.pkl', 'rb') as indx_f:
         indexing = pickle.load(indx_f)
@@ -45,12 +47,18 @@ def load_audvis_files(group_condition_name:str)->tuple[dict, dict, DataFrame, nd
     endings = ('_sig.npy', '_zsig.npy', '_trials.npy')
     sig, z, trials_all =  [load(group_condition_name+ending) for ending in endings]
 
+    # check if cascade file exists
+    if os.path.exists(cascade_file := (group_condition_name + '_CASCADE.npy')):
+        Cascade = load(cascade_file)
+    else:
+        Cascade = None
+
     return (neur_i,
             sess_i,
             ROIs,
             sig, 
             z,
-            trials_all)
+            trials_all), Cascade
 
 # necessary for defining the default dict because lambdas can't be pickled
 def default_neuron_index():
