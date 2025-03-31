@@ -149,7 +149,7 @@ def by_areas_SNAKE():
 
 if __name__ == '__main__':
     # Venn diagram of neuron classes in in the 4 different regions
-    # by_areas_VENN()
+    by_areas_VENN()
 
     # Timeseries plots for neurons from different regions
     by_areas_TSPLOT(GROUP_type = 'modulated')

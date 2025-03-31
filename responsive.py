@@ -97,6 +97,10 @@ def prepare_zeta_params(spsig_file:str,
             whisker = None
         
         # REGRESSING OUT BEHAVIOR
+        if signal_to_use == 'spike_prob':
+            signal = np.nan_to_num(signal) # replaces NaNs with 0s in signal, better for regression and zeta
+            assert not np.any(np.isnan(signal)), 'Spike probability signal array should not include NANs for regression and zeta test'
+        
         signal, discard_trials = regress_out_raw(signal=signal, running=running, whisker=whisker)
         if discard_trials is not None: # throw out timepoints with behavior NANs
             # for purpose of zeta test, throw out those trials where we didn't regress out behavior
@@ -135,13 +139,13 @@ def responsive_zeta (RUN:bool = False, savedir:str = 'pydata', SPECIFIEDcond : s
             session_ranges.append((indx, indx := indx + len(session)))
         all_sessions = g1pre + g1post + g2pre + g2post
         file_signal_info = [(file, signal_to_use, RegressOUT_behavior) for file in all_sessions]
-        print('preparing parameters to run zeta test')
         
+        print('preparing parameters to run zeta test')
         with mp.Pool(processes=mp.cpu_count()) as pool:
             session_params = pool.starmap(prepare_zeta_params, file_signal_info)
-        print('\nRunning Zeta test on all sessions!\n')
         
         # takes really long time
+        print('\nRunning Zeta test on all sessions!\n')
         with mp.Pool(processes=mp.cpu_count()) as pool:
             results = pool.starmap(run_ZETA, session_params) 
         print('Zeta tests finished!')
@@ -294,14 +298,19 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-run_zeta', type = str, default = 'no')
     parser.add_argument('-savedir', type = str, default = '/Volumes/my_SSD/NiNdata/zeta')
-    parser.add_argument('-signal', type = Literal['dF', 'spikeP'], default = 'dF')
+    parser.add_argument('-signal', type = str, default = 'dF')
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = parse_args()
     if args.run_zeta.lower() in ('y', 'yes', 'true', 't'):
-        resp_indices = responsive_zeta(RUN = True, savedir=args.savedir, signal_to_use=args.signal)
+        signal_names = ('df', 'df/f', 'df/f0', 'cascade', 'spike_prob', 'spikes')
+        calcium, cascade = {'df', 'df/f', 'df/f0'}, {'cascade', 'spike_prob', 'spikes'}
+        assert args.signal.lower() in signal_names, 'Enter valid name for signal type: {}'.format(signal_names)
+        sig_type = 'dF/F0' if args.signal.lower() in calcium else 'spike_prob'
+        
+        resp_indices = responsive_zeta(RUN = True, savedir=args.savedir, signal_to_use=sig_type)
         print('Zeta test finished, results saved!')
     else:
         neuron_significance_by_group_and_TT = responsive_zeta(SPECIFIEDcond='g2pre')

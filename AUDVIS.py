@@ -75,15 +75,15 @@ class AUDVIS:
         # z-scored neuropil-corrected, trial-locked ∆F/F signal
         self.zsig = Z 
 
-        # load spike probability estimated using CASCADE algorithm
-        if CASCADE is not None:
-            self.CASCADE = CASCADE
-
         # regress out running speed & OR whisker movement
         print(NAME)
         self.zsig_CORR = self.regress_out_behavior(self.zsig, signalname='zsig')
         # self.signal_CORR = self.regress_out_behavior(self.signal, signalname = 'sig')
-        # self.CASCADE_CORR = self.regress_out_behavior(self.CASCADE, signalname = 'CASCADE')
+
+        # load spike probability estimated using CASCADE algorithm and regress out trial-evoked whisker and running
+        if CASCADE is not None:
+            self.CASCADE = CASCADE
+            self.CASCADE_CORR = self.regress_out_behavior(self.CASCADE, signalname = 'CASCADE')
 
         # per session, identify of all the presented trials
         self.trials = TRIALS_ALL 
