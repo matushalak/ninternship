@@ -1,7 +1,9 @@
 # @matushalak
 # contains calculations to quantify multisensory enhancement / suppression, as well as, direction selectivity
 import numpy as np
-from collections import defaultdict
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 ### ---------- MULTISENSORY INTEGRATION CALCULATIONS ---------------
@@ -86,18 +88,18 @@ def direction_selectivity(FLUORO_RESP: np.ndarray):
     assert not np.isnan(results).any(), 'Output array should not contain NaNs!'
     return results
 
-def DSI(neuron_preferred: np.ndarray, neuron_orth:np.ndarray,
-        window : tuple[int, int] = (16, 32)) -> float:
+def DSI(neuron_preferred: np.ndarray, neuron_orth:np.ndarray) -> float:
     '''
     Calculates Direction-selectivity index (DSI) for one neuron
     defined as in Meijer et al. (2017):
         DSI = (µ_pref - µorth) / √[(sigma_pref + sigma_orth)/2]
     '''
-    pass
+    return (neuron_preferred[:,0,:]#.__abs__() 
+            - neuron_orth[:,0,:]#.__abs__()
+            ) / np.sqrt((neuron_preferred[:,1,:]+neuron_orth[:,1,:]) / 2) 
 
-
-def RCI(preferred_AV:np.ndarray, preferred_1MOD:np.ndarray,
-        window : tuple[int, int] = (16, 32)) -> float:
+# TODO: fix range, should be -1 to 1
+def RCI(preferred_AV:np.ndarray, preferred_1MOD:np.ndarray) -> float:
     '''
     Calculates Response-change index (RSI) for one neurondefined as in Meijer et al. (2017):
         RCI = (Fav - Fv) / (Fav + Fv) for with preferred visual direction
@@ -105,7 +107,7 @@ def RCI(preferred_AV:np.ndarray, preferred_1MOD:np.ndarray,
     
     Fx is defined as the average fluorescence response to that stimulus over stimulus bins and across all trials
     '''
-    pass
+    return (preferred_AV[:,0,:] - preferred_1MOD[:,0,:]) / (preferred_AV[:,0,:] + preferred_1MOD[:,0,:])
 
 
 # TODO: if we want to say that they are direction TUNED (significantly) [and only look at those neurons]
@@ -114,3 +116,40 @@ def DSI_threshold(trial_labels : np.ndarray | list, all_signals) -> float:
     Average 99th percentile of trial-label shuffled DSI distribution as discussed in Meijer et al. (2017)
     '''
     pass
+
+#------- plotting --------
+def scatter_hist_reg_join(MIdata: pd.DataFrame,
+                          NAME: str,
+                          X_VAR: str, Y_VAR:str, HUE_VAR :str, 
+                          kde:bool = False, reg:bool = False, square: bool = False,
+                          colmap: dict[str:str] = {'g1pre' : 'royalblue', 
+                                                   'g1post': 'teal', 
+                                                   'g2pre' : 'tomato', 
+                                                   'g2post': 'crimson'}):
+    
+    minmin = min(MIdata[X_VAR].min(), MIdata[Y_VAR].min())
+    maxmax = max(MIdata[X_VAR].max(), MIdata[Y_VAR].max())
+    diagx = (minmin - .05, maxmax + .05)
+    diagy = diagx
+    colrs = colmap
+    dsi = sns.jointplot(data=MIdata, x=X_VAR, y=Y_VAR, hue = HUE_VAR, kind = 'scatter', 
+                      palette= colrs, joint_kws= {'alpha' : 0.2})
+    plt.plot(diagx, diagy, linestyle = '--', color = 'dimgray')
+    if kde:
+        dsi.plot_joint(sns.kdeplot, levels = 5)
+    dsi.plot_marginals(sns.rugplot, height=-.1, clip_on=False)
+    dsi.plot_marginals(sns.histplot)
+    if reg:
+        for group,gr in MIdata.groupby(HUE_VAR):
+            sns.regplot(x=X_VAR, y=Y_VAR, data=gr, scatter=False, ax=dsi.ax_joint, truncate=False, color = colrs[group])
+    
+    if not square:
+        plt.ylim(MIdata[Y_VAR].min() - .05, MIdata[Y_VAR].max() + .05)
+        plt.xlim(MIdata[X_VAR].min() - .05, MIdata[X_VAR].max() + .05)
+    else:
+        plt.ylim(diagy)
+        plt.xlim(diagx)
+
+    plt.tight_layout()
+    plt.savefig(f'{NAME}.png', dpi = 300)
+    plt.close()
