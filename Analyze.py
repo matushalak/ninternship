@@ -13,16 +13,14 @@ from collections import defaultdict
 from typing import Literal
 import os
 
-# TODO: by brain area (average, snake, Venn Diagram / PieChart)
 # TODO: multisensory integration (for modulated VIS and AUD neurons), response selectivity index
 # TODO: congruent vs incongruent -> FOR MODULATED neurons & for MST_only neurons
-# TODO: anova for detecting responsiveness higher yield?
 
 class Analyze:
     ''' 
     class to perform analyses on neurons from one group and one condition
     '''
-    def __init__(self, av:AUDVIS, signal : Literal['dF/F0', 'spike_prob'] = 'spike_prob', 
+    def __init__(self, av:AUDVIS, signal : Literal['dF/F0', 'spike_prob'] = 'dF/F0', 
                  storage_folder:str = 'results', include_zeta : bool = True):
         self.storage_folder = storage_folder
         
@@ -47,22 +45,30 @@ class Analyze:
 
         if include_zeta:
             # Zeta test results dF/F0 or spike_prob
-            self.TT_zeta = responsive_zeta(SPECIFIEDcond = av.NAME, signal_to_use = self.signal_type)
+            self.TT_zeta = responsive_zeta(SPECIFIEDcond = av.NAME, signal_to_use = 'dF/F0') # NOTE: zeta on regressed-out dF/F0 seems to be the best
 
         # Analyze by trial type
         self.TT_RES, self.TT_STATS, self.byTTS_blc, self.byTTS, self.NEURON_groups = self.tt_average(av, signal_to_use = self.signal_type)
-        # _, _, self.CASCADE, _, _ = self.tt_average(av, signal_to_use = 'spike_prob') # for debugging
+        _, _, self.CASCADE, _, _ = self.tt_average(av, signal_to_use = 'spike_prob') # for debugging
 
     # Analyze average response to trial type
-    # NOTE: currently for z-score data, better to generalize to any signal
     def tt_average(self, av:AUDVIS,
                    method:str = 'zeta',
-                   criterion:float = 0.01, # p-value threshold .05 or .01 (bonferroni corrected - consider different correction)
-                   signal_to_use : Literal['dF/F0', 'spike_prob'] = 'dF/F0'
+                   criterion:float = 0.05, # p-value threshold .05 or .01 (bonferroni corrected - consider different correction)
+                   signal_to_use: Literal['dF/F0', 'spike_prob'] = 'dF/F0',
+                   zsignal: bool = True
                    ) -> tuple[list[ndarray], 
                               list[ndarray], 
                               list[ndarray]]:
-        SIG = av.zsig_CORR if signal_to_use == 'dF/F0' else av.CASCADE_CORR #* self.SF # to convert to est. IFR
+        match signal_to_use, zsignal:
+            case 'dF/F0', False:
+                signal = av.signal_CORR
+            case 'dF/F0', True:
+                signal = av.zsig_CORR
+            case 'spike_prob', _:
+                signal = av.CASCADE_CORR * self.SF # to convert to est. IFR
+
+        SIG = signal 
         # 1. Baseline correct z-scored signal; residual signal without running speed OR whisker movement
         BLC_SIG = av.baseline_correct_signal(signal=SIG)
 
@@ -77,26 +83,29 @@ class Analyze:
         TEST_RESULTS = []
         # TODO: consider different corrections
         corrected_criterion = criterion / len(list(by_tts)) 
-        zeta_crit = (corrected_criterion, 0) if signal_to_use == 'spike_prob' else (corrected_criterion, 0.3)
+        # A single spike in the predictions will have an amplitude of 0.266 and a width (FWHM) of 0.24 seconds.
+        zeta_crit = (corrected_criterion, 0.05) if signal_to_use == 'spike_prob' else (corrected_criterion, 0.3)
         # iterate through trial types
         for tt in by_tts.keys():
             # get indices responsive to that trial type
             responsive_indices, test_res = self.responsive_trial_locked(neurons = by_tts[tt] if method != 'zeta' else self.TT_zeta[tt],
-                                                                        window = av.TRIAL,
+                                                                        # potentially separate analysis into ON-responsive and OFF-responsive
+                                                                        window = (av.TRIAL[0], av.TRIAL[1] #+ (av.TRIAL[0]//2) # add .5 seconds after trial for offset responses
+                                                                                  ), 
                                                                         criterion = (corrected_criterion if method != 'zeta' else zeta_crit
                                                                                      ) if method != 'zscore' else criterion, # multiple comparison correction
                                                                         method = method,
                                                                         blc_data = by_tts_blc[tt] if method == 'zeta' else None)
             if method != 'zscore':
                 TEST_RESULTS.append(test_res)
-            print(by_tts[tt].shape, len(self.TT_zeta[tt]))
+            # print(by_tts[tt].shape, len(self.TT_zeta[tt])) # good debugging check
             # indices, TO LATER IDENTIFY WHICH NEURON IS WHAT NATURE
             responsive_neurs.append(responsive_indices)
             # save baseline corrected signal
             responsive_neurons = by_tts_blc[tt][:,:,responsive_indices]
 
             _, tt_avrg, tt_sem =  calc_avrg_trace(trace=responsive_neurons, time = self.time, 
-                                                    PLOT=False) # for testing set to True to see
+                                                  PLOT=False) # for testing set to True to see
             average_traces.append(tt_avrg)
             sem_traces.append(tt_sem)
         
@@ -130,19 +139,23 @@ class Analyze:
             
             # wilcoxon signed-rank test
             case ('wilcoxon', criterion, (n_trials, n_times, n_nrns)):
-                # NOTE: average over time bins (axis = 0) vs average over baseline vs stimulus window in each trial (axis = 1)(before)
+                # NOTE: average over time bins (axis = 0)[16 vs 16 values] vs average over baseline vs stimulus window in each trial (axis = 1)(before)[90 vs 90 values]
                 bls, trls = np.mean(neurons[:,:window[0],:],axis = 1), np.mean(neurons[:,window[0]:window[1],:], axis = 1)
                 WCOX = wilcoxon(bls, trls, alternative='two-sided')
                 return where(WCOX.pvalue < criterion)[0], WCOX
             
             # already have zeta significances and Zeta values (n_nrns, 2[zeta_p, zeta_score])
+            # consider this for threshold: 
+            # '''The fluorescence response of a neuron in a given trial was defined as 
+            # the average F/F0 over all imaging frames during the 3 s stimulus period.''' Meijer (2017)
             case ('zeta', (p_criterion, amp_criterion), (n_nrns, stats)):
                 # p-value below threshold
                 assert blc_data is not None, 'Need baseline-corrected data to select based on amplitude threshold'
-                return where((neurons[:,0] < p_criterion) & 
-                             (np.mean(blc_data, axis = 0)[window[0]:window[1]+(window[0]//2),:].max(axis = 0) >= amp_criterion))[0], neurons
-        
-            # TODO: z-score proportion trials (zscore > x in X proportion of trials)
+                responsive =  where((neurons[:,0] < p_criterion) & (
+                    (np.mean(blc_data, axis = 0)[window[0]:window[1],:].max(axis = 0) >= amp_criterion) | 
+                    # include inhibited
+                    (np.mean(blc_data, axis = 0)[window[0]:window[1],:].min(axis = 0) <= -amp_criterion)))[0]
+                return responsive, neurons
             
     @staticmethod
     def neuron_groups(responsive:list[ndarray]) -> dict[str : set]:
@@ -154,19 +167,19 @@ class Analyze:
         '''            
         resp_sets = [set(arr) for arr in responsive]
         # First define the big sets as all neurons that showed response to ONE of the AUD / VIS / MST trials
-        # AUD: union between TT 0 (Al) and 3 (Ar)
-        AUD_set = resp_sets[0] | resp_sets[3] 
         # VIS: union between TT 6 (Vl) and 7 (Vr)
         VIS_set = resp_sets[6] | resp_sets[7] 
+        # AUD: union between TT 0 (Al) and 3 (Ar)
+        AUD_set = resp_sets[0] | resp_sets[3] 
         # MST: union between TT {1 (AlVl) and 5 (ArVr) = CONGRUENT} && {2 (AlVr) and 4 (ArVl) = INCONGRUENT}
         MST_set = resp_sets[1] | resp_sets[5] | resp_sets[2] | resp_sets[4] 
         
-        # Modulated
-        AUD_modulated = (AUD_set & MST_set) - VIS_set
-        VIS_modulated = (VIS_set & MST_set) - AUD_set 
-
         # Always responding (most)
         ALWAYS_responding = VIS_set & MST_set & AUD_set
+        
+        # Modulated
+        VIS_modulated = (VIS_set & MST_set) - ALWAYS_responding 
+        AUD_modulated = (AUD_set & MST_set) - ALWAYS_responding
 
         # venn3(subsets=(VIS_set, AUD_set, MST_set), set_labels = ('VIS', 'AUD', 'MST'), set_colors = ('g', 'r', 'purple'))
 
@@ -183,16 +196,21 @@ class Analyze:
                 'TOTAL' : MST_set | AUD_set | VIS_set,
                 'diagram_setup' : [(VIS_set, AUD_set, MST_set), ('VIS', 'AUD', 'MST'), ('g', 'r', 'purple')]}
     
+    # TODO> potentially show only response to preferred direction, now averages preferred and nonpreferred
     def tt_BY_neuron_group(self, 
                            GROUP:Literal['VIS', 'AUD', 'MST'] = 'VIS',
                            GROUP_type:Literal['modulated', 'modality_specific', 'all'] = 'modulated',
-                           BrainRegionIndices : np.ndarray | None = None
+                           BrainRegionIndices : np.ndarray | None = None,
+                           SIGNALS_TO_USE: dict[int : ndarray] | None = None
                            ) -> list[tuple[ndarray, ndarray]]:
+        TT_blc_signal = self.byTTS_blc if SIGNALS_TO_USE is None else SIGNALS_TO_USE
+        assert isinstance(TT_blc_signal, dict) & all(isinstance(TT_blc_signal[tt], np.ndarray) for tt in TT_blc_signal.keys()
+                                                     ), 'Provided SIGNALS to use is not a dictionary or doesnt contain np.ndarrays with signal'
         # combine stimuli VIS trials (6, 7), AUD trials (0, 3), MST congruent (1, 5) MST incongruent trials (2, 4)
-        VIS_trials = np.concatenate([self.byTTS_blc[6], self.byTTS_blc[7]]) # 0
-        AUD_trials = np.concatenate([self.byTTS_blc[0], self.byTTS_blc[3]]) # 1
-        MST_congruent_trials = np.concatenate([self.byTTS_blc[1], self.byTTS_blc[5]]) # 2
-        MST_incongruent_trials = np.concatenate([self.byTTS_blc[2], self.byTTS_blc[4]]) # 3
+        VIS_trials = np.concatenate([TT_blc_signal[6], TT_blc_signal[7]]) # 0
+        AUD_trials = np.concatenate([TT_blc_signal[0], TT_blc_signal[3]]) # 1
+        MST_congruent_trials = np.concatenate([TT_blc_signal[1], TT_blc_signal[5]]) # 2
+        MST_incongruent_trials = np.concatenate([TT_blc_signal[2], TT_blc_signal[4]]) # 3
         
         signals = (VIS_trials, AUD_trials, MST_congruent_trials, MST_incongruent_trials)
 
@@ -224,13 +242,12 @@ class Analyze:
         #                                                window = self.TRIAL_FRAMES,
         #                                                criterion = 0.01 / 8 if test != 'zeta' else (0.01 / 8, .3),
         #                                                method=test,
-        #                                                blc_data= None if test != 'zeta' else self.byTTS_blc[trial])
+        #                                                blc_data= None if test != 'zeta' else TT_blc_signal[trial])
         #         STATS[trial].append(stat)
 
-        # # TODO: incorporate CASCADE into plot
-        # IFR = [self.CASCADE[tt] * self.SF for tt in self.CASCADE]
+        # IFR = [self.CASCADE[tt] for tt in self.CASCADE]
         # for index in indices:
-        #     plot_1neuron(all_trials_signal=self.byTTS_blc,
+        #     plot_1neuron(all_trials_signal=TT_blc_signal,
         #                  single_neuron=index,
         #                  trial_names=self.tt_names,
         #                  time = self.time,
@@ -252,6 +269,7 @@ def calc_avrg_trace(trace:ndarray, time:ndarray, PLOT:bool = True
     
     For spike_prob (CASCADE input) the output is the estimated n_spikes per time_bin
     '''
+    trace = np.squeeze(trace)
     dims = trace.shape
 
     match dims:
@@ -264,6 +282,9 @@ def calc_avrg_trace(trace:ndarray, time:ndarray, PLOT:bool = True
         case (n_trials, n_times, n_neurons):
             avrg = trace.mean(axis = (0, 2))
             SEM = sem(trace, axis = (0, 2)) # std huge error bars
+
+        case _:
+            raise ValueError('Trace should be a ndarray with shape (ntrials, ntimes) or (ntrials, ntimes, nneurons).\n Instead provided trace is {} with shape {}'.format(type(trace), dims))
             
     if PLOT:
         plot_avrg_trace(time, avrg, SEM, title=f'{n_neurons}')    
@@ -271,10 +292,10 @@ def calc_avrg_trace(trace:ndarray, time:ndarray, PLOT:bool = True
     return (time, avrg, SEM)
 
 
-def plot_avrg_trace(time:ndarray, avrg:ndarray, SEM:ndarray,
+def plot_avrg_trace(time:ndarray, avrg:ndarray, SEM:ndarray | None = None,
                     # optional arguments enable customization when this is passed into a function that assembles the plots in a grid
                     Axis:artist = plt, title:str = False, label:str = False, vspan:bool = True,
-                    col:str = False, lnstl:str = False): 
+                    col:str = False, lnstl:str = False, alph:float = 1): 
     '''
     can be used standalone or as part of larger plotting function
     '''
@@ -284,16 +305,17 @@ def plot_avrg_trace(time:ndarray, avrg:ndarray, SEM:ndarray,
     if vspan:
         Axis.axvspan(0,1,alpha = 0.05, color = 'navajowhite') # HARDCODED TODO: change based on trial duration
     
-    Axis.fill_between(time, 
-                    avrg - SEM,
-                    avrg + SEM,
-                    alpha = 0.35,
-                    color = col if col else 'k',
-                    linestyle = lnstl if lnstl else '-')
+    if SEM is not None:
+        Axis.fill_between(time, 
+                        avrg - SEM,
+                        avrg + SEM,
+                        alpha = 0.35 * alph,
+                        color = col if col else 'k',
+                        linestyle = lnstl if lnstl else '-')
     if label:
-        Axis.plot(time, avrg, label = label, color = col if col else 'k', linestyle = lnstl if lnstl else '-')
+        Axis.plot(time, avrg, label = label, color = col if col else 'k', linestyle = lnstl if lnstl else '-', alpha = alph)
     else:
-        Axis.plot(time, avrg, color = col if col else 'k', linestyle = lnstl if lnstl else '-')
+        Axis.plot(time, avrg, color = col if col else 'k', linestyle = lnstl if lnstl else '-', alpha = alph)
 
     if Axis == plt:
         plt.tight_layout()
@@ -338,7 +360,7 @@ def plot_1neuron(all_trials_signal:list[np.ndarray],
     plt.show()
     plt.close()
     
-
+# TODO: add for Neuron-type (& by brain region) analyses !!!
 def build_snake_grid(tt_grid):
     """
     Given the original tt_grid (mapping trial_type -> (row, col) in 2x4),
@@ -388,6 +410,105 @@ def snake_plot(all_neuron_averages:ndarray,
     if SHOW:
         plt.show()
 
+def preferred_direction(BLC_SIGNAL:dict[int:ndarray],
+                        STATS:list[ndarray] | None = None,
+                        window : tuple[int, int] = (16,32)
+                        )-> dict[int : # neurons 
+                                dict[str : # 'VIS' vs 'AUD' preferences
+                                    dict[int : # integer identity of VIS / AUD trial corresponding to the preferred SIDE
+                                        dict[str : # congruent / incongruent multisensory trial to compare
+                                            int # integer identity of MST trial corresponding to the preferred SIDE
+                                            ]]]]:
+        '''
+        INPUTS:
+        --------
+            BLC_SIGNAL is assumed to be a list with n_trial_types entries, each containing 
+                (ntrials, ntimes, n_neurons) ndarray
+            STATS is assumed to be a list with n_trial_types entries, each containing 
+                (n_neurons, n_stats), (works for zeta stats results)
+        
+        OUTPUT:
+        ---------
+            returns for each neuron the direction to which the neuron showed the biggest deviation from baseline
+            1.5 s after stimulus onset
+        '''
+        # VIS trials (6-L, 7-R), AUD trials (L-0, R-3)
+        preferred_dir = defaultdict(dict)
+        visaud = {6,7,0,3} # int identities of conditions
+        n_neurons = BLC_SIGNAL[0].shape[0]
+
+        vis_map = ({
+            # (Vl) left preference
+            6:{'congruent':1, # AlVl
+               'incongruent':4}},{ # ArVl
+            # (Vr) right preference
+            7:{'congruent':5, # ArVr
+               'incongruent':2} # AlVr
+               })
+        
+        aud_map = ({
+            # (Al) left preference
+            0:{'congruent':1, # AlVl
+               'incongruent':2}},{ # AlVr
+            # (Ar) right preference
+            3:{'congruent':5, # ArVr
+               'incongruent':4} # ArVl
+               })
+
+        # get preferred direction for each neuron for both visual and auditory stimuli
+        for ineuron in range(n_neurons):
+            extreme_responses = dict()
+            for itt, TT_signal in BLC_SIGNAL.items():
+                # according to Meijer (2017) also neurons that were only direction selective in AV condition should be indluded
+                if itt not in visaud:
+                    continue # don't care about multisensory trials here
+                assert TT_signal.shape[0] == n_neurons, 'Need info about all neurons for all trial types!'
+                average_signal_trial_window = TT_signal.mean(axis = 0)[window[0]:window[1], ineuron] 
+                # return maximum deviation from baseline
+                extreme_responses[itt] = np.max(np.abs(average_signal_trial_window))
+            # left 6, right 7
+            vis = (extreme_responses[6], extreme_responses[7])
+            # left 0, right 3
+            aud = (extreme_responses[0], extreme_responses[3])
+
+            VIS_pref = np.argmax(vis)
+            AUD_pref = np.argmax(aud)
+
+            # add for each neuron
+            preferred_dir[ineuron]['VIS'] = vis_map[VIS_pref]
+            preferred_dir[ineuron]['AUD'] = aud_map[AUD_pref]
+        
+        return preferred_dir
+
+
+def DSI(neuron_preferred: ndarray, neuron_orth:ndarray,
+        window : tuple[int, int] = (16, 32)) -> float:
+    '''
+    Calculates Direction-selectivity index (DSI) for one neuron
+    defined as in Meijer et al. (2017):
+        DSI = (µ_pref - µorth) / √[(sigma_pref + sigma_orth)/2]
+    '''
+    pass
+
+
+def RCI(preferred_AV:ndarray, preferred_1MOD:ndarray,
+        window : tuple[int, int] = (16, 32)) -> float:
+    '''
+    Calculates Response-change index (RSI) for one neurondefined as in Meijer et al. (2017):
+        RCI = (Fav - Fv) / (Fav + Fv) for with preferred visual direction
+        RCI = (Fav - Fa) / (Fav + Fa) for with preferred auditory direction
+    
+    Fx is defined as the average fluorescence response to that stimulus over stimulus bins and across all trials
+    '''
+    pass
+
+
+# TODO: if we want to say that they are direction TUNED (significantly) [and only look at those neurons]
+def DSI_threshold(trial_labels : ndarray | list, all_signals) -> float:
+    '''
+    Average 99th percentile of trial-label shuffled DSI distribution as discussed in Meijer et al. (2017)
+    '''
+    pass
 
 ###--------------------------------SPECIFIC analyses----------------------------------------------------
 # overall, not split into neuron groups based on Venn diagram
@@ -470,9 +591,11 @@ def neuron_typesVENN_analysis():
 # snake plot and average plot for different neuron types (based on venn diagram)
 def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated', 
                                                 'modality_specific', 
-                                                'all'] = 'modulated'):
+                                                'all'] = 'modulated',
+                             add_CASCADE: bool = False, 
+                             pre_post: Literal['pre', 'post', 'both'] = 'pre'):
     # Load in all data and perform necessary calculations
-    AVS : list[AUDVIS] = load_in_data() # -> av1, av2, av3, av4
+    AVS : list[AUDVIS] = load_in_data(pre_post=pre_post) # -> av1, av2, av3, av4
     ANS : list[Analyze] = [Analyze(av) for av in AVS]
 
     # prepare everything for plotting
@@ -483,13 +606,25 @@ def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated',
         tsnrows = 3
         GROUPS = ('VIS', 'AUD', 'MST')
 
-    linestyles = ('-', '--', '-', '--') # pre -, post :
-    colors = {'VIS':('darkgreen', 'darkgreen' ,'mediumseagreen', 'mediumseagreen'),
-              'AUD':('darkred', 'darkred', 'coral', 'coral'),
-              'MST':('darkmagenta','darkmagenta', 'orchid', 'orchid')}
+    match pre_post:
+        case 'both':
+            linestyles = ('-', '--', '-', '--') # pre -, post --
+            colors = {'VIS':('darkgreen', 'darkgreen' ,'mediumseagreen', 'mediumseagreen'),
+                    'AUD':('darkred', 'darkred', 'coral', 'coral'),
+                    'MST':('darkmagenta','darkmagenta', 'orchid', 'orchid')}
+        case 'pre':
+            linestyles = ('-', '-') # pre -, 
+            colors = {'VIS':('darkgreen','mediumseagreen'),
+                    'AUD':('darkred', 'coral'),
+                    'MST':('darkmagenta', 'orchid')}
+        case 'post':
+            linestyles = ('--', '--') # pre -, 
+            colors = {'VIS':('darkgreen','mediumseagreen'),
+                    'AUD':('darkred', 'coral'),
+                    'MST':('darkmagenta', 'orchid')}
 
     tsncols = 4 # 4 combined trial types
-    snake_rows, snake_cols = 2, 2
+    # snake_rows, snake_cols = 2, 2
 
     # prepare timeseries figure and axes
     ts_fig, ts_ax = plt.subplots(nrows=tsnrows, ncols=tsncols, 
@@ -498,11 +633,18 @@ def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated',
     for ig, group in enumerate(GROUPS):
         for icond, (AV, AN) in enumerate(zip(AVS, ANS)):
             TT_info, group_size = AN.tt_BY_neuron_group(group, GROUP_type)
+            # also plot cascade traces
+            if add_CASCADE:
+                CASCADE_TT_info, _ = AN.tt_BY_neuron_group(group, GROUP_type, SIGNALS_TO_USE= AN.CASCADE)
             for itt, (avr, sem) in enumerate(TT_info):
                 plot_avrg_trace(time = AN.time, avrg=avr, SEM = sem, Axis=ts_ax[ig, itt],
                                 title = trials[itt] if ig == 0 else False,
                                 label = f'{AV.NAME} ({group_size})' if itt == len(list(TT_info)) - 1 else None, 
                                 col = colors[group][icond], lnstl=linestyles[icond])
+                if add_CASCADE:
+                    plot_avrg_trace(time = AN.time, avrg=CASCADE_TT_info[itt][0], SEM = None, Axis=ts_ax[ig, itt],
+                                    label = 'Est. FR' if itt == len(list(TT_info)) - 1 else None, 
+                                    col = colors[group][icond], lnstl=linestyles[icond], alph=.5)
                 if icond == len(AVS) - 1:
                     if ig == len(GROUPS) - 1:
                         ts_ax[ig, itt].set_xlabel('Time (s)')
@@ -520,8 +662,11 @@ def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated',
 
     ts_fig.tight_layout(rect = [0,0,0.85,1])
     ts_fig.legend(loc = 'outside center right')
-    ts_fig.savefig(f'Neuron_type({GROUP_type})_average_res.png', dpi = 1000)
+    ts_fig.savefig(f'Neuron_type({GROUP_type})_average_res({pre_post}).png', dpi = 1000)
 
+# ---------------------- MULTISENSORY ENHANCEMENT ANALYSIS -----------------------------
+# TODO: update neuronal index with preferred direction (& save)
+    # loop through neurons, see if neuron already in one of the SETs; if in VIS set (after zeta + threshold) choose lower p-value as threshold
 
 
 ### Main block that runs the file as a script
@@ -531,10 +676,11 @@ if __name__ == '__main__':
     
     # Neuron types analysis (venn diagrams)
     # neuron_typesVENN_analysis()
-    NEURON_TYPES_TT_ANALYSIS('modulated')
-    # NEURON_TYPES_TT_ANALYSIS('modality_specific')
-    # NEURON_TYPES_TT_ANALYSIS('all')
+    NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
+    NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
+    NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=True, pre_post='pre')
 
     # Trial type analysis (average & snake plot) - all neurons, not taking into account neuron types groups
-    # TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='signif')
+    # NOTE: doesnt work well on cascade
+    # TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='onset')
     

@@ -211,7 +211,8 @@ def process_zeta_output(savedir:str = 'pydata', SPECIFIEDcond : str | None = Non
                 preprocessed_zeta[conditions[icond]][tt].append((neuron[tt]['zetaP'], 
                                                     neuron[tt]['ZETA']))
                 progress_bar(current_iteration = (iteration := iteration + 1),
-                                total_iterations = sum(dims.values()) * len(neuron))
+                                total_iterations = sum(dims.values()) * len(neuron),
+                                character='z')
     
     cond_message =  f' for {SPECIFIEDcond}' if SPECIFIEDcond is not None else ''
     print(f'\nDone preprocessing zeta{cond_message}!')

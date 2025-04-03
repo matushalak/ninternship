@@ -76,9 +76,11 @@ def by_areas_VENN():
 #   that once arguments passed in, automatically executes the plot
 def by_areas_TSPLOT(GROUP_type:Literal['modulated', 
                                         'modality_specific', 
-                                        'all'] = 'modulated'):
+                                        'all'] = 'modulated',
+                    add_CASCADE: bool = False, 
+                    pre_post: Literal['pre', 'post', 'both'] = 'pre'):
     # Load in all data and perform necessary calculations
-    AVs : list[AUDVIS] = load_in_data() # -> av1, av2, av3, av4
+    AVs : list[AUDVIS] = load_in_data(pre_post=pre_post) # -> av1, av2, av3, av4
     ANs : list[Analyze] = [Analyze(av) for av in AVs]
 
     # prepare everything for plotting
@@ -89,10 +91,22 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
         tsnrows = 3
         NEURON_types = ('VIS', 'AUD', 'MST')
 
-    linestyles = ('-', '--', '-', '--') # pre -, post :
-    colors = {'VIS':('darkgreen', 'darkgreen' ,'mediumseagreen', 'mediumseagreen'),
-              'AUD':('darkred', 'darkred', 'coral', 'coral'),
-              'MST':('darkmagenta','darkmagenta', 'orchid', 'orchid')}
+    match pre_post:
+        case 'both':
+            linestyles = ('-', '--', '-', '--') # pre -, post --
+            colors = {'VIS':('darkgreen', 'darkgreen' ,'mediumseagreen', 'mediumseagreen'),
+                    'AUD':('darkred', 'darkred', 'coral', 'coral'),
+                    'MST':('darkmagenta','darkmagenta', 'orchid', 'orchid')}
+        case 'pre':
+            linestyles = ('-', '-') # pre -, 
+            colors = {'VIS':('darkgreen','mediumseagreen'),
+                    'AUD':('darkred', 'coral'),
+                    'MST':('darkmagenta', 'orchid')}
+        case 'post':
+            linestyles = ('--', '--') # pre -, 
+            colors = {'VIS':('darkgreen','mediumseagreen'),
+                    'AUD':('darkred', 'coral'),
+                    'MST':('darkmagenta', 'orchid')}
     
     tsncols = 4 # 4 combined trial types
     # prepare timeseries figure and axes for four separate figures
@@ -112,7 +126,10 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                 area_indices = AR.region_indices[area_name]
                 print(AV.NAME, group, area_name)
                 TT_info, group_size = AN.tt_BY_neuron_group(group, GROUP_type, 
-                                                            BrainRegionIndices = area_indices) 
+                                                            BrainRegionIndices = area_indices)
+                # also plot cascade traces
+                if add_CASCADE:
+                    CASCADE_TT_info, _ = AN.tt_BY_neuron_group(group, GROUP_type, SIGNALS_TO_USE= AN.CASCADE) 
                 
                 # area determines which Artists we use
                 ts_fig, ts_ax = Artists[iarea]
@@ -122,6 +139,11 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                                     title = trials[itt] if ig == 0 else False,
                                     label = f'{AV.NAME} ({group_size})' if itt == len(list(TT_info)) - 1 else None, 
                                     col = colors[group][icond], lnstl=linestyles[icond])
+                    
+                    if add_CASCADE:
+                        plot_avrg_trace(time = AN.time, avrg=CASCADE_TT_info[itt][0], SEM = None, Axis=ts_ax[ig, itt],
+                                        label = 'Est. FR' if itt == len(list(TT_info)) - 1 else None, 
+                                        col = colors[group][icond], lnstl=linestyles[icond], alph=.5)
 
                     if icond == len(AVs) - 1:
                         if ig == len(NEURON_types) - 1:
@@ -142,16 +164,17 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                     ts_fig.suptitle(f'{area_name} neurons')
                     ts_fig.tight_layout(rect = [0,0,0.85,1])
                     ts_fig.legend(loc = 'outside center right')
-                    ts_fig.savefig(f'[{area_name.replace('/', '|')}]Neuron_type({GROUP_type})_average_res.png', dpi = 200)
+                    ts_fig.savefig(f'[{area_name.replace('/', '|')}]Neuron_type({GROUP_type})_average_res({pre_post}).png', dpi = 200)
 
+# TODO: once by neuron group implemented, this should be straightforward
 def by_areas_SNAKE():
     pass
 
 if __name__ == '__main__':
     # Venn diagram of neuron classes in in the 4 different regions
-    by_areas_VENN()
+    # by_areas_VENN()
 
     # Timeseries plots for neurons from different regions
-    by_areas_TSPLOT(GROUP_type = 'modulated')
-    by_areas_TSPLOT(GROUP_type = 'modality_specific')
-    by_areas_TSPLOT(GROUP_type = 'all')
+    by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=True)
+    by_areas_TSPLOT(GROUP_type = 'modality_specific', add_CASCADE=True)
+    by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=True)

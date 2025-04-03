@@ -78,7 +78,7 @@ class AUDVIS:
         # regress out running speed & OR whisker movement
         print(NAME)
         self.zsig_CORR = self.regress_out_behavior(self.zsig, signalname='zsig')
-        # self.signal_CORR = self.regress_out_behavior(self.signal, signalname = 'sig')
+        self.signal_CORR = self.regress_out_behavior(self.signal, signalname = 'sig')
 
         # load spike probability estimated using CASCADE algorithm and regress out trial-evoked whisker and running
         if CASCADE is not None:
@@ -490,7 +490,7 @@ def parse_args():
     parser.add_argument('-create_files', type = str, default = 'no')
     return parser.parse_args()
 
-def load_in_data()->tuple[AUDVIS, AUDVIS, AUDVIS, AUDVIS]:
+def load_in_data(pre_post: Literal['pre', 'post', 'both'] = 'both')->tuple[AUDVIS, AUDVIS, AUDVIS, AUDVIS]:
     # Group - condition
     data = {1:{'pre':None,
             'post':None},
@@ -502,7 +502,6 @@ def load_in_data()->tuple[AUDVIS, AUDVIS, AUDVIS, AUDVIS]:
     for group_name in names:
         params, Cascade = load_audvis_files(os.path.join('pydata', group_name))
         AVclass = AUDVIS(*params, NAME = group_name, CASCADE=Cascade)
-        # by_trials = AVclass.separate_signal_by_trial_types(AVclass.signal)
 
         g = int(group_name[1])
         cond = group_name[2:]
@@ -514,9 +513,14 @@ def load_in_data()->tuple[AUDVIS, AUDVIS, AUDVIS, AUDVIS]:
     av3 = data[2]['pre']
     av4 = data[2]['post']
     
-    return av1, av2, av3, av4
-
-
+    match pre_post:
+        case 'both':
+            return av1, av2, av3, av4 # 'g1pre', 'g1post', 'g2pre', 'g2post'
+        case 'pre':
+            return av1, av3 # 'g1pre', 'g2pre'
+        case 'post':
+            return av2, av4 # 'g1post', 'g2post'
+    
 
 # if ran as a script, initializes 4 AUDVIS classes with loaded data and saves them
 if __name__ == '__main__':
