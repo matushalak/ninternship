@@ -1,4 +1,5 @@
 # @matushalak
+# contains loader and random functions
 import os
 import re
 import pickle

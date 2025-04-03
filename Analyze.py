@@ -1,21 +1,26 @@
 #@matushalak
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+
 from AUDVIS import AUDVIS, Behavior, load_in_data
+from analysis_utils import calc_avrg_trace, build_snake_grid, snake_plot, plot_avrg_trace
+import multisens_calcs as MScalc
 from Responsive import responsive_zeta
 from utils import show_me
-import matplotlib.pyplot as plt
+
 from matplotlib import artist
 from matplotlib_venn import venn3
-import seaborn as sns
-from numpy import ndarray, arange, where, unique, argsort, argmax
-import numpy as np
-from scipy.stats import wilcoxon, ttest_rel, sem, norm, _result_classes
+from numpy import ndarray, arange, where, unique
+from scipy.stats import wilcoxon, ttest_rel
 from collections import defaultdict
 from typing import Literal
-import os
 
 # TODO: multisensory integration (for modulated VIS and AUD neurons), response selectivity index
 # TODO: congruent vs incongruent -> FOR MODULATED neurons & for MST_only neurons
 
+# ----------- Main ANALYSIS class -----------
 class Analyze:
     ''' 
     class to perform analyses on neurons from one group and one condition
@@ -47,9 +52,16 @@ class Analyze:
             # Zeta test results dF/F0 or spike_prob
             self.TT_zeta = responsive_zeta(SPECIFIEDcond = av.NAME, signal_to_use = 'dF/F0') # NOTE: zeta on regressed-out dF/F0 seems to be the best
 
+        # Get Fluorescence response statistics
+        self.FLUORO_RESP: np.ndarray = self.fluorescence_response(
+            signal = av.separate_signal_by_trial_types(
+                av.baseline_correct_signal(av.signal_CORR, baseline_frames=self.TRIAL_FRAMES[0])),
+            window = self.TRIAL_FRAMES)
+        
         # Analyze by trial type
         self.TT_RES, self.TT_STATS, self.byTTS_blc, self.byTTS, self.NEURON_groups = self.tt_average(av, signal_to_use = self.signal_type)
         _, _, self.CASCADE, _, _ = self.tt_average(av, signal_to_use = 'spike_prob') # for debugging
+
 
     # Analyze average response to trial type
     def tt_average(self, av:AUDVIS,
@@ -113,6 +125,7 @@ class Analyze:
                 responsive_neurs # ndarray at each tt idex gives neurons responsive to that tt
                 ), TEST_RESULTS, by_tts_blc, by_tts, self.neuron_groups(responsive = responsive_neurs)
 
+
     def responsive_trial_locked(self, neurons:ndarray | list, window:tuple[int, int],
                                 criterion:float|tuple[float,float], method:str, blc_data : ndarray | None = None)-> tuple[ndarray, ndarray | None]:
         '''
@@ -156,7 +169,8 @@ class Analyze:
                     # include inhibited
                     (np.mean(blc_data, axis = 0)[window[0]:window[1],:].min(axis = 0) <= -amp_criterion)))[0]
                 return responsive, neurons
-            
+
+
     @staticmethod
     def neuron_groups(responsive:list[ndarray]) -> dict[str : set]:
         '''
@@ -195,7 +209,8 @@ class Analyze:
                 'ALWAYS_responding' : ALWAYS_responding,
                 'TOTAL' : MST_set | AUD_set | VIS_set,
                 'diagram_setup' : [(VIS_set, AUD_set, MST_set), ('VIS', 'AUD', 'MST'), ('g', 'r', 'purple')]}
-    
+
+
     # TODO> potentially show only response to preferred direction, now averages preferred and nonpreferred
     def tt_BY_neuron_group(self, 
                            GROUP:Literal['VIS', 'AUD', 'MST'] = 'VIS',
@@ -258,259 +273,56 @@ class Analyze:
         return [(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
                 for trace in neurons_to_study)], len(indices)
 
-
-###-------------------------------- GENERAL Helper functions --------------------------------
-def calc_avrg_trace(trace:ndarray, time:ndarray, PLOT:bool = True
-                    )->tuple[ndarray, ndarray, ndarray]:
-    '''
-    Here trace (∆F/F or spike_prob) to be averaged for: 
-        - one neuron: (trials, times); 
-        - multiple responsive neurons: (trials, times, responsive_neurons)
-    
-    For spike_prob (CASCADE input) the output is the estimated n_spikes per time_bin
-    '''
-    trace = np.squeeze(trace)
-    dims = trace.shape
-
-    match dims:
-        # plot average trace of single neuron
-        case (n_trials, n_times):
-            avrg = trace.mean(axis = 0)
-            SEM = sem(trace, axis = 0) # std huge error bars
-            
-        # plot average trace of responsive neurons
-        case (n_trials, n_times, n_neurons):
-            avrg = trace.mean(axis = (0, 2))
-            SEM = sem(trace, axis = (0, 2)) # std huge error bars
-
-        case _:
-            raise ValueError('Trace should be a ndarray with shape (ntrials, ntimes) or (ntrials, ntimes, nneurons).\n Instead provided trace is {} with shape {}'.format(type(trace), dims))
-            
-    if PLOT:
-        plot_avrg_trace(time, avrg, SEM, title=f'{n_neurons}')    
-    
-    return (time, avrg, SEM)
-
-
-def plot_avrg_trace(time:ndarray, avrg:ndarray, SEM:ndarray | None = None,
-                    # optional arguments enable customization when this is passed into a function that assembles the plots in a grid
-                    Axis:artist = plt, title:str = False, label:str = False, vspan:bool = True,
-                    col:str = False, lnstl:str = False, alph:float = 1): 
-    '''
-    can be used standalone or as part of larger plotting function
-    '''
-    if title:
-        Axis.set_title(title)  
-    
-    if vspan:
-        Axis.axvspan(0,1,alpha = 0.05, color = 'navajowhite') # HARDCODED TODO: change based on trial duration
-    
-    if SEM is not None:
-        Axis.fill_between(time, 
-                        avrg - SEM,
-                        avrg + SEM,
-                        alpha = 0.35 * alph,
-                        color = col if col else 'k',
-                        linestyle = lnstl if lnstl else '-')
-    if label:
-        Axis.plot(time, avrg, label = label, color = col if col else 'k', linestyle = lnstl if lnstl else '-', alpha = alph)
-    else:
-        Axis.plot(time, avrg, color = col if col else 'k', linestyle = lnstl if lnstl else '-', alpha = alph)
-
-    if Axis == plt:
-        plt.tight_layout()
-        plt.show()
-        plt.close()
-
-def plot_1neuron(all_trials_signal:list[np.ndarray], 
-                 single_neuron:int,
-                 trial_names:list[str], time:ndarray,
-                 CASCADE : list[np.ndarray] = None,
-                 STATS : list[object, object, np.ndarray] | None = None):
-    tt_grid = {0:(0,2),1:(0,0),2:(0,1),3:(1,2),
-               4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
-    plt.close()
-    fig, axs = plt.subplots(nrows = 2, ncols = 4, sharey = 'row', sharex='col', 
-                            figsize = (4 * 5, 2*4))
-    # for each trial type
-    for itt, ttsig in enumerate(all_trials_signal.values()):
-        trial_STATS = STATS[itt]
-        zetalabel = f'ZETA: ({trial_STATS[0][single_neuron,:].round(3)})\n'
-        ttestlabel = f'TTEST: {(float(round(trial_STATS[1].pvalue[single_neuron],3)), float(round(trial_STATS[1].statistic[single_neuron], 3)))}\n'
-        wilcoxonlabel = f'WILCOXON: {(float(round(trial_STATS[2].pvalue[single_neuron], 3)), float(round(trial_STATS[2].statistic[single_neuron], 3)))}\n'
-
-        if CASCADE is not None:
-            axCASC = axs[tt_grid[itt]].twinx()
-        axs[tt_grid[itt]].axvspan(0,1,alpha = 0.1, color = 'khaki')
-        neuron_all_trials = ttsig[:,:,single_neuron] 
-        # plot all raw traces for each trial
-        for i_trial in range(neuron_all_trials.shape[0]):
-            axs[tt_grid[itt]].plot(time, neuron_all_trials[i_trial, :], alpha = 0.05, color = 'blue')
-            if CASCADE is not None:
-                axCASC.plot(time, CASCADE[itt][i_trial, :, single_neuron], alpha = 0.05, color = 'green')
-        # as well as the average trace across trials
-        axs[tt_grid[itt]].plot(time, neuron_all_trials.mean(axis = 0), color = 'blue', label = zetalabel + ttestlabel + wilcoxonlabel)
-        if CASCADE is not None:
-            axCASC.plot(time, CASCADE[itt][:, :, single_neuron].mean(axis = 0), color = 'green', label = 'CASCADE')
-        axs[tt_grid[itt]].set_title(trial_names[itt])
-        axs[tt_grid[itt]].legend(loc = 3, fontsize = 8)
-        axCASC.legend(loc = 4, fontsize = 8)
-        axs[tt_grid[itt]].hlines(y = 0, xmin = -1, xmax = 2, color = 'r')
-    fig.tight_layout()
-    plt.show()
-    plt.close()
-    
-# TODO: add for Neuron-type (& by brain region) analyses !!!
-def build_snake_grid(tt_grid):
-    """
-    Given the original tt_grid (mapping trial_type -> (row, col) in 2x4),
-    produce a dictionary snake_grid that maps (trial_type, heatmap_index)
-    -> (row, col) in a 4x8 figure.
-    """
-    snake_grid = {}
-    for i_tt, (r0, c0) in tt_grid.items():
-        for i in range(4):
-            r_off = i // 2
-            c_off = i % 2
-            snake_grid[(i_tt, i)] = (2*r0 + r_off, 2*c0 + c_off)
-    return snake_grid
-
-def snake_plot(all_neuron_averages:ndarray, 
-               stats:_result_classes.TtestResult | np.ndarray,
-               trial_window_frames:tuple[int, int], time:ndarray,
-               heatmap_range:tuple[int, int] = (None, None),
-               Axis:artist = plt, title:str = False,
-               colorbar:bool = True, SHOW:bool = False,
-               MODE:Literal['onset', 'signif'] = 'onset'):
-    '''
-    One snake plot for all neurons of one group-condition-trial_type
-    (neurons, time) shape heatmap
-    '''
-    if title:
-        Axis.set_title(title)  
-
-    average_trace_per_neuron = all_neuron_averages.mean(axis = 0).T # transpose so nice shape for heatmap
-    
-    # response onset sorting
-    if MODE == 'onset':
-        sorted_by_response_onset = argsort(argmax(average_trace_per_neuron[:,trial_window_frames[0]:trial_window_frames[1]], axis = 1))
-        heatmap_neurons = average_trace_per_neuron[sorted_by_response_onset]
-
-    # significance sorting
-    elif MODE == 'signif':
-        sorted_by_significance = argsort(stats.pvalue) if not isinstance(stats, np.ndarray) else argsort(stats[:,0])
-        heatmap_neurons = average_trace_per_neuron[sorted_by_significance]
-
-    sns.heatmap(heatmap_neurons, vmin = heatmap_range[0], vmax=heatmap_range[1],
-                xticklabels = False, ax = Axis, cbar = colorbar)
-    
-    Axis.vlines(trial_window_frames, ymin = 0, ymax=heatmap_neurons.shape[0])
-    Axis.set_xticks(timestoplot := [0, trial_window_frames[0], trial_window_frames[1], heatmap_neurons.shape[1]-1], 
-                        time.round()[timestoplot])
-    if SHOW:
-        plt.show()
-
-def preferred_direction(BLC_SIGNAL:dict[int:ndarray],
-                        STATS:list[ndarray] | None = None,
-                        window : tuple[int, int] = (16,32)
-                        )-> dict[int : # neurons 
-                                dict[str : # 'VIS' vs 'AUD' preferences
-                                    dict[int : # integer identity of VIS / AUD trial corresponding to the preferred SIDE
-                                        dict[str : # congruent / incongruent multisensory trial to compare
-                                            int # integer identity of MST trial corresponding to the preferred SIDE
-                                            ]]]]:
+    @staticmethod
+    def fluorescence_response (signal: np.ndarray | dict[int:np.ndarray],
+                               window: tuple[int, int] = (16,32)) -> np.ndarray:
         '''
-        INPUTS:
-        --------
-            BLC_SIGNAL is assumed to be a list with n_trial_types entries, each containing 
-                (ntrials, ntimes, n_neurons) ndarray
-            STATS is assumed to be a list with n_trial_types entries, each containing 
-                (n_neurons, n_stats), (works for zeta stats results)
-        
-        OUTPUT:
+        Takes
         ---------
-            returns for each neuron the direction to which the neuron showed the biggest deviation from baseline
-            1.5 s after stimulus onset
+            1) (trial, times, neurons) array and 
+            
+            2) {trial_type : (trial, times, neurons) array} dictionary
+        
+        Returns
+        ---------
+            1) (neurons, stats) array with mean and std (dim 1) 
+            of fluorescence response (F) to a given trial-type for each neuron (dim 0)
+
+            2) returns a (neurons, stats, trial_types) array with mean and std (dim 1) 
+            of fluorescence response (F) to each trial-type (dim 2) for each neuron (dim 0)
         '''
-        # VIS trials (6-L, 7-R), AUD trials (L-0, R-3)
-        preferred_dir = defaultdict(dict)
-        visaud = {6,7,0,3} # int identities of conditions
-        n_neurons = BLC_SIGNAL[0].shape[0]
+        assert isinstance(signal, dict
+                          ) or isinstance(signal, np.ndarray
+                                          ), 'Signal must either be a dictionary with signal arrays for each trial type OR just a signal array for one trial type'
+        if isinstance(signal, dict):
+            res = np.empty((signal[0].shape[-1], 2, len(signal)))
+            tt_sigs = [signal[tt] for tt in signal.keys()]
+        elif isinstance(signal, dict):
+            res = np.empty((signal.shape[-1], 2, 1))
+            tt_sigs = [signal]
 
-        vis_map = ({
-            # (Vl) left preference
-            6:{'congruent':1, # AlVl
-               'incongruent':4}},{ # ArVl
-            # (Vr) right preference
-            7:{'congruent':5, # ArVr
-               'incongruent':2} # AlVr
-               })
+        assert all(len(sig.shape) == 3 for sig in tt_sigs), 'Signal arrays must be 3D - (ntrials, ntimes, nneurons)!'
+        for itt, sig_array in enumerate(tt_sigs):
+            # Fluorescence response adapted from (Meijer et al., 2017)
+            Fmean  = sig_array[:,window[0]:window[1],:].mean(axis = 1)
+            F = np.empty_like(Fmean)
+            Fmax  = sig_array[:,window[0]:window[1],:].max(axis = 1)
+            Fmin  = sig_array[:,window[0]:window[1],:].min(axis = 1)
+            max_mask = where(Fmean > 0)
+            min_mask = where(Fmean < 0)
+            
+            F[max_mask] = Fmax[max_mask]
+            F[min_mask] = Fmin[min_mask]
+
+            meanF = F.mean(axis = 0) # mean fluorescence response over trials
+            stdF = F.std(axis = 0) # std of fluorescence response over trials
+            res[:, 0, itt] = meanF
+            res[:, 1, itt] = stdF
         
-        aud_map = ({
-            # (Al) left preference
-            0:{'congruent':1, # AlVl
-               'incongruent':2}},{ # AlVr
-            # (Ar) right preference
-            3:{'congruent':5, # ArVr
-               'incongruent':4} # ArVl
-               })
-
-        # get preferred direction for each neuron for both visual and auditory stimuli
-        for ineuron in range(n_neurons):
-            extreme_responses = dict()
-            for itt, TT_signal in BLC_SIGNAL.items():
-                # according to Meijer (2017) also neurons that were only direction selective in AV condition should be indluded
-                if itt not in visaud:
-                    continue # don't care about multisensory trials here
-                assert TT_signal.shape[0] == n_neurons, 'Need info about all neurons for all trial types!'
-                average_signal_trial_window = TT_signal.mean(axis = 0)[window[0]:window[1], ineuron] 
-                # return maximum deviation from baseline
-                extreme_responses[itt] = np.max(np.abs(average_signal_trial_window))
-            # left 6, right 7
-            vis = (extreme_responses[6], extreme_responses[7])
-            # left 0, right 3
-            aud = (extreme_responses[0], extreme_responses[3])
-
-            VIS_pref = np.argmax(vis)
-            AUD_pref = np.argmax(aud)
-
-            # add for each neuron
-            preferred_dir[ineuron]['VIS'] = vis_map[VIS_pref]
-            preferred_dir[ineuron]['AUD'] = aud_map[AUD_pref]
-        
-        return preferred_dir
+        return np.squeeze(res) # removes trailing dimension in case want output only for 1 trial type
 
 
-def DSI(neuron_preferred: ndarray, neuron_orth:ndarray,
-        window : tuple[int, int] = (16, 32)) -> float:
-    '''
-    Calculates Direction-selectivity index (DSI) for one neuron
-    defined as in Meijer et al. (2017):
-        DSI = (µ_pref - µorth) / √[(sigma_pref + sigma_orth)/2]
-    '''
-    pass
-
-
-def RCI(preferred_AV:ndarray, preferred_1MOD:ndarray,
-        window : tuple[int, int] = (16, 32)) -> float:
-    '''
-    Calculates Response-change index (RSI) for one neurondefined as in Meijer et al. (2017):
-        RCI = (Fav - Fv) / (Fav + Fv) for with preferred visual direction
-        RCI = (Fav - Fa) / (Fav + Fa) for with preferred auditory direction
-    
-    Fx is defined as the average fluorescence response to that stimulus over stimulus bins and across all trials
-    '''
-    pass
-
-
-# TODO: if we want to say that they are direction TUNED (significantly) [and only look at those neurons]
-def DSI_threshold(trial_labels : ndarray | list, all_signals) -> float:
-    '''
-    Average 99th percentile of trial-label shuffled DSI distribution as discussed in Meijer et al. (2017)
-    '''
-    pass
-
-###--------------------------------SPECIFIC analyses----------------------------------------------------
+###--------------------------------SPECIFIC analyses with plots-----------------------------------------------
 # overall, not split into neuron groups based on Venn diagram
 def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]],
                 SNAKE_MODE:Literal['onset', 'signif'] = 'onset'):
@@ -594,7 +406,7 @@ def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated',
                                                 'all'] = 'modulated',
                              add_CASCADE: bool = False, 
                              pre_post: Literal['pre', 'post', 'both'] = 'pre'):
-    # Load in all data and perform necessary calculations
+    # Load in all data and perform necessary initial calculations
     AVS : list[AUDVIS] = load_in_data(pre_post=pre_post) # -> av1, av2, av3, av4
     ANS : list[Analyze] = [Analyze(av) for av in AVS]
 
@@ -665,22 +477,33 @@ def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated',
     ts_fig.savefig(f'Neuron_type({GROUP_type})_average_res({pre_post}).png', dpi = 1000)
 
 # ---------------------- MULTISENSORY ENHANCEMENT ANALYSIS -----------------------------
-# TODO: update neuronal index with preferred direction (& save)
-    # loop through neurons, see if neuron already in one of the SETs; if in VIS set (after zeta + threshold) choose lower p-value as threshold
+def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre'):
+    # Load in all data and perform necessary initial calculations
+    AVS : list[AUDVIS] = load_in_data(pre_post=pre_post) # -> av1, av2, av3, av4
+    ANS : list[Analyze] = [Analyze(av) for av in AVS]
 
+    for i, (Av, Analys) in enumerate(zip(AVS, ANS)):
+        #1) get direction selectivity info
+        pref_stats, orth_stats, congruent_stats, incongruent_stats = np.split(MScalc.direction_selectivity(Analys.FLUORO_RESP), 
+                                                                              indices_or_sections=4, 
+                                                                              axis = 2)
+        breakpoint()
 
-### Main block that runs the file as a script
+### ---------- Main block that runs the file as a script
 if __name__ == '__main__':
     tt_grid = {0:(0,2),1:(0,0),2:(0,1),3:(1,2),
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     
     # Neuron types analysis (venn diagrams)
     # neuron_typesVENN_analysis()
-    NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
-    NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
-    NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=True, pre_post='pre')
+    # NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
+    # NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
+    # NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=True, pre_post='pre')
 
     # Trial type analysis (average & snake plot) - all neurons, not taking into account neuron types groups
     # NOTE: doesnt work well on cascade
     # TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='onset')
+
+    #
+    MI()
     

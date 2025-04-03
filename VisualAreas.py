@@ -4,7 +4,8 @@
 # and mask onto which XY location is mapped!
 from matplotlib_venn import venn3
 from AUDVIS import AUDVIS, Behavior, load_in_data
-from Analyze import Analyze, calc_avrg_trace, plot_avrg_trace, neuron_typesVENN_analysis
+from Analyze import Analyze, neuron_typesVENN_analysis
+from analysis_utils import calc_avrg_trace, plot_avrg_trace
 from typing import Literal
 import matplotlib.pyplot as plt
 import seaborn as sns
