@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from matplotlib import artist
 
 
 ### ---------- MULTISENSORY INTEGRATION CALCULATIONS ---------------
@@ -120,6 +121,49 @@ def DSI_threshold(trial_labels : np.ndarray | list, all_signals) -> float:
     '''
     pass
 
+
+# --------- prepare plotting dataframe ---------
+def getMIdata(FLUORO_RESP: np.ndarray, group_cond_name: str,
+              MIdata_dict: dict[str: list]) -> dict[str: list]:
+    '''
+    Returns lists which can be iterated over and appended to from different conditions
+    '''
+    #1) get direction selectivity info
+    pref_stats, orth_stats, congruent_stats, incongruent_stats = np.split(direction_selectivity(FLUORO_RESP), 
+                                                                            indices_or_sections=4, 
+                                                                            axis = 2)
+    #2) get direction selectivity index for visual and auditory separately
+    DSI_vis, DSI_aud = np.split(DSI(pref_stats, orth_stats),
+                                indices_or_sections=2,
+                                axis = 2)
+    
+    MIdata_dict['Group'] += [group_cond_name] * DSI_vis.size
+    MIdata_dict['DSI (VIS)'] += [*DSI_vis.squeeze()]
+    MIdata_dict['DSI (AUD)'] += [*DSI_aud.squeeze()]
+    #3) Get response change index for visual and auditory separately
+    # for congruent MST
+    RCI_vis_congruent, RCI_aud_congruent = np.split(RCI(congruent_stats, pref_stats),
+                                                    indices_or_sections=2,
+                                                    axis = 2)
+    MIdata_dict['RCI (VIS congruent)'] += [*RCI_vis_congruent.squeeze()]
+    MIdata_dict['RCI (AUD congruent)'] += [*RCI_aud_congruent.squeeze()]
+    # for incongruent MST
+    RCI_vis_incongruent, RCI_aud_incongruent = np.split(RCI(incongruent_stats, pref_stats),
+                                                        indices_or_sections=2,
+                                                        axis = 2)
+    MIdata_dict['RCI (VIS incongruent)'] += [*RCI_vis_incongruent.squeeze()]
+    MIdata_dict['RCI (AUD incongruent)'] += [*RCI_aud_incongruent.squeeze()]
+
+    return MIdata_dict
+
+
+def prepare_long_format_Areas(out_size : int, 
+                              Area_indices:dict[str: np.ndarray]) -> np.ndarray:
+    regions = np.empty(shape = out_size, dtype='U7')
+    for region_name, where_region in Area_indices.items():
+        regions[where_region] = str(region_name)
+    return regions
+
 #------- plotting --------
 def scatter_hist_reg_join(MIdata: pd.DataFrame,
                           NAME: str,
@@ -150,22 +194,65 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
             XLIM = diagx
 
     g = sns.JointGrid(data=MIdata, x=X_VAR, y=Y_VAR, hue = HUE_VAR, palette= colmap,
-                      height=8, ratio=5, space = 0.1, xlim=XLIM, ylim=YLIM)
+                      height=8, ratio=8, space = 0, xlim=XLIM, ylim=YLIM)
     g.ax_joint.plot(diagx, diagy, linestyle = '--', color = 'dimgray')
     g.plot_joint(sns.scatterplot, data = MIdata, alpha = 0.35, style = HUE_VAR, 
                  markers = markrs, s = 12)
     if kde:
         g.plot_joint(sns.kdeplot, levels = 5)
     
+    # sns.rugplot(data=MIdata, x = X_VAR, hue=HUE_VAR, ax=g.ax_marg_x, 
+    #             height=-.08, clip_on=False, lw = 1, alpha = .2, palette=colmap, legend=False)
     sns.histplot(data=MIdata, x = X_VAR, hue=HUE_VAR, ax=g.ax_marg_x, kde=True, palette=colmap, legend=False)
+    
+    # sns.rugplot(data=MIdata, x = Y_VAR, hue=HUE_VAR, ax=g.ax_marg_y, 
+    #             height=-.08, clip_on=False, lw = 1, alpha = .2, palette=colmap, legend=False)
     sns.histplot(data=MIdata, y = Y_VAR, hue=HUE_VAR, ax=g.ax_marg_y, kde=True, palette=colmap, legend=False)
-    g.plot_marginals(sns.rugplot, height=-.08, clip_on=False, lw = 1, alpha = .2)
 
     if reg:
         for group,gr in MIdata.groupby(HUE_VAR):
             sns.regplot(x=X_VAR, y=Y_VAR, data=gr, scatter=False, ax=g.ax_joint, truncate=False, color = colmap[group])
     
-
+    sns.move_legend(obj = g.ax_joint, loc = 1 if 'DSI' in NAME else 2)
     # g.figure.tight_layout()
     plt.savefig(f'{NAME}.png', dpi = 300)
     plt.close()
+
+def RCI_dist_plot(RCIs:np.ndarray,
+                  ax: artist = plt,
+                  xlab: bool = False):
+    RCIsorted = np.sort(RCIs)
+    pos = np.where(RCIsorted > 0)[0]
+    neg = np.where(RCIsorted < 0)[0]
+    sign = np.empty_like(RCIsorted, dtype=str)
+    sign[pos] = '+'
+    sign[neg] = '-'
+    colors = {'+':'green', '-':'red'}
+    df = pd.DataFrame({'Response change index':RCIsorted, 'sign':sign, '_':np.linspace(0,1,RCIsorted.size)})
+    bp = sns.barplot(df, x = '_', y = 'Response change index', hue = 'sign', 
+                     width = 1, palette=colors, legend=False, ax = ax)
+    bp.vlines(RCIsorted.size // 2, -1, 1, linestyles='--', colors = 'dimgray')
+    sns.despine(bottom=True)
+    bp.set(xticks = [], xticklabels = [])
+    if xlab:
+        bp.set(xlabel = 'Neurons sorted by\nresponse change index')
+    else:
+        bp.set(xlabel = None)
+    bp.set_ylim((-1,1))
+    plt.tight_layout()
+
+
+def RCI_dist_plots_all(MIdata: pd.DataFrame, 
+                       area: str = 'all'):
+    ngroups = MIdata['Group'].unique().size
+    for mod in ('VIS', 'AUD'):
+        rcifig, rciaxs = plt.subplots(ngroups, 2, sharey='row')
+        for ig, group in enumerate(MIdata['Group'].unique()):
+            for icond, cond in enumerate(('congruent', 'incongruent')):
+                rcis = MIdata[f'RCI ({mod} {cond})'].loc[MIdata['Group'] == group]
+                RCI_dist_plot(rcis, rciaxs[ig, icond], xlab=True if ig == ngroups-1 else False)
+                rciaxs[ig, icond].set_title(f'{group}-{mod}-{cond}')
+        # save
+        rcifig.tight_layout()
+        rcifig.savefig(f'RCIs_{area}_{mod}.png', dpi = 300)
+        plt.close()

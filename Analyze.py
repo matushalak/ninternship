@@ -1,17 +1,11 @@
 #@matushalak
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
-import os
 
 from AUDVIS import AUDVIS, Behavior, load_in_data
 from analysis_utils import calc_avrg_trace, build_snake_grid, snake_plot, plot_avrg_trace
-import multisens_calcs as MScalc
 from Responsive import responsive_zeta
-from utils import show_me
 
-from matplotlib import artist
 from matplotlib_venn import venn3
 from numpy import ndarray, arange, where, unique
 from scipy.stats import wilcoxon, ttest_rel
@@ -306,15 +300,15 @@ class Analyze:
         for itt, sig_array in enumerate(tt_sigs):
             # Fluorescence response adapted from (Meijer et al., 2017)
             Fmean  = sig_array[:,window[0]:window[1],:].mean(axis = 1)
-            F = np.empty_like(Fmean)
-            Fmax  = sig_array[:,window[0]:window[1],:].max(axis = 1)
-            Fmin  = sig_array[:,window[0]:window[1],:].min(axis = 1)
-            max_mask = where(Fmean > 0)
-            min_mask = where(Fmean < 0)
+            # F = np.empty_like(Fmean)
+            # Fmax  = sig_array[:,window[0]:window[1],:].max(axis = 1)
+            # Fmin  = sig_array[:,window[0]:window[1],:].min(axis = 1)
+            # max_mask = where(Fmean > 0)
+            # min_mask = where(Fmean < 0)
             
-            F[max_mask] = Fmax[max_mask]
-            F[min_mask] = Fmin[min_mask]
-            # F = Fmean
+            # F[max_mask] = Fmax[max_mask]
+            # F[min_mask] = Fmin[min_mask]
+            F = Fmean
 
             meanF = F.mean(axis = 0) # mean fluorescence response over trials
             stdF = F.std(axis = 0) # std of fluorescence response over trials
@@ -478,73 +472,7 @@ def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated',
     ts_fig.legend(loc = 'outside center right')
     ts_fig.savefig(f'Neuron_type({GROUP_type})_average_res({pre_post}).png', dpi = 1000)
 
-# ---------------------- MULTISENSORY ENHANCEMENT ANALYSIS -----------------------------
-def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre'):
-    # Load in all data and perform necessary initial calculations
-    AVS : list[AUDVIS] = load_in_data(pre_post=pre_post) # -> av1, av2, av3, av4
-    ANS : list[Analyze] = [Analyze(av) for av in AVS]
 
-    # collect DSIs
-    dsis_vis = []
-    dsis_aud = []
-    # collect group_names
-    g_names = []
-    # collect RCIs
-    rcis_cong_vis = []
-    rcis_incong_vis = []
-
-    rcis_cong_aud = []
-    rcis_incong_aud = []
-
-    for i, (Av, Analys) in enumerate(zip(AVS, ANS)):
-        #1) get direction selectivity info
-        pref_stats, orth_stats, congruent_stats, incongruent_stats = np.split(MScalc.direction_selectivity(Analys.FLUORO_RESP), 
-                                                                              indices_or_sections=4, 
-                                                                              axis = 2)
-        #2) get direction selectivity index for visual and auditory separately
-        DSI_vis, DSI_aud = np.split(MScalc.DSI(pref_stats, orth_stats),
-                                    indices_or_sections=2,
-                                    axis = 2)
-        
-        g_names += [Av.NAME] * DSI_vis.size
-        dsis_vis += [*DSI_vis.squeeze()]
-        dsis_aud += [*DSI_aud.squeeze()]
-        #3) Get response change index for visual and auditory separately
-        # for congruent MST
-        RCI_vis_congruent, RCI_aud_congruent = np.split(MScalc.RCI(congruent_stats, pref_stats),
-                                                        indices_or_sections=2,
-                                                        axis = 2)
-        rcis_cong_vis += [*RCI_vis_congruent.squeeze()]
-        rcis_cong_aud += [*RCI_aud_congruent.squeeze()]
-        # for incongruent MST
-        RCI_vis_incongruent, RCI_aud_incongruent = np.split(MScalc.RCI(incongruent_stats, pref_stats),
-                                                            indices_or_sections=2,
-                                                            axis = 2)
-        rcis_incong_vis += [*RCI_vis_incongruent.squeeze()]
-        rcis_incong_aud += [*RCI_aud_incongruent.squeeze()]
-
-    MIdata : pd.DataFrame = pd.DataFrame({'DSI (VIS)' : dsis_vis, 'DSI (AUD)': dsis_aud,
-                                          'Group':g_names,
-                                          'RCI (VIS congruent)': rcis_cong_vis, 'RCI (VIS incongruent)' : rcis_incong_vis,
-                                          'RCI (AUD congruent)': rcis_cong_aud, 'RCI (AUD incongruent)' : rcis_incong_aud})
-    # make plots!
-    # Direction Selectivity Index Plot
-    dsi_plot = MScalc.scatter_hist_reg_join(MIdata, NAME='DSI_plot', X_VAR='DSI (VIS)', Y_VAR='DSI (AUD)', HUE_VAR='Group',
-                                            kde = True, reg = True)
-    print('DSI plot done!')
-
-    # Response change index plots
-    # VIS
-    rci_plotV = MScalc.scatter_hist_reg_join(MIdata, NAME='RCI_vis', 
-                                             X_VAR='RCI (VIS congruent)', Y_VAR='RCI (VIS incongruent)', HUE_VAR='Group',
-                                             square=True, reg= True, kde=True)
-    print('VIS RCI plot done!')
-    # AUD
-    rci_plotA = MScalc.scatter_hist_reg_join(MIdata, NAME='RCI_aud', 
-                                             X_VAR='RCI (AUD congruent)', Y_VAR='RCI (AUD incongruent)', HUE_VAR='Group',
-                                             square=True, reg= True, kde=True)
-    print('AUD RCI plot done!')
-    # breakpoint()
 
 ### ---------- Main block that runs the file as a script
 if __name__ == '__main__':
@@ -552,15 +480,11 @@ if __name__ == '__main__':
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     
     # Neuron types analysis (venn diagrams)
-    # neuron_typesVENN_analysis()
-    # NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
+    neuron_typesVENN_analysis()
+    NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=True, pre_post='pre')
 
     # Trial type analysis (average & snake plot) - all neurons, not taking into account neuron types groups
     # NOTE: doesnt work well on cascade
     # TT_ANALYSIS(tt_grid=tt_grid, SNAKE_MODE='onset')
-
-    #
-    MI('pre')
-    
