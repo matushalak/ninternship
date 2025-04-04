@@ -497,7 +497,13 @@ def load_in_data(pre_post: Literal['pre', 'post', 'both'] = 'both')->tuple[AUDVI
             2:{'pre':None,
             'post':None}}
 
-    names = ['g1pre', 'g1post', 'g2pre', 'g2post']
+    match pre_post:
+        case 'both':
+            names = ['g1pre', 'g1post', 'g2pre', 'g2post']
+        case 'pre':
+            names = ['g1pre', 'g2pre']
+        case 'post':
+            names = ['g1post', 'g2post']
 
     for group_name in names:
         params, Cascade = load_audvis_files(os.path.join('pydata', group_name))

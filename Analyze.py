@@ -527,26 +527,24 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre'):
                                           'Group':g_names,
                                           'RCI (VIS congruent)': rcis_cong_vis, 'RCI (VIS incongruent)' : rcis_incong_vis,
                                           'RCI (AUD congruent)': rcis_cong_aud, 'RCI (AUD incongruent)' : rcis_incong_aud})
-    
     # make plots!
     # Direction Selectivity Index Plot
-    MScalc.scatter_hist_reg_join(MIdata, NAME='DSI_plot', X_VAR='DSI (VIS)', Y_VAR='DSI (AUD)', HUE_VAR='Group',
-                                 kde = True, reg = True)
+    dsi_plot = MScalc.scatter_hist_reg_join(MIdata, NAME='DSI_plot', X_VAR='DSI (VIS)', Y_VAR='DSI (AUD)', HUE_VAR='Group',
+                                            kde = True, reg = True)
     print('DSI plot done!')
 
-    # TODO: FIX RANGE
     # Response change index plots
     # VIS
-    # MScalc.scatter_hist_reg_join(MIdata, NAME='RCI_vis', 
-    #                              X_VAR='RCI (VIS congruent)', Y_VAR='RCI (VIS incongruent)', HUE_VAR='Group',
-    #                              square=True)
-    # print('VIS RCI plot done!')
-    # # AUD
-    # MScalc.scatter_hist_reg_join(MIdata, NAME='RCI_aud', 
-    #                              X_VAR='RCI (AUD congruent)', Y_VAR='RCI (AUD incongruent)', HUE_VAR='Group',
-    #                              square=True)
-    # print('AUD RCI plot done!')
-    breakpoint()
+    rci_plotV = MScalc.scatter_hist_reg_join(MIdata, NAME='RCI_vis', 
+                                             X_VAR='RCI (VIS congruent)', Y_VAR='RCI (VIS incongruent)', HUE_VAR='Group',
+                                             square=True, reg= True, kde=True)
+    print('VIS RCI plot done!')
+    # AUD
+    rci_plotA = MScalc.scatter_hist_reg_join(MIdata, NAME='RCI_aud', 
+                                             X_VAR='RCI (AUD congruent)', Y_VAR='RCI (AUD incongruent)', HUE_VAR='Group',
+                                             square=True, reg= True, kde=True)
+    print('AUD RCI plot done!')
+    # breakpoint()
 
 ### ---------- Main block that runs the file as a script
 if __name__ == '__main__':

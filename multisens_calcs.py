@@ -94,11 +94,11 @@ def DSI(neuron_preferred: np.ndarray, neuron_orth:np.ndarray) -> float:
     defined as in Meijer et al. (2017):
         DSI = (µ_pref - µorth) / √[(sigma_pref + sigma_orth)/2]
     '''
-    return (neuron_preferred[:,0,:]#.__abs__() 
-            - neuron_orth[:,0,:]#.__abs__()
+    return (neuron_preferred[:,0,:].__abs__() 
+            - neuron_orth[:,0,:].__abs__()
+            # standard deviation can only be positive
             ) / np.sqrt((neuron_preferred[:,1,:]+neuron_orth[:,1,:]) / 2) 
 
-# TODO: fix range, should be -1 to 1
 def RCI(preferred_AV:np.ndarray, preferred_1MOD:np.ndarray) -> float:
     '''
     Calculates Response-change index (RSI) for one neurondefined as in Meijer et al. (2017):
@@ -106,8 +106,11 @@ def RCI(preferred_AV:np.ndarray, preferred_1MOD:np.ndarray) -> float:
         RCI = (Fav - Fa) / (Fav + Fa) for with preferred auditory direction
     
     Fx is defined as the average fluorescence response to that stimulus over stimulus bins and across all trials
+    Only -1 to 1 if Fx is always non-negative
     '''
-    return (preferred_AV[:,0,:] - preferred_1MOD[:,0,:]) / (preferred_AV[:,0,:] + preferred_1MOD[:,0,:])
+    return (preferred_AV[:,0,:].__abs__() 
+            - preferred_1MOD[:,0,:].__abs__()
+            ) / (preferred_AV[:,0,:].__abs__() + preferred_1MOD[:,0,:].__abs__())
 
 
 # TODO: if we want to say that they are direction TUNED (significantly) [and only look at those neurons]
@@ -125,31 +128,44 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
                           colmap: dict[str:str] = {'g1pre' : 'royalblue', 
                                                    'g1post': 'teal', 
                                                    'g2pre' : 'tomato', 
-                                                   'g2post': 'crimson'}):
+                                                   'g2post': 'crimson'},
+                          markrs: dict[str:str] = {'g1pre' : 'o', 
+                                                   'g1post': '*', 
+                                                   'g2pre' : 'v', 
+                                                   'g2post': 'd'}):
     
     minmin = min(MIdata[X_VAR].min(), MIdata[Y_VAR].min())
     maxmax = max(MIdata[X_VAR].max(), MIdata[Y_VAR].max())
     diagx = (minmin - .05, maxmax + .05)
     diagy = diagx
-    colrs = colmap
-    dsi = sns.jointplot(data=MIdata, x=X_VAR, y=Y_VAR, hue = HUE_VAR, kind = 'scatter', 
-                      palette= colrs, joint_kws= {'alpha' : 0.2})
-    plt.plot(diagx, diagy, linestyle = '--', color = 'dimgray')
+    if not square:
+        YLIM = (MIdata[Y_VAR].min() - .05, MIdata[Y_VAR].max() + .05)
+        XLIM = (MIdata[X_VAR].min() - .05, MIdata[X_VAR].max() + .05)
+    else:
+        if 'RCI' in NAME:
+            YLIM = (-1,1)
+            XLIM = (-1,1)
+        else:
+            YLIM = diagy
+            XLIM = diagx
+
+    g = sns.JointGrid(data=MIdata, x=X_VAR, y=Y_VAR, hue = HUE_VAR, palette= colmap,
+                      height=8, ratio=5, space = 0.1, xlim=XLIM, ylim=YLIM)
+    g.ax_joint.plot(diagx, diagy, linestyle = '--', color = 'dimgray')
+    g.plot_joint(sns.scatterplot, data = MIdata, alpha = 0.35, style = HUE_VAR, 
+                 markers = markrs, s = 12)
     if kde:
-        dsi.plot_joint(sns.kdeplot, levels = 5)
-    dsi.plot_marginals(sns.rugplot, height=-.1, clip_on=False)
-    dsi.plot_marginals(sns.histplot)
+        g.plot_joint(sns.kdeplot, levels = 5)
+    
+    sns.histplot(data=MIdata, x = X_VAR, hue=HUE_VAR, ax=g.ax_marg_x, kde=True, palette=colmap, legend=False)
+    sns.histplot(data=MIdata, y = Y_VAR, hue=HUE_VAR, ax=g.ax_marg_y, kde=True, palette=colmap, legend=False)
+    g.plot_marginals(sns.rugplot, height=-.08, clip_on=False, lw = 1, alpha = .2)
+
     if reg:
         for group,gr in MIdata.groupby(HUE_VAR):
-            sns.regplot(x=X_VAR, y=Y_VAR, data=gr, scatter=False, ax=dsi.ax_joint, truncate=False, color = colrs[group])
+            sns.regplot(x=X_VAR, y=Y_VAR, data=gr, scatter=False, ax=g.ax_joint, truncate=False, color = colmap[group])
     
-    if not square:
-        plt.ylim(MIdata[Y_VAR].min() - .05, MIdata[Y_VAR].max() + .05)
-        plt.xlim(MIdata[X_VAR].min() - .05, MIdata[X_VAR].max() + .05)
-    else:
-        plt.ylim(diagy)
-        plt.xlim(diagx)
 
-    plt.tight_layout()
+    # g.figure.tight_layout()
     plt.savefig(f'{NAME}.png', dpi = 300)
     plt.close()
