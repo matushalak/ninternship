@@ -74,6 +74,8 @@ def plot_avrg_trace(time:np.ndarray, avrg:np.ndarray, SEM:np.ndarray | None = No
 
 def plot_1neuron(all_trials_signal:list[np.ndarray], 
                  single_neuron:int,
+                 session_neurons: tuple[list, list],
+                 fluorescence:np.ndarray, 
                  trial_names:list[str], time:np.ndarray,
                  CASCADE : list[np.ndarray] = None,
                  STATS : list[object, object, np.ndarray] | None = None):
@@ -81,7 +83,7 @@ def plot_1neuron(all_trials_signal:list[np.ndarray],
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     plt.close()
     fig, axs = plt.subplots(nrows = 2, ncols = 4, sharey = 'row', sharex='col', 
-                            figsize = (4 * 5, 2*4))
+                            figsize = (4 * 5, 2*5))
     # for each trial type
     for itt, ttsig in enumerate(all_trials_signal.values()):
         trial_STATS = STATS[itt]
@@ -91,21 +93,40 @@ def plot_1neuron(all_trials_signal:list[np.ndarray],
 
         if CASCADE is not None:
             axCASC = axs[tt_grid[itt]].twinx()
+
         axs[tt_grid[itt]].axvspan(0,1,alpha = 0.1, color = 'khaki')
         neuron_all_trials = ttsig[:,:,single_neuron] 
         # plot all raw traces for each trial
         for i_trial in range(neuron_all_trials.shape[0]):
-            axs[tt_grid[itt]].plot(time, neuron_all_trials[i_trial, :], alpha = 0.05, color = 'blue')
+            axs[tt_grid[itt]].plot(time, neuron_all_trials[i_trial, :], alpha = 0.01, color = 'blue')
             if CASCADE is not None:
-                axCASC.plot(time, CASCADE[itt][i_trial, :, single_neuron], alpha = 0.05, color = 'green')
+                axCASC.plot(time, CASCADE[itt][i_trial, :, single_neuron], alpha = 0.01, color = 'green')
         # as well as the average trace across trials
-        axs[tt_grid[itt]].plot(time, neuron_all_trials.mean(axis = 0), color = 'blue', label = zetalabel + ttestlabel + wilcoxonlabel)
+        axs[tt_grid[itt]].plot(time, trace := neuron_all_trials.mean(axis = 0), color = 'blue', label = zetalabel + ttestlabel + wilcoxonlabel)
         if CASCADE is not None:
             axCASC.plot(time, CASCADE[itt][:, :, single_neuron].mean(axis = 0), color = 'green', label = 'CASCADE')
-        axs[tt_grid[itt]].set_title(trial_names[itt])
+        
+        # Fluorescence response
+        axs[tt_grid[itt]].set_title(f'{trial_names[itt]}_FR(µ : {round(fluorescence[single_neuron,0,itt], 3)}, sd : {round(fluorescence[single_neuron,1,itt], 3)}')
+        # 0 line
+        axs[tt_grid[itt]].hlines(y = 0, xmin = -1, xmax = 2, color = 'r')
+        axs[tt_grid[itt]].hlines(y = (mn := np.mean(trace[16:32])), xmin = -1, xmax = 2, color = 'k', alpha = 0.6, 
+                                 label = f'av_trace mean {round(mn, 3)}')
+        axs[tt_grid[itt]].scatter(x = time[np.argmax(trace[16:32]) + 16], y = (maxi := np.max(trace[16:32])), color = 'gold', 
+                                 label = f'av_trace max {round(maxi, 3)}')
+        axs[tt_grid[itt]].scatter(x = time[np.argmin(trace[16:32]) + 16], y = (mini := np.min(trace[16:32])), color = 'magenta', 
+                                 label = f'av_trace min {round(mini, 3)}')
+    
         axs[tt_grid[itt]].legend(loc = 3, fontsize = 8)
         axCASC.legend(loc = 4, fontsize = 8)
-        axs[tt_grid[itt]].hlines(y = 0, xmin = -1, xmax = 2, color = 'r')
+    # find back neuron
+    ranges, names = session_neurons
+    for sess_range, sessname in zip(ranges, names):
+        if single_neuron >= sess_range[0] and single_neuron < sess_range[1]:
+            sess_index = single_neuron - sess_range[0]
+            session = sessname
+
+    fig.suptitle(f'Neuron_{sess_index} from {session}, overall_id ({single_neuron})')
     fig.tight_layout()
     plt.show()
     plt.close()

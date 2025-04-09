@@ -14,6 +14,7 @@ import os
 import pickle
 import argparse
 
+# TODO: add offset times!
 def run_ZETA(signals:np.ndarray,
              frame_times_corrected:np.ndarray,
              event_IDs:np.ndarray,
@@ -33,7 +34,6 @@ def run_ZETA(signals:np.ndarray,
     results = [dict() for _ in range(signals.shape[0])]
     ttwhere = {tt : np.where(event_IDs == tt)
                 for tt in np.unique(event_IDs)}
-    
     # progress bar to not go crazy
     total_iterations = len(list(ttwhere)) * signals.shape[0]
     iteration = 0

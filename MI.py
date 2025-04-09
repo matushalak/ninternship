@@ -20,11 +20,18 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                    'BrainRegion':[],
                    'RCI (VIS congruent)': [], 'RCI (VIS incongruent)' : [], # collect RCIs
                    'RCI (AUD congruent)': [], 'RCI (AUD incongruent)' : []}
-    
+    sets = []
+    last_n_neur = 0
     for i, (Av, Analys) in enumerate(zip(AVS, ANS)):
+        # TODO: incorporate selecting neuron groups
+        VIS_set = np.fromiter(ind := Analys.NEURON_groups['MST'], int, len(ind)
+                              ) + last_n_neur # from the other analysis
+        sets += [*VIS_set]
+
         # update MIdata_dict
         MIdata_dict = MScalc.getMIdata(Analys.FLUORO_RESP, Av.NAME, MIdata_dict)
         n_neurons = Analys.FLUORO_RESP.shape[0]
+        last_n_neur += n_neurons
         if byAreas:
             # get indices for each
             Ar_indices = Areas.separate_areas(Av)
@@ -36,7 +43,10 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
             MIdata_dict['BrainRegion'] += [np.nan] * n_neurons
 
     # turn into long-format dataframe for seaborn plotting!
-    MIdata : pd.DataFrame = pd.DataFrame(MIdata_dict)   
+    MIdata : pd.DataFrame = pd.DataFrame(MIdata_dict)
+
+    MIdata = MIdata.iloc[sets,:]
+
     print('MIdata dataframe completed!')
     # make plots!
     if byAreas:

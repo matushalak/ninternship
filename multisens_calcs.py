@@ -92,13 +92,15 @@ def direction_selectivity(FLUORO_RESP: np.ndarray):
 def DSI(neuron_preferred: np.ndarray, neuron_orth:np.ndarray) -> float:
     '''
     Calculates Direction-selectivity index (DSI) for one neuron
-    defined as in Meijer et al. (2017):
-        DSI = (µ_pref - µorth) / √[(sigma_pref + sigma_orth)/2]
+    defined as in Meijer et al. (2017) for Orientation selectivity (OSI):
+        OSI = (µ_pref - µorth) / √[(sigma_pref + sigma_orth)/2]
+    or in Olcese et al., (2013) for Direction selectivity (DSI):
+        DSI = (µ_pref - µ_nonpref) / (µ_pref + µ_nonpref)
     '''
     return (neuron_preferred[:,0,:].__abs__() 
             - neuron_orth[:,0,:].__abs__()
-            # standard deviation can only be positive
-            ) / np.sqrt((neuron_preferred[:,1,:]+neuron_orth[:,1,:]) / 2) 
+            # ) / np.sqrt((neuron_preferred[:,1,:]+neuron_orth[:,1,:]) / 2) # Meijer 2017 OSI
+            ) / (neuron_preferred[:,0,:].__abs__() + neuron_orth[:,0,:].__abs__()) # Olcese 2013 DSI
 
 def RCI(preferred_AV:np.ndarray, preferred_1MOD:np.ndarray) -> float:
     '''
