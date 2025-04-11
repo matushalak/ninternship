@@ -107,7 +107,8 @@ def plot_1neuron(all_trials_signal:list[np.ndarray],
             axCASC.plot(time, CASCADE[itt][:, :, single_neuron].mean(axis = 0), color = 'green', label = 'CASCADE')
         
         # Fluorescence response
-        axs[tt_grid[itt]].set_title(f'{trial_names[itt]}_FR(µ : {round(fluorescence[single_neuron,0,itt], 3)}, sd : {round(fluorescence[single_neuron,1,itt], 3)}')
+        axs[tt_grid[itt]].set_title(
+            f'{trial_names[itt]}_FR(µ : {round(fluorescence[single_neuron,0,itt], 3)}, sd : {round(fluorescence[single_neuron,1,itt], 3)}, d: {round(fluorescence[single_neuron,2,itt], 3)}')
         # 0 line
         axs[tt_grid[itt]].hlines(y = 0, xmin = -1, xmax = 2, color = 'r')
         axs[tt_grid[itt]].hlines(y = (mn := np.mean(trace[16:32])), xmin = -1, xmax = 2, color = 'k', alpha = 0.6, 

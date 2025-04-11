@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import os
 import matplotlib.pyplot as plt
 from matplotlib import artist
 
@@ -24,6 +25,7 @@ def direction_selectivity(FLUORO_RESP: np.ndarray):
     only direction selective in AV condition should be considered 
     in direction selectivity calculation (not the case now!)
     '''
+    FLUORO_RESP = FLUORO_RESP[:,:2,:]
     # setup trials overview
     vis = (6, 7) # L, R
     aud = (0, 3) # L, R
@@ -99,8 +101,8 @@ def DSI(neuron_preferred: np.ndarray, neuron_orth:np.ndarray) -> float:
     '''
     return (neuron_preferred[:,0,:].__abs__() 
             - neuron_orth[:,0,:].__abs__()
-            # ) / np.sqrt((neuron_preferred[:,1,:]+neuron_orth[:,1,:]) / 2) # Meijer 2017 OSI
-            ) / (neuron_preferred[:,0,:].__abs__() + neuron_orth[:,0,:].__abs__()) # Olcese 2013 DSI
+            ) / np.sqrt((neuron_preferred[:,1,:]**2 + neuron_orth[:,1,:]**2) / 2) # Meijer 2017 OSI
+            # ) / (neuron_preferred[:,0,:].__abs__() + neuron_orth[:,0,:].__abs__()) # Olcese 2013 DSI
 
 def RCI(preferred_AV:np.ndarray, preferred_1MOD:np.ndarray) -> float:
     '''
@@ -171,6 +173,7 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
                           NAME: str,
                           X_VAR: str, Y_VAR:str, HUE_VAR :str, 
                           kde:bool = False, reg:bool = False, square: bool = False,
+                          savedir: str | None = None,
                           colmap: dict[str:str] = {'g1pre' : 'royalblue', 
                                                    'g1post': 'teal', 
                                                    'g2pre' : 'tomato', 
@@ -217,7 +220,10 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
     
     sns.move_legend(obj = g.ax_joint, loc = 1 if 'DSI' in NAME else 2)
     # g.figure.tight_layout()
-    plt.savefig(f'{NAME}.png', dpi = 300)
+    if savedir is not None:
+        plt.savefig(os.path.join(savedir, f'{NAME}.png'), dpi = 300)
+    else:
+        plt.savefig(f'{NAME}.png', dpi = 300)
     plt.close()
 
 def RCI_dist_plot(RCIs:np.ndarray,
@@ -245,7 +251,8 @@ def RCI_dist_plot(RCIs:np.ndarray,
 
 
 def RCI_dist_plots_all(MIdata: pd.DataFrame, 
-                       area: str = 'all'):
+                       area: str = 'all',
+                       savedir: str | None = None):
     ngroups = MIdata['Group'].unique().size
     for mod in ('VIS', 'AUD'):
         rcifig, rciaxs = plt.subplots(ngroups, 2, sharey='row')
@@ -256,5 +263,10 @@ def RCI_dist_plots_all(MIdata: pd.DataFrame,
                 rciaxs[ig, icond].set_title(f'{group}-{mod}-{cond}')
         # save
         rcifig.tight_layout()
-        rcifig.savefig(f'RCIs_{area}_{mod}.png', dpi = 300)
+
+        # save into directory
+        if savedir is not None:
+            rcifig.savefig(os.path.join(savedir, f'RCIs_{area}_{mod}.png'), dpi = 300)
+        else:
+            rcifig.savefig(f'RCIs_{area}_{mod}.png', dpi = 300)
         plt.close()

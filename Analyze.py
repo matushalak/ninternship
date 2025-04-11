@@ -50,12 +50,13 @@ class Analyze:
         if include_zeta:
             # Zeta test results dF/F0 or spike_prob
             self.TT_zeta = responsive_zeta(SPECIFIEDcond = av.NAME, signal_to_use = 'dF/F0',
-                                           RegressOUT_behavior=False) # NOTE: zeta on regressed-out dF/F0 seems to be the best
+                                           RegressOUT_behavior=False)
 
         # Get Fluorescence response statistics
         self.FLUORO_RESP: np.ndarray = self.fluorescence_response(
             signal = av.separate_signal_by_trial_types(
-                av.baseline_correct_signal(av.signal_CORR, baseline_frames=self.TRIAL_FRAMES[0])),
+                av.baseline_correct_signal(av.signal_CORR, 
+                                           baseline_frames=self.TRIAL_FRAMES[0])),
             window = self.TRIAL_FRAMES)
         
         # Analyze by trial type
@@ -65,7 +66,7 @@ class Analyze:
 
     # Analyze average response to trial type
     def tt_average(self, av:AUDVIS,
-                   method:str = 'zeta',
+                   method:str = 'ttest',
                    criterion:float = 0.05, # p-value threshold .05 or .01 (bonferroni corrected - consider different correction)
                    signal_to_use: Literal['dF/F0', 'spike_prob'] = 'dF/F0',
                    zsignal: bool = True
@@ -94,17 +95,20 @@ class Analyze:
 
         TEST_RESULTS = []
         # TODO: consider different corrections
-        corrected_criterion = criterion / len(list(by_tts)) 
+        corrected_criterion = criterion #/ len(list(by_tts)) 
         # A single spike in the predictions will have an amplitude of 0.266 and a width (FWHM) of 0.24 seconds.
-        zeta_crit = (corrected_criterion, 0.05) if signal_to_use == 'spike_prob' else (corrected_criterion, 0.3)
+        # NOTE: using Cohen's d effect size threshold
+        zeta_crit = (corrected_criterion, 0.45)
         # iterate through trial types
         for tt in by_tts.keys():
             # get indices responsive to that trial type
             # TODO: separate analysis for inhibited
+            # TODO: clean this up!!!
             responsive_indices_EXC, responsive_indices_INH, test_res = self.responsive_trial_locked(neurons = by_tts[tt] if method != 'zeta' else self.TT_zeta[tt],
                                                                                                     # potentially separate analysis into ON-responsive and OFF-responsive
                                                                                                     window = (av.TRIAL[0], av.TRIAL[1] #+ (av.TRIAL[0]//2) # add .5 seconds after trial for offset responses
                                                                                                             ), 
+                                                                                                    trial_ID=tt,
                                                                                                     criterion = zeta_crit if method != 'zscore' else criterion, 
                                                                                                     method = method,
                                                                                                     blc_data = by_tts_blc[tt] if method == 'zeta' else None)
@@ -126,8 +130,10 @@ class Analyze:
                 ), TEST_RESULTS, by_tts_blc, by_tts, self.neuron_groups(responsive = responsive_neurs)
 
     # TODO: return separate indices for inhibited
-    def responsive_trial_locked(self, neurons:ndarray | list, window:tuple[int, int],
-                                criterion:float|tuple[float,float], method:str, blc_data : ndarray | None = None)-> tuple[ndarray, ndarray | None]:
+    def responsive_trial_locked(self, neurons:ndarray | list, window:tuple[int, int], 
+                                trial_ID: int,
+                                criterion:float|tuple[float,float], method:str, 
+                                blc_data : ndarray | None = None)-> tuple[ndarray, ndarray | None]:
         '''
         accepts (trials, times, neurons) type data structure for neurons within session or across sessions
                 OR (times, neurons) for already aggregated average traces
@@ -143,13 +149,15 @@ class Analyze:
                 return unique(where(trial_averaged_neurons[window[0]:window[1],:] >= criterion)[1]), None, None
             
             # do t-test on the mean values during trial
+            # TODO: try on fluorescence response + effect size (FR is already baseline corrected)
+            # NOTE: Cohen's d = DiffF := (F_trial - F_baseline) / SD(DiffF)
             case ('ttest', (p_criterion, amp_criterion), (n_trials, n_times, n_nrns)): 
                 bls, trls = neurons[:,:window[0],:].mean(axis = 1), neurons[:,window[0]:window[1],:].mean(axis = 1)
                 TTEST = ttest_rel(trls, bls, alternative = 'two-sided')
-                # Amplitude theshold
-                EXC_thresh = np.mean(neurons, axis = 0)[window[0]:window[1],:].max(axis = 0) >= amp_criterion
-                # include inhibited
-                INH_thresh = np.mean(neurons, axis = 0)[window[0]:window[1],:].min(axis = 0) <= -amp_criterion
+                # Amplitude theshold using Cohen's d effect size of fluorescence responses
+                EXC_thresh = self.FLUORO_RESP[:,2,trial_ID] > amp_criterion
+                # include inhibited Cohen's d effect size of fluorescence responses
+                INH_thresh = self.FLUORO_RESP[:,2,trial_ID] < -amp_criterion
                 return where((TTEST.pvalue < p_criterion) & (EXC_thresh))[0], where((TTEST.pvalue < p_criterion) & (INH_thresh))[0], TTEST
             
             # wilcoxon signed-rank test
@@ -158,23 +166,21 @@ class Analyze:
                 bls, trls = np.mean(neurons[:,:window[0],:],axis = 1), np.mean(neurons[:,window[0]:window[1],:], axis = 1)
                 WCOX = wilcoxon(trls, bls, alternative='two-sided')
                 # Amplitude theshold
-                EXC_thresh = np.mean(neurons, axis = 0)[window[0]:window[1],:].max(axis = 0) >= amp_criterion
+                EXC_thresh = np.mean(neurons, axis = 0)[window[0]:window[1],:].max(axis = 0) > amp_criterion
                 # include inhibited
-                INH_thresh = np.mean(neurons, axis = 0)[window[0]:window[1],:].min(axis = 0) <= -amp_criterion
+                INH_thresh = np.mean(neurons, axis = 0)[window[0]:window[1],:].min(axis = 0) < -amp_criterion
                 
                 return where((WCOX.pvalue < p_criterion) & (EXC_thresh))[0], where((WCOX.pvalue < p_criterion) & (INH_thresh))[0], WCOX
             
             # already have zeta significances and Zeta values (n_nrns, 2[zeta_p, zeta_score])
-            # consider this for threshold: 
-            # '''The fluorescence response of a neuron in a given trial was defined as 
-            # the average F/F0 over all imaging frames during the 3 s stimulus period.''' Meijer (2017)
+            # TODO: convergence between effect size and zeta
             case ('zeta', (p_criterion, amp_criterion), (n_nrns, stats)):
                 # p-value below threshold
                 assert blc_data is not None, 'Need baseline-corrected data to select based on amplitude threshold'
                 # Amplitude theshold
-                EXC_thresh = np.mean(blc_data, axis = 0)[window[0]:window[1],:].max(axis = 0) >= amp_criterion
+                EXC_thresh = np.mean(blc_data, axis = 0)[window[0]:window[1],:].max(axis = 0) > amp_criterion
                 # include inhibited
-                INH_thresh = np.mean(blc_data, axis = 0)[window[0]:window[1],:].min(axis = 0) <= -amp_criterion
+                INH_thresh = np.mean(blc_data, axis = 0)[window[0]:window[1],:].min(axis = 0) < -amp_criterion
                 
                 responsiveEXC =  where((neurons[:,0] < p_criterion) & (EXC_thresh))[0] 
                 responsiveINH =  where((neurons[:,0] < p_criterion) & (INH_thresh))[0]
@@ -259,7 +265,6 @@ class Analyze:
             indices = np.intersect1d(BrainRegionIndices, indices)
 
         # DEBUGGING only (or example neurons potentially) to plot single neurons for debugging
-        # TODO: build in neuron name and session name
         print(GROUP, GROUP_type, indices.size)
         STATS = {i:[] for i in range(8)}
         for trial in range(8):
@@ -267,13 +272,15 @@ class Analyze:
                 sig = self.byTTS[trial] if test != 'zeta' else self.TT_zeta[trial]
                 _, _, stat = self.responsive_trial_locked(neurons = sig,
                                                        window = self.TRIAL_FRAMES,
-                                                       criterion = (0.05 / 8, .3),
+                                                       criterion = (0.05, 0.45),
+                                                       trial_ID=trial,
                                                        method=test,
                                                        blc_data= None if test != 'zeta' else TT_blc_signal[trial])
                 STATS[trial].append(stat)
 
         IFR = [self.CASCADE[tt] for tt in self.CASCADE]
-        for index in indices:
+        toplot = np.random.choice(indices, 50)
+        for index in toplot:
             plot_1neuron(all_trials_signal=TT_blc_signal,
                          single_neuron=index,
                          session_neurons=(self.sess_neur, self.session_names),
@@ -289,7 +296,8 @@ class Analyze:
 
     @staticmethod
     def fluorescence_response (signal: np.ndarray | dict[int:np.ndarray],
-                               window: tuple[int, int] = (16,32)) -> np.ndarray:
+                               window: tuple[int, int] = (16,32),
+                               method: Literal['mean', 'peak'] = 'peak') -> np.ndarray:
         '''
         Takes
         ---------
@@ -302,17 +310,17 @@ class Analyze:
             1) (neurons, stats) array with mean and std (dim 1) 
             of fluorescence response (F) to a given trial-type for each neuron (dim 0)
 
-            2) returns a (neurons, stats, trial_types) array with mean and std (dim 1) 
+            2) returns a (neurons, stats, trial_types) array with mean and std and Cohen's d (dim 1) 
             of fluorescence response (F) to each trial-type (dim 2) for each neuron (dim 0)
         '''
         assert isinstance(signal, dict
                           ) or isinstance(signal, np.ndarray
                                           ), 'Signal must either be a dictionary with signal arrays for each trial type OR just a signal array for one trial type'
         if isinstance(signal, dict):
-            res = np.empty((signal[0].shape[-1], 2, len(signal)))
+            res = np.empty((signal[0].shape[-1], 3, len(signal)))
             tt_sigs = [signal[tt] for tt in signal.keys()]
-        elif isinstance(signal, dict):
-            res = np.empty((signal.shape[-1], 2, 1))
+        elif isinstance(signal, np.ndarray):
+            res = np.empty((signal.shape[-1], 3, 1))
             tt_sigs = [signal]
 
         assert all(len(sig.shape) == 3 for sig in tt_sigs), 'Signal arrays must be 3D - (ntrials, ntimes, nneurons)!'
@@ -320,19 +328,27 @@ class Analyze:
             # Fluorescence response adapted from (Meijer et al., 2017)
             Fmean  = sig_array[:,window[0]:window[1],:].mean(axis = 1)
             F = np.empty_like(Fmean)
-            Fmax  = sig_array[:,window[0]:window[1],:].max(axis = 1)
-            Fmin  = sig_array[:,window[0]:window[1],:].min(axis = 1)
-            max_mask = where(Fmean > 0)
-            min_mask = where(Fmean < 0)
-            
-            F[max_mask] = Fmax[max_mask]
-            F[min_mask] = Fmin[min_mask]
-            # F = Fmean
+            if method == 'peak':
+                Fmax  = sig_array[:,window[0]:window[1],:].max(axis = 1)
+                Fmin  = sig_array[:,window[0]:window[1],:].min(axis = 1)
+                max_mask = where(Fmean > 0)
+                min_mask = where(Fmean < 0)
+                
+                F[max_mask] = Fmax[max_mask]
+                F[min_mask] = Fmin[min_mask]
 
+            else:
+                F = Fmean
+
+            # signal being fed in is already baseline corrected, so all these
+            # are about ∆FR
             meanF = F.mean(axis = 0) # mean fluorescence response over trials
             stdF = F.std(axis = 0) # std of fluorescence response over trials
+            cohdF = meanF / stdF # Cohen's d of fluorescence response over trials
+
             res[:, 0, itt] = meanF
             res[:, 1, itt] = stdF
+            res[:, 2, itt] = cohdF
         
         return np.squeeze(res) # removes trailing dimension in case want output only for 1 trial type
 
@@ -503,8 +519,8 @@ if __name__ == '__main__':
     # Neuron types analysis (venn diagrams)
     # neuron_typesVENN_analysis()
     # NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
-    NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
-    # NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=True, pre_post='pre')
+    # NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
+    NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=True, pre_post='pre')
 
     # Trial type analysis (average & snake plot) - all neurons, not taking into account neuron types groups
     # NOTE: doesnt work well on cascade

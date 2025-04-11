@@ -105,11 +105,15 @@ class AUDVIS:
                             
 
     # Methods: to use on instance of the class in a script
+    # NOTE: subtract mean or signal
     def baseline_correct_signal(self, signal:ndarray, baseline_frames:int = None)->ndarray:
         '''assumes (trial, time, neuron, ...) dimensionality'''
         if baseline_frames is None:
             baseline_frames = self.trial_frames[0]
-        return signal - signal[:,:baseline_frames,:].mean(axis = 1, keepdims=True)
+        
+        baseline_subtract = signal[:,:baseline_frames,:].mean(axis = 1, keepdims=True)  
+        assert baseline_subtract.shape == (signal.shape[0], 1, signal.shape[-1]), 'Baseline mean for each trial is subtracted'
+        return signal - baseline_subtract
 
     def separate_signal_by_trial_types(self,  
                                        signal:ndarray,

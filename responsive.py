@@ -14,12 +14,11 @@ import os
 import pickle
 import argparse
 
-# TODO: add offset times!
 def run_ZETA(signals:np.ndarray,
              frame_times_corrected:np.ndarray,
              event_IDs:np.ndarray,
              event_times:np.ndarray,
-             maxDur:float = 1.4):
+             stimDur:float | np.ndarray = 1.1):
     '''
     inputs:
     Runs zeta test for each ROI for each trial type in a session
@@ -38,17 +37,18 @@ def run_ZETA(signals:np.ndarray,
     total_iterations = len(list(ttwhere)) * signals.shape[0]
     iteration = 0
     for tt in list(ttwhere):
+        on_off = np.column_stack([event_times[ttwhere[tt]], event_times[ttwhere[tt]] + stimDur - 0.1])
         for neuron in range(signals.shape[0]):  
-            _, res = zetatstest(vecTime = frame_times_corrected[neuron,:],
-                                vecValue = signals[neuron,:],
-                                arrEventTimes = event_times[ttwhere[tt]],
-                                dblUseMaxDur=maxDur)
+            _, res = zetatstest(vecTime = frame_times_corrected[neuron,:],vecValue = signals[neuron,:],
+                                arrEventTimes = on_off, dblUseMaxDur=stimDur)
             # get rid of most returned arrays that is just memory BLOAT
             Res_stat = {'zetaP':res['dblZetaP'],
                         'ZETA':res['dblZETA']}
             results[neuron][tt] = Res_stat # results for that trial type
-            progress_bar(iteration, total_iterations)
+            progress_bar(iteration, total_iterations, character='*')
             iteration += 1
+            del res
+        
     print(f'Zeta test for {signals.shape[0]} neurons and {len(list(ttwhere))} trial types.')
     return results
     
@@ -78,6 +78,7 @@ def prepare_zeta_params(spsig_file:str,
     # correct frame times for each ROI
     frame_times_1D :np.ndarray = RES.info.Frametimes # (all_times, )
     rois : DataFrame = DataFrame(RES.info.rois)
+    del RES
     ms_delays_1D : np.ndarray = np.array([*rois['msdelay']]) * 1e-3
     assert np.size(ms_delays_1D) == signal.shape[0], f'Mismatch between ROI info {ms_delays_1D.shape} and signal array {signal.shape}'
     frame_times_corrected_2D : np.ndarray = frame_times_1D[np.newaxis, :] + ms_delays_1D[:, np.newaxis] # using broadcasting, get corrected frame times for all neurons
@@ -111,7 +112,7 @@ def prepare_zeta_params(spsig_file:str,
             # make sure still correct dimensions even after discarding trials
             assert signal.shape == frame_times_corrected_2D.shape, f'Corrected frame times {frame_times_corrected_2D.shape} dont match signal array {signal.shape}'
             assert event_IDs.shape == event_times.shape, f'Mismatch in event times {event_times.shape} & IDs {event_IDs.shape}'
-
+    del SPSG
     # print(spsig_file, 'zeta parameters prepared!')
     return (signal, frame_times_corrected_2D,
             event_IDs, event_times)
@@ -119,7 +120,7 @@ def prepare_zeta_params(spsig_file:str,
 def responsive_zeta (RUN:bool = False, savedir:str = 'pydata', SPECIFIEDcond : str | None = None,
                      RegressOUT_behavior : bool = True,
                      signal_to_use : Literal['dF/F0', 'spike_prob'] = 'dF/F0') -> dict[int:np.ndarray]:
-    print('Using {} signal for zeta responsiveness'.format(signal_to_use))
+    print('Using {} signal for zeta responsiveness, regressed {}'.format(signal_to_use, RegressOUT_behavior))
     #  runs zeta test and saves results in pickle file
     if RUN:
         if not os.path.exists(savedir):
@@ -141,6 +142,11 @@ def responsive_zeta (RUN:bool = False, savedir:str = 'pydata', SPECIFIEDcond : s
         file_signal_info = [(file, signal_to_use, RegressOUT_behavior) for file in all_sessions]
         
         print('preparing parameters to run zeta test')
+        # debugging
+        # for f in file_signal_info[:1]: 
+        #     zp = prepare_zeta_params(*f) 
+        # run_ZETA(*zp)
+
         with mp.Pool(processes=mp.cpu_count()) as pool:
             session_params = pool.starmap(prepare_zeta_params, file_signal_info)
         
@@ -311,7 +317,7 @@ if __name__ == '__main__':
         assert args.signal.lower() in signal_names, 'Enter valid name for signal type: {}'.format(signal_names)
         sig_type = 'dF/F0' if args.signal.lower() in calcium else 'spike_prob'
         
-        resp_indices = responsive_zeta(RUN = True, savedir=args.savedir, signal_to_use=sig_type)
+        resp_indices = responsive_zeta(RUN = True, savedir=args.savedir, signal_to_use=sig_type, RegressOUT_behavior=False)
         print('Zeta test finished, results saved!')
     else:
         neuron_significance_by_group_and_TT = responsive_zeta(SPECIFIEDcond='g2pre')
