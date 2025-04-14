@@ -148,7 +148,7 @@ class AUDVIS:
         if baseline_frames is None:
             baseline_frames = self.trial_frames[0]
         
-        baseline_subtract = signal[:,:baseline_frames,:].mean(axis = 1, keepdims=True)  
+        baseline_subtract = np.nanmean(signal[:,:baseline_frames,:], axis = 1, keepdims=True)  
         assert baseline_subtract.shape == (signal.shape[0], 1, signal.shape[-1]), 'Baseline mean for each trial is subtracted'
         return signal - baseline_subtract
 

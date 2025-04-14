@@ -24,13 +24,13 @@ def calc_avrg_trace(trace:np.ndarray, time:np.ndarray, PLOT:bool = True
     match dims:
         # plot average trace of single neuron
         case (n_trials, n_times):
-            avrg = trace.mean(axis = 0)
-            SEM = sem(trace, axis = 0) # std huge error bars
+            avrg = np.nanmean(trace, axis=0)
+            SEM = sem(trace, axis = 0, nan_policy='omit') # std huge error bars
             
         # plot average trace of responsive neurons
         case (n_trials, n_times, n_neurons):
-            avrg = trace.mean(axis = (0, 2))
-            SEM = sem(trace, axis = (0, 2)) # std huge error bars
+            avrg = np.nanmean(trace, axis = (0, 2))
+            SEM = sem(trace, axis = (0, 2), nan_policy='omit') # std huge error bars
 
         case _:
             raise ValueError('Trace should be a np.ndarray with shape (ntrials, ntimes) or (ntrials, ntimes, nneurons).\n Instead provided trace is {} with shape {}'.format(type(trace), dims))
@@ -38,6 +38,9 @@ def calc_avrg_trace(trace:np.ndarray, time:np.ndarray, PLOT:bool = True
     if PLOT:
         plot_avrg_trace(time, avrg, SEM, title=f'{n_neurons}')    
     
+    if dims[-1] != 0:
+        assert not np.isnan(avrg).any(), '[BUG]: NaNs present in average trace'
+        assert not np.isnan(SEM).any(), '[BUG]: NaNs present in SEM trace'
     return (time, avrg, SEM)
 
 
@@ -98,13 +101,16 @@ def plot_1neuron(all_trials_signal:list[np.ndarray],
         neuron_all_trials = ttsig[:,:,single_neuron] 
         # plot all raw traces for each trial
         for i_trial in range(neuron_all_trials.shape[0]):
-            axs[tt_grid[itt]].plot(time, neuron_all_trials[i_trial, :], alpha = 0.01, color = 'blue')
+            # nans will be ignored
+            axs[tt_grid[itt]].plot(time, neuron_all_trials[i_trial, :], alpha = 0.1, color = 'blue')
             if CASCADE is not None:
-                axCASC.plot(time, CASCADE[itt][i_trial, :, single_neuron], alpha = 0.01, color = 'green')
+                axCASC.plot(time, CASCADE[itt][i_trial, :, single_neuron], alpha = 0.1, color = 'green')
         # as well as the average trace across trials
-        axs[tt_grid[itt]].plot(time, trace := neuron_all_trials.mean(axis = 0), color = 'blue', label = zetalabel + ttestlabel + wilcoxonlabel)
+        trace = np.nanmean(neuron_all_trials, axis = 0)
+        axs[tt_grid[itt]].plot(time, trace, color = 'blue', label = zetalabel + ttestlabel + wilcoxonlabel)
         if CASCADE is not None:
-            axCASC.plot(time, CASCADE[itt][:, :, single_neuron].mean(axis = 0), color = 'green', label = 'CASCADE')
+            CASCADEtrace = np.nanmean(CASCADE[itt][:, :, single_neuron], axis = 0)
+            axCASC.plot(time, CASCADEtrace, color = 'green', label = 'CASCADE')
         
         # Fluorescence response
         axs[tt_grid[itt]].set_title(
@@ -163,7 +169,7 @@ def snake_plot(all_neuron_averages:np.ndarray,
     if title:
         Axis.set_title(title)  
 
-    average_trace_per_neuron = all_neuron_averages.mean(axis = 0).T # transpose so nice shape for heatmap
+    average_trace_per_neuron = np.nanmean(all_neuron_averages, axis = 0).T # transpose so nice shape for heatmap
     
     # response onset sorting
     if MODE == 'onset':
@@ -176,8 +182,7 @@ def snake_plot(all_neuron_averages:np.ndarray,
         heatmap_neurons = average_trace_per_neuron[sorted_by_significance]
 
     sns.heatmap(heatmap_neurons, vmin = heatmap_range[0], vmax=heatmap_range[1],
-                xticklabels = False, ax = Axis, cbar = colorbar, 
-                robust=True) # TODO: check what this does
+                xticklabels = False, ax = Axis, cbar = colorbar) # TODO: check what this does
     
     Axis.vlines(trial_window_frames, ymin = 0, ymax=heatmap_neurons.shape[0])
     Axis.set_xticks(timestoplot := [0, trial_window_frames[0], trial_window_frames[1], heatmap_neurons.shape[1]-1], 
