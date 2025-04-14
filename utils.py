@@ -6,7 +6,7 @@ import pickle
 import matplotlib.pyplot as plt
 from glob import glob
 from pandas import read_csv
-from numpy import array, ndarray, load
+from numpy import array, ndarray, load, unique
 from tkinter import filedialog
 from collections import defaultdict
 from pandas import DataFrame, read_pickle
@@ -60,6 +60,13 @@ def load_audvis_files(group_condition_name:str)->tuple[
             sig, 
             z,
             trials_all), Cascade
+
+# trials to int and trials to str
+def trialMAPS(trialsSTR:ndarray)-> tuple[dict, dict]:
+    trialsSTRtoINT = {s:i for i, s in enumerate(unique(trialsSTR))}
+    trialsINTtoSTR = {i:s for i, s in enumerate(unique(trialsSTR))}
+    return trialsSTRtoINT, trialsINTtoSTR
+
 
 # necessary for defining the default dict because lambdas can't be pickled
 def default_neuron_index():

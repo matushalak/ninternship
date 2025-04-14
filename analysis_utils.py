@@ -176,7 +176,8 @@ def snake_plot(all_neuron_averages:np.ndarray,
         heatmap_neurons = average_trace_per_neuron[sorted_by_significance]
 
     sns.heatmap(heatmap_neurons, vmin = heatmap_range[0], vmax=heatmap_range[1],
-                xticklabels = False, ax = Axis, cbar = colorbar)
+                xticklabels = False, ax = Axis, cbar = colorbar, 
+                robust=True) # TODO: check what this does
     
     Axis.vlines(trial_window_frames, ymin = 0, ymax=heatmap_neurons.shape[0])
     Axis.set_xticks(timestoplot := [0, trial_window_frames[0], trial_window_frames[1], heatmap_neurons.shape[1]-1], 

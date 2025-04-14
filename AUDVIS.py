@@ -2,7 +2,7 @@
 # main class that holds and organizes data for the Audio-visual task of Dark-rearing experiment at Levelt Lab
 # requires python > 3.8, preferably newer for := to function
 # aggregates all neurons across recording sessions of same group
-from utils import group_condition_key, default_neuron_index, default_session_index, load_audvis_files, progress_bar
+from utils import group_condition_key, default_neuron_index, default_session_index, load_audvis_files, trialMAPS
 from collections import defaultdict
 from SPSIG import SPSIG, Dict_to_Class
 import numpy as np
@@ -18,30 +18,59 @@ from typing import Literal
 class Behavior:
     def __init__(self,
                  speed:ndarray, 
-                 continuous:SPSIG | None = None, # needed to Z-score everything (not if we do the trial-evoked Z-scoring / baseline correction)
+                 trialIDs: list,
                  facemap:Dict_to_Class|None = None,
                  baseline_frames:int = 16):
+        '''
+        Z-scored and baseline-corrected behaviors on trial level, to control for trial-evoked running / whisker movements / blinking / pupil
+        '''
         # NOTE: baseline frames (16) hardcoded now!
-        run = speed.swapaxes(0,1)[:720,:]
-        nans_run = np.any(np.isnan(run), axis = 1)
-        run_correct = run[~nans_run]
-        self.running =  np.zeros_like(run)
-        self.running[:len(run_correct), :] = run_correct - np.nanmean(run_correct[:,:baseline_frames], axis = 1, keepdims=True) #baseline corrected
-        self.running[len(run_correct):, :] = run[nans_run]
+        trialIDs = np.array(trialIDs)
+        self.running = self.trial_evoked_non_nan(behavior=speed, trialIDs=trialIDs, baseline_frames=baseline_frames)
         if facemap: # some sessions don't have video & facemap
-            cont_fm : Dict_to_Class = continuous.facemapTraces
-            # take care of NANs
-            motion = facemap.motion.swapaxes(0,1)[:720,:]
-            nans_motion = np.any(np.isnan(motion), axis = 1)
-            motion_correct = motion[~ nans_motion]
+            self.whisker = self.trial_evoked_non_nan(behavior=facemap.motion, trialIDs=trialIDs, baseline_frames=baseline_frames)
+            self.blink = self.trial_evoked_non_nan(behavior=facemap.blink, trialIDs=trialIDs, baseline_frames=baseline_frames)
+            self.pupil = self.trial_evoked_non_nan(behavior=facemap.eyeArea, trialIDs=trialIDs, baseline_frames=baseline_frames)
+    
+    @staticmethod
+    def trial_evoked_non_nan(behavior: np.ndarray, 
+                             trialIDs: np.ndarray,
+                             baseline_frames:int = 16) -> np.ndarray:
+        '''
+        behavior: ndarray is a (trials, timepoints) signal
+        trialIDs: ndarray is a (trials) array
 
-            # Z-scored and baseline-corrected whisker movement on trial level, to control for trial-evoked whisker movements
-            self.whisker = np.zeros_like(motion)
-            self.whisker[:len(motion_correct),:] = (motion_correct - np.nanmean(motion_correct[:,:baseline_frames], axis = 1, keepdims=True)
-                                                    ) / np.nanstd(motion_correct[:,:baseline_frames],axis = 1, keepdims=True)
-            self.whisker[len(motion_correct):,:] = motion[nans_motion]
-            self.blink = (facemap.blink.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.blink)) / np.nanstd(cont_fm.blink)
-            self.pupil = (facemap.eyeArea.swapaxes(0,1)[:720,:] - np.nanmean(cont_fm.eyeArea)) / np.nanstd(cont_fm.eyeArea)
+        Returns trial-evoked behavior (Z-scored on baseline period for each trial) 
+            with NaN trials filled in by the average behavior signal for that behavior in that trial type
+        '''
+        behavior = behavior.swapaxes(0,1)[:720,:]
+        # boolean masks
+        nans_behavior = np.any(np.isnan(behavior), axis = 1)
+        correct_behavior = ~nans_behavior 
+        # indices
+        nans_i = np.where(nans_behavior)[0]
+        correct_i = np.where(correct_behavior)[0]
+        # indices for different trial types
+        ttSTRtoINT = trialMAPS(trialIDs)[0]
+        trialIDs = AUDVIS.trials_apply_map(trialIDs, ttSTRtoINT)
+        tts = np.unique(trialIDs)
+        tt_indices = [np.where(trialIDs == tt)[0] for tt in tts]
+        # different trial types without or with nans
+        correct_tt_indices = [np.intersect1d(correct_i, tti) for tti in tt_indices]
+        nan_tt_indices = [np.intersect1d(nans_i, tti) for tti in tt_indices]
+        # mean signal by trial type
+        mean_behavior_tt_correct = [behavior[corr_tti].mean(axis = 0) for corr_tti in correct_tt_indices]
+        # fill-in mean signal for each trial type to nan trials of that trial type
+        for itt in range(tts.size):
+            behavior[nan_tt_indices[itt]] = mean_behavior_tt_correct[itt]
+        assert np.isnan(behavior).all() == False, 'All behavioral NaNs should have been removed in previous step!'
+        
+        # baseline correction and z-scoring on trial level
+        bsl_means = np.mean(behavior[:,:baseline_frames], axis = 1, keepdims=True)
+        bsl_stds = np.std(behavior[:,:baseline_frames],axis = 1, keepdims=True) + 0.01 # to prevent divide by 0 error
+        behavior_trial_evoked = (behavior - bsl_means) / bsl_stds
+
+        return behavior_trial_evoked
 
 
 class AUDVIS:
@@ -62,33 +91,23 @@ class AUDVIS:
         # indexes in ABAregion are MATLAB (1-7) and 0 means the neuron is outside the regions of interest!
         self.ABA_regions = ['VISpm', 'VISam', 'VISa', 'VISrl', 'VISal', 'VISl', 'VISp']
         
-        # Imports
-        self.neurons = neuron_indexing # information about each neuron
-        self.sessions = session_indexing # information about each session
-        # ranges of neurons corresponding to one recording session
-        self.session_neurons = self.update_session_index()
-        
-        # information about all ROI locations
-        self.rois = ROIs 
+        ## 0) Imports
         # neuropil-corrected, trial-locked ∆F/F signal
         self.signal = SIG 
         # z-scored neuropil-corrected, trial-locked ∆F/F signal
         self.zsig = Z 
-
-        # regress out running speed & OR whisker movement
-        print(NAME)
-        self.zsig_CORR = self.regress_out_behavior(self.zsig, signalname='zsig')
-        self.signal_CORR = self.regress_out_behavior(self.signal, signalname = 'sig')
-
-        # load spike probability estimated using CASCADE algorithm and regress out trial-evoked whisker and running
-        if CASCADE is not None:
-            self.CASCADE = CASCADE
-            self.CASCADE_CORR = self.regress_out_behavior(self.CASCADE, signalname = 'CASCADE')
-
+        self.neurons = neuron_indexing # information about each neuron
+        self.sessions = session_indexing # information about each session
+        # ranges of neurons corresponding to one recording session
+        self.session_neurons = self.update_session_index()
+        # information about all ROI locations
+        self.rois = ROIs 
         # per session, identify of all the presented trials
         self.trials = TRIALS_ALL 
         # trial window in seconds
         self.trial_sec = pre_post_trial_time
+
+        ## 1) TRIAL INFORMATION
         # Sampling Frequency
         self.SF = self.signal.shape[1] / sum(self.trial_sec) 
         # Trial window (pre_trial, post_trial) in frames
@@ -96,13 +115,31 @@ class AUDVIS:
         # TRIAL duration between frames hardcoded TODO: fixed based on indicated trial duration
         self.TRIAL = (self.trial_frames[0], 2*self.trial_frames[0]) 
 
-        # Trials
-        self.str_to_int_trials_map, self.int_to_str_trials_map = {s:i for i, s in enumerate(np.unique(self.trials))}, {i:s for i, s in enumerate(np.unique(self.trials))}
+        # Trial MAPS from str->int and int->str
+        self.str_to_int_trials_map, self.int_to_str_trials_map = trialMAPS(self.trials)
         # trialIDs as integers 
         self.trials = self.trials_apply_map(self.trials, self.str_to_int_trials_map)
         # create masks to separate different trials
-        self.trial_types =  self.get_trial_types_dict(all_trials=self.trials)# this gives the [session (1:9)], [trial (1:720)] indices for each trial type
-                            
+        # this gives the [session (1:9)], [trial (1:720)] indices for each trial type
+        self.trial_types =  self.get_trial_types_dict(all_trials=self.trials)
+
+        ## 2) SIGNALS
+        # regress out running speed & OR whisker movement
+        # (regression needs to be done on all trials, even the ones we will nan later)
+        print(NAME)
+        self.zsig_CORR = self.regress_out_behavior(self.zsig, signalname='zsig')
+        self.signal_CORR = self.regress_out_behavior(self.signal, signalname = 'sig')
+        
+        # NAN trials with too much confounding trial-locked behavior 
+        # (must be AFTER regression, regression cannot deal with NaNs)
+        self.signal_CORR = self.nantrials(signal=self.signal_CORR, Zthresh=2)
+        self.zsig_CORR = self.nantrials(signal=self.zsig_CORR, Zthresh=2)
+
+        # load spike probability estimated using CASCADE algorithm and regress out trial-evoked whisker and running
+        if CASCADE is not None:
+            self.CASCADE = CASCADE
+            self.CASCADE_CORR = self.regress_out_behavior(self.CASCADE, signalname = 'CASCADE')
+            self.CASCADE_CORR = self.nantrials(signal=self.CASCADE_CORR, Zthresh=2) # NAN trial locked behavior
 
     # Methods: to use on instance of the class in a script
     # NOTE: subtract mean or signal
@@ -118,7 +155,8 @@ class AUDVIS:
     def separate_signal_by_trial_types(self,  
                                        signal:ndarray,
                                        **kwargs) -> dict[int:ndarray]:
-        '''Only works on trial-locked signal,
+        '''
+        Only works on trial-locked signal,
         signal is assumed to be in (trials_all_conditions, time, neurons_across sessions) format
         
         returns a dictionary that stores separate arrays for each trial type (trials_one_condition, time, neurons_across_sessions)
@@ -145,6 +183,86 @@ class AUDVIS:
             
         return signal_by_trials
     
+    def nantrials(self, signal: np.ndarray, Zthresh: float = 2,
+                  verbose: bool = False, plot: bool = False) -> np.ndarray:
+        '''
+        Encodes trials with high whisker movement (> Zthresh) or closed eyes with NaN and returns the statistics by session
+            signal: ndarray with (trials, timepoint, neurons) shape
+            Zthresh: float specifying z-score threshold above which to encode trials as nans
+        Returns:
+            signalnan: ndarray with (trials, timepoint, neurons) shape, with problematic trials encoded as NaN 
+                for all timepoints for all neurons within a session
+        '''
+        oks_by_sess = []
+        nans_by_sess = []
+        snames = []
+        sigs_w_nans = []
+        for i_session, (start, end) in enumerate(self.session_neurons):
+            sess_sig = signal[:,:,start:end]
+            behavior : Behavior = self.sessions[i_session]['behavior']
+            sname = self.sessions[i_session]['session']
+            sess_trialIDs = self.trials[i_session,:]
+            # indices of trial type in the given session
+            sess_itts = [np.where(sess_trialIDs==tt)[0] for tt in np.unique(sess_trialIDs)]
+            
+            if hasattr(behavior, 'whisker'):
+                whisker = behavior.whisker
+                # boolean mask
+                whisker_problem = whisker[:,self.TRIAL[0]:self.TRIAL[1]].max(axis = 1) > Zthresh
+                whisker_OK = ~whisker_problem
+                # indices
+                whiskProb_is = np.where(whisker_problem)[0]
+                whiskOK_is = np.where(whisker_OK)[0]
+
+                # ok trials left
+                OK_itts = [np.intersect1d(whiskOK_is, itts_sess) for itts_sess in sess_itts]
+                PROBLEM_itts = [np.intersect1d(whiskProb_is, itts_sess) for itts_sess in sess_itts]
+                # number of trial left for each trial type
+                nOK = [ok.size for ok in OK_itts]
+                nPROB = [prob.size for prob in PROBLEM_itts]
+                
+                # flatten problem itts
+                problem_itts_flat = np.concat(PROBLEM_itts)
+                sess_sig_w_nans = sess_sig
+                # encode problem trials as nan
+                sess_sig_w_nans[problem_itts_flat,:,:] = np.nan
+                
+                if verbose:
+                    print(sname)
+                    print(*[f'Trial type {self.int_to_str_trials_map[i]} : {nOK[i]} OK, {nPROB[i]} PROBLEM\n' for i in range(len(nOK))])
+            else:
+                sess_sig_w_nans = sess_sig # cannot drop nan trials
+                nOK = [90 for _ in range(len(sess_itts))]
+                nPROB = [90 for _ in range(len(sess_itts))]
+                if verbose:
+                    print(sname)
+                    print('Has no facemap info, so all trials classified as OK\n')
+            
+            if not plot:
+                sigs_w_nans.append(sess_sig_w_nans)
+            else:
+                oks_by_sess.append(nOK)
+                nans_by_sess.append(nPROB)
+                snames.append(sname)
+
+        if not plot:
+            sigNaNCorrected = np.dstack(sigs_w_nans)
+            assert signal.shape == sigNaNCorrected.shape, f'The output needs to have the shape {signal.shape}, not {sigNaNCorrected.shape}!'
+            return sigNaNCorrected
+        else:
+            oks = np.array(oks_by_sess)
+            fig = plt.figure()
+            for isess, ok in enumerate(oks):
+                plt.plot(oks[isess,:], label = snames[isess], linestyle = '--' if snames[isess]!= 'Epsilon_20211210_002' else '-')
+            plt.xticks(ticks = np.arange(oks.shape[1]), labels=[self.int_to_str_trials_map[i] for i in range(oks.shape[1])])
+            plt.yticks(np.arange(0,91,5))
+            plt.xlabel('Trial type')
+            plt.ylabel('Number of trials left')
+            plt.title(self.NAME)
+            plt.legend(loc = 1, fontsize = 6)
+            plt.tight_layout()
+            plt.savefig(self.NAME+'nanEXPLORATION.png', dpi = 300)
+
     def regress_out_behavior(self, signal:ndarray, 
                              MODE : Literal['all', 'whisker', 'running'] = 'all',
                              signalname : str = 'zsig', 
@@ -301,7 +419,7 @@ class CreateAUDVIS:
             n_neurons = sp.Res.CaSig.shape[-1]
             trials_ALL.append(trialIDs := sp.info.Stim.log.stim[:720]) # hardcoded because one session had more somehow
             n_trials = len(trialIDs)
-            behavior = Behavior(sp.Res.speed, continuous ,sp.Res.facemap) if hasattr(sp.Res, 'facemap') else (Behavior(sp.Res.speed) if hasattr(sp.Res, 'speed') else None)
+            behavior = Behavior(speed=sp.Res.speed, facemap=sp.Res.facemap, trialIDs=trialIDs) if hasattr(sp.Res, 'facemap') else (Behavior(speed=sp.Res.speed, trialIDs=trialIDs) if hasattr(sp.Res, 'speed') else None)
             
             # session index
             self.session_index[session_i]['n_neurons'] = n_neurons
@@ -436,6 +554,7 @@ def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[
 
     return sig_X_args # arguments for parallelized execution
 
+# TODO: on single trial level, z-scored behaviors and z-scored ∆F/F for Fig S1 
 def plot_single_neuron_regression(neuron_mat : np.ndarray, X_movement_flat : np.ndarray, 
                                   predicted : np.ndarray, residual : np.ndarray,
                                   plot_dir : str):
@@ -491,7 +610,7 @@ def plot_single_neuron_regression(neuron_mat : np.ndarray, X_movement_flat : np.
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-create_files', type = str, default = 'no')
+    parser.add_argument('-files', type = str, default = 'no')
     return parser.parse_args()
 
 def load_in_data(pre_post: Literal['pre', 'post', 'both'] = 'both')->tuple[AUDVIS, AUDVIS, AUDVIS, AUDVIS]:
@@ -535,7 +654,7 @@ def load_in_data(pre_post: Literal['pre', 'post', 'both'] = 'both')->tuple[AUDVI
 # if ran as a script, initializes 4 AUDVIS classes with loaded data and saves them
 if __name__ == '__main__':
     args = parse_args()
-    if args.create_files.lower() in ('y', 'yes', 'true', 't'):
+    if args.files.lower() in ('y', 'yes', 'true', 't'):
         print('Please select the root directory with your folders containing data to analyze')
         # will ask for directory from which to load
         # g1_files, g2_files = group_condition_key() # general
