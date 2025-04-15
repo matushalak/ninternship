@@ -142,7 +142,7 @@ class AUDVIS:
             self.CASCADE_CORR = self.nantrials(signal=self.CASCADE_CORR, Zthresh=2) # NAN trial locked behavior
 
     # Methods: to use on instance of the class in a script
-    # NOTE: subtract mean or signal
+    # NOTE: subtract mean of baseline period in each trial
     def baseline_correct_signal(self, signal:ndarray, baseline_frames:int = None)->ndarray:
         '''assumes (trial, time, neuron, ...) dimensionality'''
         if baseline_frames is None:
@@ -171,7 +171,7 @@ class AUDVIS:
         ttypes : dict[int:ndarray] = self.trial_types if 'ttypes' not in kwargs else kwargs['ttypes']
         assert isinstance(ttypes, dict), 'ttypes must be a dictionary with indices for all occurences of each trial type across sessions'
 
-        for tt in list(ttypes): # 0-n_trial types
+        for tt in sorted(list(ttypes)): # 0-n_trial types
             signal_tt = []
             for (n_first, n_last) in self.session_neurons:
                 _, trials = ttypes[tt]
@@ -232,11 +232,16 @@ class AUDVIS:
                     print(*[f'Trial type {self.int_to_str_trials_map[i]} : {nOK[i]} OK, {nPROB[i]} PROBLEM\n' for i in range(len(nOK))])
             else:
                 sess_sig_w_nans = sess_sig # cannot drop nan trials
-                nOK = [90 for _ in range(len(sess_itts))]
-                nPROB = [90 for _ in range(len(sess_itts))]
-                if verbose:
+                # NOTE: dropping entire session here!!!
+                if 'g2' in self.NAME:
+                    # pass
+                    sess_sig_w_nans[:,:,:] = np.nan
+                    print(f'Encoding whole session {sname} as np.nan because no facemap')
+                elif verbose:
                     print(sname)
                     print('Has no facemap info, so all trials classified as OK\n')
+                nOK = [90 for _ in range(len(sess_itts))]
+                nPROB = [90 for _ in range(len(sess_itts))]
             
             if not plot:
                 sigs_w_nans.append(sess_sig_w_nans)
@@ -554,7 +559,8 @@ def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[
 
     return sig_X_args # arguments for parallelized execution
 
-# TODO: on single trial level, z-scored behaviors and z-scored ∆F/F for Fig S1 
+# TODO: on single trial level, 
+# z-scored behaviors and z-scored ∆F/F for Fig S1 
 def plot_single_neuron_regression(neuron_mat : np.ndarray, X_movement_flat : np.ndarray, 
                                   predicted : np.ndarray, residual : np.ndarray,
                                   plot_dir : str):

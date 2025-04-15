@@ -9,6 +9,7 @@ from Responsive import responsive_zeta
 from matplotlib_venn import venn3
 from numpy import ndarray, arange, where, unique
 from scipy.stats import wilcoxon, ttest_rel
+from functools import reduce
 from collections import defaultdict
 from typing import Literal
 
@@ -21,7 +22,7 @@ class Analyze:
     class to perform analyses on neurons from one group and one condition
     '''
     def __init__(self, av:AUDVIS, signal : Literal['dF/F0', 'spike_prob'] = 'dF/F0', 
-                 storage_folder:str = 'results', include_zeta : bool = True):
+                 storage_folder:str = 'results', include_zeta : bool = False):
         self.storage_folder = storage_folder
         
         # self.SIGNAL dF/F OR spike_prob
@@ -56,8 +57,11 @@ class Analyze:
         self.FLUORO_RESP: np.ndarray = self.fluorescence_response(
             signal = av.separate_signal_by_trial_types(
                 av.baseline_correct_signal(av.signal_CORR, 
-                                           baseline_frames=self.TRIAL_FRAMES[0])),
-            window = self.TRIAL_FRAMES)
+                                           baseline_frames=self.TRIAL_FRAMES[0])
+                                           ),
+            window = self.TRIAL_FRAMES, 
+            method='peak')
+        
         # Analyze by trial type
         self.TT_RES, self.TT_STATS, self.byTTS_blc, self.byTTS, self.NEURON_groups = self.tt_average(av, signal_to_use = self.signal_type)
         _, _, self.CASCADE, _, _ = self.tt_average(av, signal_to_use = 'spike_prob') # for debugging
@@ -87,6 +91,7 @@ class Analyze:
         # 2. Separate into Trial=types
         by_tts : dict = av.separate_signal_by_trial_types(SIG) # z-scored signal
         by_tts_blc : dict = av.separate_signal_by_trial_types(BLC_SIG) # baseline-corrected z-scored signal
+        trial_types = sorted(list(by_tts))
 
         # get significantly responding neurons for each trial type
         # 3. collect average and sem of traces of responsive neurons for each condition
@@ -94,15 +99,14 @@ class Analyze:
 
         TEST_RESULTS = []
         # TODO: consider different corrections
-        corrected_criterion = criterion / len(list(by_tts)) 
+        corrected_criterion = criterion / len(trial_types) 
         # A single spike in the predictions will have an amplitude of 0.266 and a width (FWHM) of 0.24 seconds.
         # NOTE: using Cohen's d effect size threshold
         stat_crit = (corrected_criterion, 0.45)
         # iterate through trial types
-        for tt in by_tts.keys():
+        for tt in trial_types:
             # get indices responsive to that trial type
             # TODO: separate analysis for inhibited
-            # TODO: clean this up!!!
             responsive_indices_EXC, responsive_indices_INH, test_res = self.responsive_trial_locked(neurons = by_tts[tt] if method != 'zeta' else self.TT_zeta[tt],
                                                                                                     # potentially separate analysis into ON-responsive and OFF-responsive
                                                                                                     window = (av.TRIAL[0], av.TRIAL[1] #+ (av.TRIAL[0]//2) # add .5 seconds after trial for offset responses
@@ -127,7 +131,6 @@ class Analyze:
                 responsive_neurs # ndarray at each tt idex gives neurons responsive to that tt
                 ), TEST_RESULTS, by_tts_blc, by_tts, self.neuron_groups(responsive = responsive_neurs)
 
-    # TODO: return separate indices for inhibited
     def responsive_trial_locked(self, neurons:ndarray | list, window:tuple[int, int], 
                                 trial_ID: int,
                                 criterion:float|tuple[float,float], method:str
@@ -184,43 +187,40 @@ class Analyze:
 
 
     @staticmethod
-    def neuron_groups(responsive:list[ndarray]) -> dict[str : set]:
+    def neuron_groups(responsive:list[ndarray]) -> dict[str : np.ndarray]:
         '''
         Input:
             for each trial type, gives neurons significantly responsive to it
         Output:
             returns VIS neurons, AUD neurons and MST neurons for further Venn diagram analysis
         '''            
-        resp_sets = [set(arr) for arr in responsive]
         # First define the big sets as all neurons that showed response to ONE of the AUD / VIS / MST trials
         # VIS: union between TT 6 (Vl) and 7 (Vr)
-        VIS_set = resp_sets[6] | resp_sets[7] 
+        VIS_set = np.union1d(responsive[6], responsive[7])
         # AUD: union between TT 0 (Al) and 3 (Ar)
-        AUD_set = resp_sets[0] | resp_sets[3] 
+        AUD_set = np.union1d(responsive[0], responsive[3])
         # MST: union between TT {1 (AlVl) and 5 (ArVr) = CONGRUENT} && {2 (AlVr) and 4 (ArVl) = INCONGRUENT}
-        MST_set = resp_sets[1] | resp_sets[5] | resp_sets[2] | resp_sets[4] 
+        MST_set = reduce(np.union1d, (responsive[1], responsive[5], responsive[2], responsive[4])) 
         
-        # Always responding (most)
-        ALWAYS_responding = VIS_set & MST_set & AUD_set
+        # Always responding (most) - intersection
+        ALWAYS_responding = reduce(np.intersect1d, (VIS_set, MST_set, AUD_set))
         
-        # Modulated
-        VIS_modulated = (VIS_set & MST_set) - AUD_set 
-        AUD_modulated = (AUD_set & MST_set) - VIS_set
-
-        # venn3(subsets=(VIS_set, AUD_set, MST_set), set_labels = ('VIS', 'AUD', 'MST'), set_colors = ('g', 'r', 'purple'))
+        # Modulated (intersection and difference)
+        VIS_modulated = np.setdiff1d(np.intersect1d(VIS_set, MST_set), AUD_set) 
+        AUD_modulated = np.setdiff1d(np.intersect1d(AUD_set, MST_set), VIS_set)
 
         # TODO: potentially add congruent / incongruent distinction
         return {'VIS':VIS_set,
                 'VIS_modulated':VIS_modulated,
-                'VIS_only':VIS_set - (MST_set | AUD_set),
+                'VIS_only': np.setdiff1d(VIS_set, np.union1d(MST_set, AUD_set)),
                 'AUD':AUD_set,
                 'AUD_modulated':AUD_modulated,
-                'AUD_only':AUD_set - (MST_set | VIS_set),
+                'AUD_only':np.setdiff1d(AUD_set, np.union1d(MST_set, VIS_set)),
                 'MST':MST_set,
-                'MST_only': MST_set - (AUD_set | VIS_set),
+                'MST_only': np.setdiff1d(MST_set, np.union1d(AUD_set, VIS_set)),
                 'ALWAYS_responding' : ALWAYS_responding,
-                'TOTAL' : MST_set | AUD_set | VIS_set,
-                'diagram_setup' : [(VIS_set, AUD_set, MST_set), ('VIS', 'AUD', 'MST'), ('g', 'r', 'purple')]}
+                'TOTAL': reduce(np.union1d, (MST_set, AUD_set, VIS_set)),
+                'diagram_setup' : [(set(VIS_set), set(AUD_set), set(MST_set)), ('VIS', 'AUD', 'MST'), ('g', 'r', 'purple')]}
 
 
     # TODO> potentially show only response to preferred direction, now averages preferred and nonpreferred
@@ -247,18 +247,20 @@ class Analyze:
                 # for all trial select the neurons from that group
                 # only neurons on intersections
                 assert GROUP in {'AUD','VIS'}, 'only visual (VIS) and auditory (AUD) neurons can be modulated by multisensory input, does not make sense for MST neurons'
-                indices = np.fromiter(ind := self.NEURON_groups[f'{GROUP}_{GROUP_type}'], int, len(ind))
+                indices = self.NEURON_groups[f'{GROUP}_{GROUP_type}']
                 
             case 'modality_specific':
-                indices = np.fromiter(ind := self.NEURON_groups[f'{GROUP}_only'], int, len(ind))
+                indices = self.NEURON_groups[f'{GROUP}_only']
             
             case 'all':
-                indices = np.fromiter(ind := self.NEURON_groups[f'{GROUP}'], int, len(ind))
+                indices = self.NEURON_groups[f'{GROUP}']
         
         # incorporate brain region indices if provided
         if BrainRegionIndices is not None:
             indices = np.intersect1d(BrainRegionIndices, indices)
 
+        if len(indices) == 0:
+            print(f'{GROUP}_{GROUP_type} in the given brain region is an empty set, no SUCH neurons!!!')
         ###
         # DEBUGGING only (or example neurons potentially) to plot single neurons for debugging
         # print(GROUP, GROUP_type, indices.size)
@@ -287,6 +289,8 @@ class Analyze:
         # breakpoint()
         ###
 
+        # all the trials (w all timepoints) of 4 combined trial types 
+        # for significant neurons (from brain area) in indices
         neurons_to_study = [sig[:,:, indices] for sig in signals]
         return [(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
                 for trace in neurons_to_study)], len(indices)
@@ -315,7 +319,7 @@ class Analyze:
                                           ), 'Signal must either be a dictionary with signal arrays for each trial type OR just a signal array for one trial type'
         if isinstance(signal, dict):
             res = np.empty((signal[0].shape[-1], 3, len(signal)))
-            tt_sigs = [signal[tt] for tt in signal.keys()]
+            tt_sigs = [signal[tt] for tt in sorted(signal.keys())]
         elif isinstance(signal, np.ndarray):
             res = np.empty((signal.shape[-1], 3, 1))
             tt_sigs = [signal]
@@ -325,18 +329,15 @@ class Analyze:
             # Fluorescence response adapted from (Meijer et al., 2017)
             # mean fluorescence during stimulus presentation for all trials
             Fmean  = np.nanmean(sig_array[:,window[0]:window[1],:], axis = 1)
-            F = np.empty_like(Fmean)
+            F = Fmean.copy()
             if method == 'peak':
                 Fmax  = np.nanmax(sig_array[:,window[0]:window[1],:], axis = 1)
                 Fmin  = np.nanmin(sig_array[:,window[0]:window[1],:], axis = 1)
                 max_mask = where(Fmean > 0)
                 min_mask = where(Fmean < 0)
-                
+                # nan trials are left as NaNs
                 F[max_mask] = Fmax[max_mask]
                 F[min_mask] = Fmin[min_mask]
-
-            else:
-                F = Fmean
 
             # signal being fed in is already baseline corrected, so all these
             # are about ∆FR
@@ -348,7 +349,8 @@ class Analyze:
             res[:, 0, itt] = meanF
             res[:, 1, itt] = stdF
             res[:, 2, itt] = cohdF
-        assert not np.isnan(res).any(), '[BUG]: NaNs were NOT removed during FR aggregation per neuron!!!'
+
+        # assert not np.isnan(res).any(), '[BUG]: NaNs were NOT removed during FR aggregation per neuron!!!'
         return np.squeeze(res) # removes trailing dimension in case want output only for 1 trial type
 
 
@@ -517,8 +519,8 @@ if __name__ == '__main__':
     
     # Neuron types analysis (venn diagrams)
     neuron_typesVENN_analysis()
-    # NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
-    # NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
+    NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
+    NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
     NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=True, pre_post='pre')
 
     # Trial type analysis (average & snake plot) - all neurons, not taking into account neuron types groups

@@ -11,6 +11,15 @@ from tkinter import filedialog
 from collections import defaultdict
 from pandas import DataFrame, read_pickle
 
+def get_sig_label(p, sig_label_map):
+        if p > 0.05:
+            return sig_label_map[0]
+        elif p > 0.01:
+            return sig_label_map[1]
+        elif p > 0.001:
+            return sig_label_map[2]
+        else:
+            return sig_label_map[3]
 
 def show_me(*args:ndarray):
     plt.figure()

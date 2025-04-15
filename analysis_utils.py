@@ -29,8 +29,14 @@ def calc_avrg_trace(trace:np.ndarray, time:np.ndarray, PLOT:bool = True
             
         # plot average trace of responsive neurons
         case (n_trials, n_times, n_neurons):
-            avrg = np.nanmean(trace, axis = (0, 2))
-            SEM = sem(trace, axis = (0, 2), nan_policy='omit') # std huge error bars
+            if n_neurons != 0:
+                avrg = np.nanmean(trace, axis = (0, 2))
+                SEM = sem(trace, axis = (0, 2), nan_policy='omit') # std huge error bars
+            else:
+                # this happens if a brain area has no intersection with the significant neurons,
+                # then we actually want to return NaNs
+                avrg = np.full(n_times, np.nan)
+                SEM = np.full(n_times, np.nan)
 
         case _:
             raise ValueError('Trace should be a np.ndarray with shape (ntrials, ntimes) or (ntrials, ntimes, nneurons).\n Instead provided trace is {} with shape {}'.format(type(trace), dims))
@@ -38,7 +44,10 @@ def calc_avrg_trace(trace:np.ndarray, time:np.ndarray, PLOT:bool = True
     if PLOT:
         plot_avrg_trace(time, avrg, SEM, title=f'{n_neurons}')    
     
-    if dims[-1] != 0:
+    # this happens if a brain area has no intersection with the significant neurons,
+    # then we actually want to return NaNs
+    if dims[-1] != 0: 
+        # otherwise, nans are not acceptable
         assert not np.isnan(avrg).any(), '[BUG]: NaNs present in average trace'
         assert not np.isnan(SEM).any(), '[BUG]: NaNs present in SEM trace'
     return (time, avrg, SEM)

@@ -4,9 +4,11 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import os
+import scipy.stats as spstats
 import matplotlib.pyplot as plt
 from matplotlib import artist
-
+from matplotlib.patches import Patch
+from utils import get_sig_label
 
 ### ---------- MULTISENSORY INTEGRATION CALCULATIONS ---------------
 def direction_selectivity(FLUORO_RESP: np.ndarray):
@@ -50,14 +52,20 @@ def direction_selectivity(FLUORO_RESP: np.ndarray):
     modality_maps = (vis_map, aud_map)
 
     # Prepare results array
-    results = np.empty((FLUORO_RESP.shape[0], 2, 4, 2))
+    results = np.full((FLUORO_RESP.shape[0], 2, 4, 2), np.nan)
     
     # Get preferred trial type
     for imodality, modality_tts in enumerate([vis, aud]):
         # only the trials for xthat modality
         sense_tt = FLUORO_RESP[:,:,modality_tts] 
+        # absolute value of the MEAN fluorescence response for each neuron
+        abs_sense_tt = sense_tt[:,0,:].__abs__()
+        # Create a boolean mask identifying rows that are NOT all NaN
+        non_nan_mask = ~np.all(np.isnan(abs_sense_tt), axis=1)
+        # Prepare sense_pref as an integer index array of length nneurons.
+        sense_pref = np.zeros(abs_sense_tt.shape[0], dtype=int)
         # find preference within that modality (take absolute value, if stronger inhibitory response)
-        sense_pref = np.argmax(sense_tt[:,0,:].__abs__(), axis = 1) # 0 is LEFT, 1 is RIGHT
+        sense_pref[non_nan_mask] = np.nanargmax(abs_sense_tt[non_nan_mask], axis = 1) # 0 is LEFT, 1 is RIGHT
         # preferred direction (0 in 3rd dimension)
         results[:, :, 0, imodality] = np.take_along_axis(sense_tt, 
                                                          # broadcasting and fancy indexing
@@ -88,7 +96,7 @@ def direction_selectivity(FLUORO_RESP: np.ndarray):
                                                          incongruent_tts[:, np.newaxis, np.newaxis],
                                                          axis = 2).squeeze()
     
-    assert not np.isnan(results).any(), 'Output array should not contain NaNs!'
+    # assert not np.isnan(results).any(), 'Output array should not contain NaNs!'
     return results
 
 def DSI(neuron_preferred: np.ndarray, neuron_orth:np.ndarray) -> float:
@@ -134,8 +142,8 @@ def getMIdata(FLUORO_RESP: np.ndarray, group_cond_name: str,
     '''
     #1) get direction selectivity info
     pref_stats, orth_stats, congruent_stats, incongruent_stats = np.split(direction_selectivity(FLUORO_RESP), 
-                                                                            indices_or_sections=4, 
-                                                                            axis = 2)
+                                                                          indices_or_sections=4, 
+                                                                          axis = 2)
     #2) get direction selectivity index for visual and auditory separately
     DSI_vis, DSI_aud = np.split(DSI(pref_stats, orth_stats),
                                 indices_or_sections=2,
@@ -163,7 +171,7 @@ def getMIdata(FLUORO_RESP: np.ndarray, group_cond_name: str,
 
 def prepare_long_format_Areas(out_size : int, 
                               Area_indices:dict[str: np.ndarray]) -> np.ndarray:
-    regions = np.empty(shape = out_size, dtype='U7')
+    regions = np.full(shape = out_size, fill_value='', dtype='U7')
     for region_name, where_region in Area_indices.items():
         regions[where_region] = str(region_name)
     return regions
@@ -194,6 +202,8 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
         if 'RCI' in NAME:
             YLIM = (-1,1)
             XLIM = (-1,1)
+            diagy = YLIM
+            diagx = diagy
         else:
             YLIM = diagy
             XLIM = diagx
@@ -204,7 +214,7 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
     g.plot_joint(sns.scatterplot, data = MIdata, alpha = 0.35, style = HUE_VAR, 
                  markers = markrs, s = 12)
     if kde:
-        g.plot_joint(sns.kdeplot, levels = 5)
+        g.plot_joint(sns.kdeplot, levels = 3)
     
     # sns.rugplot(data=MIdata, x = X_VAR, hue=HUE_VAR, ax=g.ax_marg_x, 
     #             height=-.08, clip_on=False, lw = 1, alpha = .2, palette=colmap, legend=False)
@@ -218,13 +228,41 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
         for group,gr in MIdata.groupby(HUE_VAR):
             sns.regplot(x=X_VAR, y=Y_VAR, data=gr, scatter=False, ax=g.ax_joint, truncate=False, color = colmap[group])
     
-    sns.move_legend(obj = g.ax_joint, loc = 1 if 'DSI' in NAME else 2)
-    # g.figure.tight_layout()
+    sns.move_legend(obj = g.ax_joint, loc = 2)
+    
+    # Quantifications using Mann-Whitney-U test
+    pval, means, sems, group_names = distanceQuantification(MIdata, X_VAR, Y_VAR, HUE_VAR)
+    
+    # Inset plot
+    sig_label_map = {0: 'n.s.', 1: '*', 2: '**', 3: '***'}
+    sig_text = get_sig_label(pval, sig_label_map)
+    inset_ax = g.figure.add_axes([0.675, 0.675, 0.2, 0.2])
+    indices = np.arange(len(group_names))
+    # Plot each bar with error bars; use the same colors as in colmap.
+    for i, group in enumerate(group_names):
+        # Use colmap to get the bar color; default to gray if not found.
+        color = colmap.get(group, 'gray')
+        inset_ax.bar(indices[i], means[i], yerr=sems[i],
+                     color=color, width=0.6, capsize=4, alpha=0.8)
+    # Connect the means with a dashed line.
+    inset_ax.plot(indices, means, linestyle='--', color='k', marker='o', alpha = 0.8)
+    # Place the significance label above the highest error bar in the inset.
+    x_mid = np.mean(indices)
+    # Calculate y_top from the highest of (mean+sem) values.
+    y_top = np.mean([np.max(means), np.mean(means)])
+    # Determine a vertical offset relative to the inset's y-range:
+    inset_ax.text(x_mid, y_top, sig_text, ha='center', va='bottom', fontsize=12)
+
+    # Set x-ticks with group names and adjust font size/rotation.
+    inset_ax.set_xticks(indices)
+    inset_ax.set_xticklabels(group_names, rotation=45, fontsize=8)
+    inset_ax.set_ylabel(f'Mean {NAME[:3]}', fontsize=8)
+
     if savedir is not None:
         plt.savefig(os.path.join(savedir, f'{NAME}.png'), dpi = 300)
     else:
         plt.savefig(f'{NAME}.png', dpi = 300)
-    plt.close()
+    plt.close('all')
 
 def RCI_dist_plot(RCIs:np.ndarray,
                   ax: artist = plt,
@@ -235,6 +273,8 @@ def RCI_dist_plot(RCIs:np.ndarray,
     sign = np.empty_like(RCIsorted, dtype=str)
     sign[pos] = '+'
     sign[neg] = '-'
+    perc_pos = round(100 * (len(pos) / len(RCIs)), 1)
+    perc_neg = round(100 * (len(neg) / len(RCIs)), 1)
     colors = {'+':'green', '-':'red'}
     df = pd.DataFrame({'Response change index':RCIsorted, 'sign':sign, '_':np.linspace(0,1,RCIsorted.size)})
     bp = sns.barplot(df, x = '_', y = 'Response change index', hue = 'sign', 
@@ -247,18 +287,24 @@ def RCI_dist_plot(RCIs:np.ndarray,
     else:
         bp.set(xlabel = None)
     bp.set_ylim((-1,1))
+    # Create custom legend handles for the hues 
+    legend_handles = [Patch(facecolor=colors['+'], label=f'{perc_pos}% > 0'),
+                      Patch(facecolor=colors['-'], label=f'{perc_neg}% < 0')]
+    
+    ax.legend(handles=legend_handles, loc=2, fontsize = 9)
     plt.tight_layout()
 
 
 def RCI_dist_plots_all(MIdata: pd.DataFrame, 
                        area: str = 'all',
                        savedir: str | None = None):
-    ngroups = MIdata['Group'].unique().size
+    ngroups = MIdata['Group'].nunique()
     for mod in ('VIS', 'AUD'):
         rcifig, rciaxs = plt.subplots(ngroups, 2, sharey='row')
         for ig, group in enumerate(MIdata['Group'].unique()):
             for icond, cond in enumerate(('congruent', 'incongruent')):
-                rcis = MIdata[f'RCI ({mod} {cond})'].loc[MIdata['Group'] == group]
+                rcis = MIdata[f'RCI ({mod} {cond})'].loc[MIdata['Group'] == group].copy()
+                print(f'{group}: Area {area} using {rcis.shape[0]} neurons for analysis of RCI {mod} {cond}')
                 RCI_dist_plot(rcis, rciaxs[ig, icond], xlab=True if ig == ngroups-1 else False)
                 rciaxs[ig, icond].set_title(f'{group}-{mod}-{cond}')
         # save
@@ -269,4 +315,44 @@ def RCI_dist_plots_all(MIdata: pd.DataFrame,
             rcifig.savefig(os.path.join(savedir, f'RCIs_{area}_{mod}.png'), dpi = 300)
         else:
             rcifig.savefig(f'RCIs_{area}_{mod}.png', dpi = 300)
-        plt.close()
+        plt.close('all')
+
+
+def distances(vectors:np.ndarray, 
+              distance_from:tuple[float,...] = (0,0)
+              )->list[float]:
+    '''
+    Computes Euclidian distance(s) of vectors from a given group
+    '''
+    assert len(vectors.shape) == 2, 'Input to distances() must be a (n_neurons, n_dims) numpy array'
+    assert len(distance_from) == vectors.shape[1], 'The dimensions of distance_from and the vector for each neuron dont match'
+    distance_from = np.array(distance_from)
+    vectors = vectors - distance_from
+    # handles nans
+    eucl_dists = np.linalg.norm(vectors, axis = 1)
+    return eucl_dists
+
+
+def distanceQuantification(MIdata:pd.DataFrame, 
+                           X_VAR:str, Y_VAR:str, HUE_VAR:str):
+    ngroups = MIdata[HUE_VAR].nunique()
+    distances_list = []
+    groups_list = []
+    for g in MIdata[HUE_VAR].unique():
+        vecs = MIdata.loc[MIdata[HUE_VAR] == g][[X_VAR, Y_VAR]].to_numpy()
+        distances_list.append(distances(vecs))
+        groups_list.append(g)
+    
+    assert len(distances_list) in (2,4, 2*4, 4*4), 'Current version compares between 2 or 4 groups (not according to region) or 8 or 16 groups (per region)'
+    match distances_list:
+        case g1ds, g2ds:
+            MWU = spstats.mannwhitneyu(g1ds, g2ds, alternative='two-sided', nan_policy='omit')
+            pval = MWU.pvalue
+            g1d_mean, g2d_mean = np.nanmean(g1ds), np.nanmean(g2ds)
+            g1d_SEM, g2d_SEM = spstats.sem(g1ds, nan_policy='omit'), spstats.sem(g2ds, nan_policy='omit')
+            return pval, [g1d_mean, g2d_mean], [g1d_SEM, g2d_SEM], groups_list
+        
+        # TODO: brain regions, all 4 groups, etc
+        case _:
+            raise NotImplementedError
+        

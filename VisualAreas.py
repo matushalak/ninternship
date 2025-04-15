@@ -28,8 +28,8 @@ class Areas:
         if np.sum(nans) != 0:
             regions_matlab[nans] = 10000
         # correct for 0 index meaning NaN
-        regions_python = regions_matlab[~nans] - 1
-
+        regions_python = regions_matlab.copy()
+        regions_python[~nans] -= 1
         # AM/PM (1, 0) medial dorsal stream; A/RL/AL (2, 3, 4) anterio-lateral dorsal; 
         # LM (5) ventral; V1 (6) primary VIS
         # in numpy logical indexing, must enclose each condition in parentheses
@@ -130,7 +130,9 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                                                             BrainRegionIndices = area_indices)
                 # also plot cascade traces
                 if add_CASCADE:
-                    CASCADE_TT_info, _ = AN.tt_BY_neuron_group(group, GROUP_type, SIGNALS_TO_USE= AN.CASCADE) 
+                    CASCADE_TT_info, _ = AN.tt_BY_neuron_group(group, GROUP_type, 
+                                                               SIGNALS_TO_USE= AN.CASCADE,
+                                                               BrainRegionIndices=area_indices) 
                 
                 # area determines which Artists we use
                 ts_fig, ts_ax = Artists[iarea]
