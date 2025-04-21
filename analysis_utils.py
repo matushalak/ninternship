@@ -148,7 +148,6 @@ def plot_1neuron(all_trials_signal:list[np.ndarray],
     plt.close()
     
 
-# TODO: add for Neuron-type (& by brain region) analyses !!!
 def build_snake_grid(tt_grid):
     """
     Given the original tt_grid (mapping trial_type -> (row, col) in 2x4),
@@ -170,7 +169,8 @@ def snake_plot(all_neuron_averages:np.ndarray,
                heatmap_range:tuple[int, int] = (None, None),
                Axis:artist = plt, title:str = False,
                colorbar:bool = True, SHOW:bool = False,
-               MODE:Literal['onset', 'signif'] = 'onset'):
+               MODE:Literal['onset', 'signif'] = 'onset',
+               cmap:str | None = None):
     '''
     One snake plot for all neurons of one group-condition-trial_type
     (neurons, time) shape heatmap
@@ -190,8 +190,10 @@ def snake_plot(all_neuron_averages:np.ndarray,
         sorted_by_significance = np.argsort(stats.pvalue) if not isinstance(stats, np.ndarray) else np.argsort(stats[:,0])
         heatmap_neurons = average_trace_per_neuron[sorted_by_significance]
 
+    nans = np.any(np.isnan(heatmap_neurons), axis = 1)
+    heatmap_neurons = heatmap_neurons[~nans]
     sns.heatmap(heatmap_neurons, vmin = heatmap_range[0], vmax=heatmap_range[1],
-                xticklabels = False, ax = Axis, cbar = colorbar) # TODO: check what this does
+                xticklabels = False, ax = Axis, cbar = colorbar, cmap=cmap) # TODO: check what this does
     
     Axis.vlines(trial_window_frames, ymin = 0, ymax=heatmap_neurons.shape[0])
     Axis.set_xticks(timestoplot := [0, trial_window_frames[0], trial_window_frames[1], heatmap_neurons.shape[1]-1], 

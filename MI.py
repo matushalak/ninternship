@@ -8,29 +8,35 @@ from AUDVIS import AUDVIS, Behavior, load_in_data
 from VisualAreas import Areas
 from analysis_utils import calc_avrg_trace, build_snake_grid, snake_plot, plot_avrg_trace
 from typing import Literal
-#TODO: check how many neurons are being used if they are really being correctly indexed
+
+# TODO: traces of enhanced neurons vs inhibited neurons / area, with RCI > threshold
+# TODO: add inhibited neurons
+# TODO: add offset neurons
+# TODO: add preferred response against Congruent vs Incongruent response Scatterplot (point color by region)
 # ---------------------- MULTISENSORY ENHANCEMENT ANALYSIS -----------------------------
 def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
        byAreas: bool = False,
-       GROUP_type:Literal['modulated','modality_specific', 'all', None] = None):
+       GROUP_type:Literal['modulated','modality_specific', 'all', None] = None,
+       all_RESP:bool = True):
     # Load in all data and perform necessary initial calculations
     AVS : list[AUDVIS] = load_in_data(pre_post=pre_post) # -> av1, av2, av3, av4
     ANS : list[Analyze] = [Analyze(av) for av in AVS]
 
-    MIdata_dict = {'DSI (VIS)' : [], 'DSI (AUD)': [], # collect DSIs
-                   'Group':[],# collect group_names,
-                   'BrainRegion':[],
-                   'RCI (VIS congruent)': [], 'RCI (VIS incongruent)' : [], # collect RCIs
-                   'RCI (AUD congruent)': [], 'RCI (AUD incongruent)' : []}
+    MIdata_dict:dict = MScalc.initializeMIdata()
     
     if GROUP_type is not None:
         if GROUP_type == 'modulated':
             GROUPS = ('VIS', 'AUD')
         else:
             GROUPS = ('VIS', 'AUD', 'MST')
+            if all_RESP:
+                GROUPS = ('TOTAL') # all neurons significantly responding to "something"
         # this creates index subsets across groups investigated
-        subsets = {f'{g}_{GROUP_type}' if GROUP_type != 'all' else f'{g}' : [] 
-                   for g in GROUPS}
+        if all_RESP:
+            subsets = {'TOTAL':[]}
+        else:
+            subsets = {f'{g}_{GROUP_type}' if GROUP_type != 'all' else f'{g}' : [] 
+                    for g in GROUPS}
 
     last_n_neur = 0
     for i, (Av, Analys) in enumerate(zip(AVS, ANS)):
@@ -64,11 +70,14 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
         os.makedirs(saveDir)
 
     if GROUP_type is None:
-        subsets = {"allneurons":np.arange(MIdata.shape[0])}
+        subsets = {"allneurons":np.arange(MIdataFULL.shape[0])}
     
     # after making the dataframe for ALL neurons, 
     # do analysis for Areas & Neuron groups of interest
     for sub, sub_indices in subsets.items():
+        if all_RESP:
+            if 'TOTAL' not in sub:
+                continue
         MIdata = MIdataFULL.iloc[sub_indices,:].copy()
         if GROUP_type is None:
             assert MIdata.shape == MIdataFULL.shape, 'If not splitting by groups, should use the FULL dataframe'
@@ -92,16 +101,32 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
     
 
 def plot_MI_data(MIdata:pd.DataFrame, savedir: str, name:str = 'all', kde: bool = False):
-    # Main plot!
+    # 1) Main plot!
     MScalc.RCI_dist_plots_all(MIdata, area = name, savedir = savedir)
     print(f'RCI {name} distribution plots done')
 
-    # Direction Selectivity Index Plot
+    # 2) Preferred against MST
+    # VIS
+    # i] Pref VIS against MST congruent
+    MScalc.scatter_hist_reg_join(MIdata, NAME=f'visPref_MS+_{name}_plot', X_VAR='pref_VIS', Y_VAR='VIS_MST+', HUE_VAR='Group',
+                                kde = False, savedir=savedir, statsmethod='means')
+    # ii] Pref VIS against MST incongruent
+    MScalc.scatter_hist_reg_join(MIdata, NAME=f'visPref_MS-_{name}_plot', X_VAR='pref_VIS', Y_VAR='VIS_MST-', HUE_VAR='Group',
+                                kde = False, savedir=savedir, statsmethod='means')
+    # AUD
+    # iii] Pref AUD against MST congruent
+    MScalc.scatter_hist_reg_join(MIdata, NAME=f'audPref_MS+_{name}_plot', X_VAR='pref_AUD', Y_VAR='AUD_MST+', HUE_VAR='Group',
+                                kde = False, savedir=savedir, statsmethod='means')
+    # iv] Pref AUD against MST incongruent
+    MScalc.scatter_hist_reg_join(MIdata, NAME=f'audPref_MS-_{name}_plot', X_VAR='pref_AUD', Y_VAR='AUD_MST-', HUE_VAR='Group',
+                                kde = False, savedir=savedir, statsmethod='means')
+
+    # 3) Direction Selectivity Index Plot
     MScalc.scatter_hist_reg_join(MIdata, NAME=f'DSI_{name}_plot', X_VAR='DSI (VIS)', Y_VAR='DSI (AUD)', HUE_VAR='Group',
                                 kde = kde, reg = False, savedir=savedir)
     print(f'DSI {name} plot done!')
 
-    # Response change index plots
+    # 4) Response change index plots
     # VIS
     MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_vis', 
                                 X_VAR='RCI (VIS congruent)', Y_VAR='RCI (VIS incongruent)', HUE_VAR='Group',

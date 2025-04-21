@@ -5,9 +5,10 @@
 from matplotlib_venn import venn3
 from AUDVIS import AUDVIS, Behavior, load_in_data
 from Analyze import Analyze, neuron_typesVENN_analysis
-from analysis_utils import calc_avrg_trace, plot_avrg_trace
+from analysis_utils import calc_avrg_trace, plot_avrg_trace, snake_plot
 from typing import Literal
 import matplotlib.pyplot as plt
+from matplotlib import artist
 import seaborn as sns
 import skimage as ski
 import numpy as np
@@ -66,12 +67,12 @@ def by_areas_VENN():
         
         VennRegfig.suptitle(f'{AV.NAME}')
         VennRegfig.tight_layout()
-        VennRegfig.savefig(f'{AV.NAME}_VennDiagramAREAS.png', dpi = 200)
+        VennRegfig.savefig(f'{AV.NAME}_VennDiagramAREAS.png', dpi = 300)
         plt.close()
     print('Done with venn diagrams!')
 
 
-
+# TODO: make sure inhibited and offset are also included
 # TODO: 90% reused code from Analyze plotting functions; GENERALIZE!!!
 #   NOTE: specify number of figures, subplots and lines in each sublot and prepare the figure in such a way 
 #   that once arguments passed in, automatically executes the plot
@@ -114,6 +115,11 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
     Artists = [plt.subplots(nrows=tsnrows, ncols=tsncols, 
                             sharex='col', sharey='row', figsize = ((tsncols * 3) + .8, tsnrows * 3)) 
                             for _ in range(4)]
+    
+    if GROUP_type == 'all':
+        SnakeArtists = [plt.subplots(nrows=tsnrows*len(AVs), ncols=tsncols, 
+                                sharex='col', sharey='row', figsize = ((tsncols * 3) + .8, tsnrows * len(AVs) * 3)) 
+                                for _ in range(4)]
 
     trials = ['VT', 'AT', 'MS+', 'MS-']
     # NEURON_types correspond to rows of each figure
@@ -126,8 +132,12 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
             for iarea, area_name in enumerate(AR.region_indices):
                 area_indices = AR.region_indices[area_name]
                 print(AV.NAME, group, area_name)
-                TT_info, group_size = AN.tt_BY_neuron_group(group, GROUP_type, 
-                                                            BrainRegionIndices = area_indices)
+                singleNeuronRes = AN.tt_BY_neuron_group(group, GROUP_type, 
+                                                        BrainRegionIndices = area_indices,
+                                                        return_single_neuron_data=True)
+                
+                TT_info, group_size, ind_neuron_traces, ind_neuron_pvals, Fresp = singleNeuronRes
+                
                 # also plot cascade traces
                 if add_CASCADE:
                     CASCADE_TT_info, _ = AN.tt_BY_neuron_group(group, GROUP_type, 
@@ -136,6 +146,8 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                 
                 # area determines which Artists we use
                 ts_fig, ts_ax = Artists[iarea]
+                if GROUP_type == 'all':
+                    snake_fig, snake_ax = SnakeArtists[iarea]
                 # different Trial Types for each of which we want a separate subplot in each figure
                 for itt, (avr, sem) in enumerate(TT_info):
                     plot_avrg_trace(time = AN.time, avrg=avr, SEM = sem, Axis=ts_ax[ig, itt],
@@ -147,6 +159,15 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                         plot_avrg_trace(time = AN.time, avrg=CASCADE_TT_info[itt][0], SEM = None, Axis=ts_ax[ig, itt],
                                         label = 'Est. FR' if itt == len(list(TT_info)) - 1 else None, 
                                         col = colors[group][icond], lnstl=linestyles[icond], alph=.5)
+                        
+                    # Add snake plot - of already the significant neurons in the region
+                    if GROUP_type == 'all':
+                        snake_plot(ind_neuron_traces[itt], 
+                                stats = ind_neuron_pvals[itt],
+                                trial_window_frames=AV.TRIAL, 
+                                time=AN.time,
+                                Axis=snake_ax[(len(ANs)*ig)+icond,itt],
+                                MODE = 'onset')
 
                     if icond == len(AVs) - 1:
                         if ig == len(NEURON_types) - 1:
@@ -164,20 +185,22 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                             twin.set_yticks([])
 
                 if ig == len(NEURON_types) - 1 and icond == len(ANs) - 1:
+                    # snake_fig.suptitle(f'{area_name} neurons')
+                    snake_fig.tight_layout(rect = [0,0,0.85,1])
+                    snake_fig.legend(loc = 'outside center right')
+                    snake_fig.savefig(f'[{area_name.replace('/', '|')}]Neuron_type({GROUP_type})SNAKE({pre_post}).png', dpi = 500)
+
                     ts_fig.suptitle(f'{area_name} neurons')
                     ts_fig.tight_layout(rect = [0,0,0.85,1])
                     ts_fig.legend(loc = 'outside center right')
-                    ts_fig.savefig(f'[{area_name.replace('/', '|')}]Neuron_type({GROUP_type})_average_res({pre_post}).png', dpi = 200)
+                    ts_fig.savefig(f'[{area_name.replace('/', '|')}]Neuron_type({GROUP_type})_average_res({pre_post}).png', dpi = 300)
 
-# TODO: once by neuron group implemented, this should be straightforward
-def by_areas_SNAKE():
-    pass
 
 if __name__ == '__main__':
     # Venn diagram of neuron classes in in the 4 different regions
     by_areas_VENN()
 
     # Timeseries plots for neurons from different regions
-    by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=True)
-    by_areas_TSPLOT(GROUP_type = 'modality_specific', add_CASCADE=True)
-    by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=True)
+    # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=True)
+    # by_areas_TSPLOT(GROUP_type = 'modality_specific', add_CASCADE=True)
+    # by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=True)

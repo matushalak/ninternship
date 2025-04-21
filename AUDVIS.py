@@ -132,14 +132,17 @@ class AUDVIS:
         
         # NAN trials with too much confounding trial-locked behavior 
         # (must be AFTER regression, regression cannot deal with NaNs)
-        self.signal_CORR = self.nantrials(signal=self.signal_CORR, Zthresh=2)
-        self.zsig_CORR = self.nantrials(signal=self.zsig_CORR, Zthresh=2)
+        # NOTE: if offset included, consider longer period for excluding trials (+ 250 ms, 4 frames)
+        self.extTRIAL = (self.TRIAL[0], self.TRIAL[1]+4) # to capture offset
+        self.signal_CORR = self.nantrials(signal=self.signal_CORR, Zthresh=2, 
+                                          whiskWindow=self.extTRIAL)
+        self.zsig_CORR = self.nantrials(signal=self.zsig_CORR, Zthresh=2, whiskWindow=self.extTRIAL)
 
         # load spike probability estimated using CASCADE algorithm and regress out trial-evoked whisker and running
         if CASCADE is not None:
             self.CASCADE = CASCADE
             self.CASCADE_CORR = self.regress_out_behavior(self.CASCADE, signalname = 'CASCADE')
-            self.CASCADE_CORR = self.nantrials(signal=self.CASCADE_CORR, Zthresh=2) # NAN trial locked behavior
+            self.CASCADE_CORR = self.nantrials(signal=self.CASCADE_CORR, Zthresh=2, whiskWindow=self.extTRIAL) # NAN trial locked behavior
 
     # Methods: to use on instance of the class in a script
     # NOTE: subtract mean of baseline period in each trial
@@ -183,7 +186,9 @@ class AUDVIS:
             
         return signal_by_trials
     
-    def nantrials(self, signal: np.ndarray, Zthresh: float = 2,
+    def nantrials(self, signal: np.ndarray, 
+                  whiskWindow: tuple[int, int],
+                  Zthresh: float = 2,
                   verbose: bool = False, plot: bool = False) -> np.ndarray:
         '''
         Encodes trials with high whisker movement (> Zthresh) or closed eyes with NaN and returns the statistics by session
@@ -208,7 +213,7 @@ class AUDVIS:
             if hasattr(behavior, 'whisker'):
                 whisker = behavior.whisker
                 # boolean mask
-                whisker_problem = whisker[:,self.TRIAL[0]:self.TRIAL[1]].max(axis = 1) > Zthresh
+                whisker_problem = whisker[:,whiskWindow[0]:whiskWindow[1]].max(axis = 1) > Zthresh
                 whisker_OK = ~whisker_problem
                 # indices
                 whiskProb_is = np.where(whisker_problem)[0]
