@@ -56,7 +56,7 @@ def calc_avrg_trace(trace:np.ndarray, time:np.ndarray, PLOT:bool = True
 def plot_avrg_trace(time:np.ndarray, avrg:np.ndarray, SEM:np.ndarray | None = None,
                     # optional arguments enable customization when this is passed into a function that assembles the plots in a grid
                     Axis:artist = plt, title:str = False, label:str = False, vspan:bool = True,
-                    col:str = False, lnstl:str = False, alph:float = 1): 
+                    col:str = False, lnstl:str = False, alph:float = 1, tt: int = 0): 
     '''
     can be used standalone or as part of larger plotting function
     '''
@@ -64,7 +64,11 @@ def plot_avrg_trace(time:np.ndarray, avrg:np.ndarray, SEM:np.ndarray | None = No
         Axis.set_title(title)  
     
     if vspan:
-        Axis.axvspan(0,1,alpha = 0.05, color = 'navajowhite') # HARDCODED TODO: change based on trial duration
+        tt_to_col = {0:'dodgerblue',
+                     1:'red',
+                     2:'goldenrod',
+                     3:'goldenrod'}
+        Axis.axvspan(0,1,alpha = 0.15, color = tt_to_col[tt]) # HARDCODED TODO: change based on trial duration
     
     if SEM is not None:
         Axis.fill_between(time, 
@@ -192,8 +196,10 @@ def snake_plot(all_neuron_averages:np.ndarray,
 
     nans = np.any(np.isnan(heatmap_neurons), axis = 1)
     heatmap_neurons = heatmap_neurons[~nans]
+    if cmap is not None:
+        cmap = sns.light_palette(cmap, as_cmap=True, reverse=False)
     sns.heatmap(heatmap_neurons, vmin = heatmap_range[0], vmax=heatmap_range[1],
-                xticklabels = False, ax = Axis, cbar = colorbar, cmap=cmap) # TODO: check what this does
+                xticklabels = False, ax = Axis, cbar = colorbar, cmap=cmap)
     
     Axis.vlines(trial_window_frames, ymin = 0, ymax=heatmap_neurons.shape[0])
     Axis.set_xticks(timestoplot := [0, trial_window_frames[0], trial_window_frames[1], heatmap_neurons.shape[1]-1], 

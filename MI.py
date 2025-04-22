@@ -92,10 +92,10 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
             for region in MIdata_bA['BrainRegion'].unique():
                 print('Starting MI analysis for {} region'.format(region))
                 MIdata_region = MIdata_bA.loc[MIdata_bA['BrainRegion'] == region].copy()
-                plot_MI_data(MIdata_region, name = region.replace('/', '|'), kde=True, savedir=saveDir_subset)
+                plot_MI_data(MIdata_region, name = region.replace('/', '|'), kde=False, savedir=saveDir_subset)
 
         else: # just do analysis for (Responsive) Neuron groups of interest across all areas
-            plot_MI_data(MIdata, kde=True, savedir=saveDir_subset)
+            plot_MI_data(MIdata, kde=False, savedir=saveDir_subset)
     
     return MIdataFULL
     

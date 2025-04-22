@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from statannotations.Annotator import Annotator
 import os
 import scipy.stats as spstats
 import matplotlib.pyplot as plt
@@ -190,13 +191,7 @@ def Quantification(MIdata:pd.DataFrame,
             g2pref_mean, g2MST_mean = np.nanmean(g2pref), np.nanmean(g2MST)
             g2pref_SEM, g2MST_SEM = spstats.sem(g2pref, nan_policy='omit'), spstats.sem(g2MST, nan_policy='omit')
 
-            # difference of differences (independent test - MWU)
-            g1diff = g1pref_mean - g1MST_mean
-            g2diff = g2pref_mean - g2MST_mean
-            MWU3 = spstats.mannwhitneyu(g1diff, g2diff, alternative='two-sided', nan_policy = 'omit')
-            pval3 = MWU3.pvalue
-
-            pvals = np.array((pval1, pval2, pval3))
+            pvals = np.array((pval1, pval2))
             vars_list = [X_VAR, Y_VAR, X_VAR, Y_VAR]
             return (pvals * len(pvals), #bonferroni correction 
                     np.array((g1pref_mean, g1MST_mean, g2pref_mean, g2MST_mean)), 
@@ -214,14 +209,6 @@ def Quantification(MIdata:pd.DataFrame,
         # TODO: brain regions, all 4 groups, etc
         case _:
             raise NotImplementedError
-            
-
-# TODO: if we want to say that they are direction TUNED (significantly) [and only look at those neurons]
-def DSI_threshold(trial_labels : np.ndarray | list, all_signals) -> float:
-    '''
-    Average 99th percentile of trial-label shuffled DSI distribution as discussed in Meijer et al. (2017)
-    '''
-    pass
 
 
 # --------- prepare plotting dataframe ---------
@@ -294,6 +281,7 @@ def prepare_long_format_Areas(out_size : int,
     return regions
 
 #------- plotting --------
+# TODO: fix with annotator
 def scatter_hist_reg_join(MIdata: pd.DataFrame,
                           NAME: str,
                           X_VAR: str, Y_VAR:str, HUE_VAR :str, 
@@ -411,10 +399,10 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
     #                     diff_sig_text, ha='center', va='bottom', fontsize=12)
     #         inset_ax.set_ylim((0, 1.3* np.max([y_pair1, y_pair2])))
 
-        # Set x-ticks with group names and adjust font size/rotation.
-        inset_ax.set_xticks(indices)
-        inset_ax.set_xticklabels(group_names, rotation=60, fontsize=6)
-        inset_ax.set_ylabel(f'Mean F response', fontsize=8)
+    # Set x-ticks with group names and adjust font size/rotation.
+    inset_ax.set_xticks(indices)
+    inset_ax.set_xticklabels(group_names, rotation=60, fontsize=6)
+    inset_ax.set_ylabel(f'Mean F response', fontsize=8)
     # breakpoint()
     if savedir is not None:
         plt.savefig(os.path.join(savedir, f'{NAME}.png'), dpi = 300)

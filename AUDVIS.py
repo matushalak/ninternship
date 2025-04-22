@@ -28,14 +28,17 @@ class Behavior:
         trialIDs = np.array(trialIDs)
         self.running = self.trial_evoked_non_nan(behavior=speed, trialIDs=trialIDs, baseline_frames=baseline_frames)
         if facemap: # some sessions don't have video & facemap
-            self.whisker = self.trial_evoked_non_nan(behavior=facemap.motion, trialIDs=trialIDs, baseline_frames=baseline_frames)
+            self.whisker = self.trial_evoked_non_nan(behavior=facemap.motion, trialIDs=trialIDs, baseline_frames=baseline_frames, 
+                                                    #  debug=True
+                                                     )
             self.blink = self.trial_evoked_non_nan(behavior=facemap.blink, trialIDs=trialIDs, baseline_frames=baseline_frames)
             self.pupil = self.trial_evoked_non_nan(behavior=facemap.eyeArea, trialIDs=trialIDs, baseline_frames=baseline_frames)
     
     @staticmethod
     def trial_evoked_non_nan(behavior: np.ndarray, 
                              trialIDs: np.ndarray,
-                             baseline_frames:int = 16) -> np.ndarray:
+                             baseline_frames:int = 16,
+                             debug:bool = False) -> np.ndarray:
         '''
         behavior: ndarray is a (trials, timepoints) signal
         trialIDs: ndarray is a (trials) array
@@ -69,7 +72,11 @@ class Behavior:
         bsl_means = np.mean(behavior[:,:baseline_frames], axis = 1, keepdims=True)
         bsl_stds = np.std(behavior[:,:baseline_frames],axis = 1, keepdims=True) + 0.01 # to prevent divide by 0 error
         behavior_trial_evoked = (behavior - bsl_means) / bsl_stds
-
+        # if debug:
+        #     plt.plot(np.nanmean(behavior, axis = 0))
+        #     plt.plot(np.nanmean(behavior_trial_evoked, axis = 0))
+        #     plt.show()
+        #     plt.close()
         return behavior_trial_evoked
 
 
@@ -228,6 +235,7 @@ class AUDVIS:
                 
                 # flatten problem itts
                 problem_itts_flat = np.concat(PROBLEM_itts)
+                # breakpoint()
                 sess_sig_w_nans = sess_sig
                 # encode problem trials as nan
                 sess_sig_w_nans[problem_itts_flat,:,:] = np.nan
@@ -333,6 +341,10 @@ class AUDVIS:
             print('Regressing out running speed and whisker movement energy.')
 
             # return residual_signals
+
+            # for rp in reg_params:
+            #     residual_signals = regress_out_neuron(*rp)
+
             with Pool(processes=cpu_count()) as pool:
                 residual_signals = pool.starmap(regress_out_neuron, reg_params)
             print('Done!')
@@ -546,13 +558,13 @@ def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[
 
             case neuron_mat, running, None:
                 X_movement : ndarray = running  # shape: (n_trials, time_points)
-                X_movement_flat = X_movement.reshape(n_trials, 1, n_timepoints)  # shape: (n_trials, 1, n_time_points)
-                X_movement_flat = np.column_stack((np.ones(X_movement_flat.shape), X_movement_flat))  # add intercept, (n-trials, 2, n_timepoints)
+                X_movement_flat = X_movement[:, np.newaxis,:]  # shape: (n_trials, 1, n_time_points)
+                X_movement_flat = np.concatenate((np.ones(shape=(n_trials, 1, n_timepoints)), X_movement_flat), axis=1)  # add intercept, (n-trials, 2, n_timepoints)
 
             case neuron_mat, running, whisker:
                 X_movement = np.dstack([running, whisker])  # shape: (n_trials, time_points, 2)
-                X_movement_flat = X_movement.reshape(n_trials, 2, n_timepoints)  # shape: (n_trials, 2, n_timepoints)
-                X_movement_flat = np.column_stack((np.ones(X_movement_flat.shape), X_movement_flat))  # add intercept, (n_trials, 3,n_timepoints )
+                X_movement_flat = X_movement.transpose(0, 2, 1)  # shape: (n_trials, 2, n_timepoints)
+                X_movement_flat = np.concatenate((np.ones(shape=(n_trials, 1, n_timepoints)), X_movement_flat), axis=1)  # add intercept, (n_trials, 3,n_timepoints )
         
         # (signal and design_matrix)
         if plot_dir is not None: # return filenames for plots
@@ -569,6 +581,8 @@ def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[
 def plot_single_neuron_regression(neuron_mat : np.ndarray, X_movement_flat : np.ndarray, 
                                   predicted : np.ndarray, residual : np.ndarray,
                                   plot_dir : str):
+    # neuron_n = plot_dir.split('/')[-1].removeprefix('neuron')
+
     X_mat = X_movement_flat.reshape((neuron_mat.shape[0], neuron_mat.shape[1], -1))[:,:,1:] # first dimension is just intercept
     run_mat = X_mat[:,:,0]
     whisk_mat = X_mat[:,:,1] if X_mat.shape[2] == 2 else None
@@ -595,29 +609,40 @@ def plot_single_neuron_regression(neuron_mat : np.ndarray, X_movement_flat : np.
     ax[0].plot(neuron_mat.mean(axis = 0), color = 'slateblue', label = 'average z∆F/F0')
     ax[0].plot(pred_mat.mean(axis = 0), color = 'darkorange', label = 'average predicted z∆F/F0')
     ax[0].plot(res_mat.mean(axis = 0), color = 'blue', label = 'average residual z∆F/F0', linewidth = 3)
-    ax[0].set_ylabel('z(∆F/F), symlog')
+    ax[0].set_ylabel('z(∆F/F)')
     ax[0].legend(loc = 2)
-    ax[0].set_yscale('symlog')
+    # ax[0].set_yscale('symlog')
     ax[0].vlines([15,31], ymin = neuron_mat.min(), ymax=neuron_mat.max(), linestyle = '--', color = 'saddlebrown')
 
     ax[1].plot(run_mat.mean(axis = 0), color = 'limegreen', label = 'average running speed')
-    ax[1].set_ylabel('a.u., symlog')
-    ax[1].set_yscale('symlog')
+    ax[1].set_ylabel('a.u.')
+    # ax[1].set_yscale('symlog')
     ax[1].legend(loc = 2)
     ax[1].vlines([15,31], ymin = run_mat.min(), ymax=run_mat.max(), linestyle = '--', color = 'saddlebrown')
     
     if whisk_mat is not None:
         ax[2].plot(whisk_mat.mean(axis = 0), color = 'crimson', label = 'average whisker energy')
         ax[2].legend(loc = 2)
-        ax[2].set_yscale('symlog')       
-        ax[2].set_ylabel('a.u., symlog')
+        # ax[2].set_yscale('symlog')       
+        ax[2].set_ylabel('a.u.')
         ax[2].vlines([15,31], ymin = whisk_mat.min(), ymax=whisk_mat.max(), linestyle = '--', color = 'saddlebrown')
     
     ax[-1].set_xticks([0, 15, 31, 46], ['-1', '0', '1', '2']) # NOTE: hardcoded
     ax[-1].set_xlabel('Time (s)')
     plt.tight_layout()
-    plt.savefig(plot_dir, dpi = 200)
+    # plt.savefig(plot_dir, dpi = 200)
+    plt.show()
     plt.close()
+    breakpoint()
+    # check single trial level
+    for i in range(720):
+        print(i)
+        plt.plot(neuron_mat[i,:], label = 'signal')
+        plt.plot(whisk_mat[i,:], label = 'whisker')
+        plt.plot(res_mat[i,:], label = 'residual signal')
+        plt.legend(loc = 2)
+        plt.show()
+        plt.close()
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -677,8 +702,8 @@ if __name__ == '__main__':
         names = ['g1pre', 'g1post', 'g2pre', 'g2post']
 
         # 1 core (for debugging)
-        # for g, g_name in zip((g1pre, g1post, g2pre, g2post), names):
-        #     av = CreateAUDVIS(g, g_name)
+        for g, g_name in zip((g1pre, g1post, g2pre, g2post), names):
+            av = CreateAUDVIS(g, g_name)
 
         # multiprocessing on 4 cores (4 groups)
         params = list(zip([g1pre, g1post, g2pre, g2post], names))

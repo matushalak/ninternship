@@ -56,7 +56,7 @@ class Analyze:
         # Get Fluorescence response statistics
         self.FLUORO_RESP: np.ndarray = self.fluorescence_response(
             signal = av.separate_signal_by_trial_types(
-                av.baseline_correct_signal(av.signal_CORR, 
+                av.baseline_correct_signal(av.zsig_CORR,#signal_CORR, 
                                            baseline_frames=self.TRIAL_FRAMES[0])
                                            ),
             window = self.TRIAL_FRAMES, 
@@ -217,25 +217,30 @@ class Analyze:
                 'MST_only': np.setdiff1d(MST_set, np.union1d(AUD_set, VIS_set)),
                 'ALWAYS_responding' : ALWAYS_responding,
                 'TOTAL': reduce(np.union1d, (MST_set, AUD_set, VIS_set)),
-                'diagram_setup' : [(set(VIS_set), set(AUD_set), set(MST_set)), ('VIS', 'AUD', 'MST'), ('g', 'r', 'purple')]}
+                'diagram_setup' : [(set(VIS_set), set(AUD_set), set(MST_set)), ('VIS', 'AUD', 'MST'), ('dodgerblue', 'r', 'goldenrod')]}
 
 
     # TODO> potentially show only response to preferred direction, now averages preferred and nonpreferred
     def tt_BY_neuron_group(self, 
-                           GROUP:Literal['VIS', 'AUD', 'MST'] = 'VIS',
-                           GROUP_type:Literal['modulated', 'modality_specific', 'all'] = 'modulated',
+                           GROUP:Literal['VIS', 'AUD', 'MST', 'TOTAL'] = 'VIS',
+                           GROUP_type:Literal['modulated', 'modality_specific', 'all', 'TOTAL'] = 'modulated',
                            BrainRegionIndices : np.ndarray | None = None,
                            SIGNALS_TO_USE: dict[int : ndarray] | None = None,
-                           return_single_neuron_data: bool = False
+                           return_single_neuron_data: bool = False,
+                           debug:bool = False
                            ) -> list[tuple[ndarray, ndarray]]:
         TT_blc_signal = self.byTTS_blc if SIGNALS_TO_USE is None else SIGNALS_TO_USE
         assert isinstance(TT_blc_signal, dict) & all(isinstance(TT_blc_signal[tt], np.ndarray) for tt in TT_blc_signal.keys()
                                                      ), 'Provided SIGNALS to use is not a dictionary or doesnt contain np.ndarrays with signal'
         # combine stimuli VIS trials (6, 7), AUD trials (0, 3), MST congruent (1, 5) MST incongruent trials (2, 4)
-        VIS_trials = np.concatenate([TT_blc_signal[6], TT_blc_signal[7]]) # 0
-        AUD_trials = np.concatenate([TT_blc_signal[0], TT_blc_signal[3]]) # 1
-        MST_congruent_trials = np.concatenate([TT_blc_signal[1], TT_blc_signal[5]]) # 2
-        MST_incongruent_trials = np.concatenate([TT_blc_signal[2], TT_blc_signal[4]]) # 3
+        VIS_trials, VIS_F = self.pref_dir(sig1 = TT_blc_signal[6], tt1=6,
+                                          sig2 = TT_blc_signal[7], tt2=7) # 0
+        AUD_trials, AUD_F = self.pref_dir(sig1 = TT_blc_signal[0], tt1=0,
+                                          sig2 = TT_blc_signal[3], tt2=3) # 1
+        MST_congruent_trials, MSTcong_F = self.pref_dir(sig1 = TT_blc_signal[1], tt1=1,
+                                                        sig2 = TT_blc_signal[5], tt2=5) # 2
+        MST_incongruent_trials, MSTincong_F = self.pref_dir(sig1 = TT_blc_signal[2], tt1=2,
+                                                            sig2 = TT_blc_signal[4], tt2=4) # 3
         
         signals = (VIS_trials, AUD_trials, MST_congruent_trials, MST_incongruent_trials)
 
@@ -250,7 +255,7 @@ class Analyze:
             case 'modality_specific':
                 indices = self.NEURON_groups[f'{GROUP}_only']
             
-            case 'all':
+            case 'all' | "TOTAL":
                 indices = self.NEURON_groups[f'{GROUP}']
         
         # incorporate brain region indices if provided
@@ -260,31 +265,31 @@ class Analyze:
         if len(indices) == 0:
             print(f'{GROUP}_{GROUP_type} in the given brain region is an empty set, no SUCH neurons!!!')
         ###
-        # DEBUGGING only (or example neurons potentially) to plot single neurons for debugging
-        # print(GROUP, GROUP_type, indices.size)
-        # STATS = {i:[] for i in range(8)}
-        # for trial in range(8):
-        #     for test in ('zeta', 'ttest', 'wilcoxon'):
-        #         sig = self.byTTS[trial] if test != 'zeta' else self.TT_zeta[trial]
-        #         _, _, stat = self.responsive_trial_locked(neurons = sig,
-        #                                                window = self.TRIAL_FRAMES,
-        #                                                criterion = (0.05, 0.45),
-        #                                                trial_ID=trial,
-        #                                                method=test)
-        #         STATS[trial].append(stat)
+        if debug:
+            # DEBUGGING only (or example neurons potentially) to plot single neurons for debugging
+            print(GROUP, GROUP_type, indices.size)
+            STATS = {i:[] for i in range(8)}
+            for trial in range(8):
+                for test in ('zeta', 'ttest', 'wilcoxon'):
+                    sig = self.byTTS[trial] if test != 'zeta' else self.TT_zeta[trial]
+                    _, stat = self.responsive_trial_locked(neurons = sig,
+                                                        window = self.TRIAL_FRAMES,
+                                                        criterion = (0.05, 0.45),
+                                                        trial_ID=trial,
+                                                        method=test)
+                    STATS[trial].append(stat)
 
-        # IFR = [self.CASCADE[tt] for tt in self.CASCADE]
-        # toplot = np.random.choice(indices, 50)
-        # for index in toplot:
-        #     plot_1neuron(all_trials_signal=TT_blc_signal,
-        #                  single_neuron=index,
-        #                  session_neurons=(self.sess_neur, self.session_names),
-        #                  fluorescence=self.FLUORO_RESP,
-        #                  trial_names=self.tt_names,
-        #                  time = self.time,
-        #                  CASCADE=IFR,
-        #                  STATS=STATS)
-        # breakpoint()
+            IFR = [self.CASCADE[tt] for tt in self.CASCADE]
+            toplot = np.random.choice(indices, 50)
+            for index in toplot:
+                plot_1neuron(all_trials_signal=TT_blc_signal,
+                            single_neuron=index,
+                            session_neurons=(self.sess_neur, self.session_names),
+                            fluorescence=self.FLUORO_RESP,
+                            trial_names=self.tt_names,
+                            time = self.time,
+                            CASCADE=IFR,
+                            STATS=STATS)
         ###
 
         # all the trials (w all timepoints) of 4 combined trial types 
@@ -295,13 +300,14 @@ class Analyze:
             return [(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
                     for trace in neurons_to_study)], len(indices)
         else:
+            FRs = [FR[indices] for FR in [VIS_F, AUD_F, MSTcong_F, MSTincong_F]]
             # for each trial type, want the traces of all neurons in indices
             return ([(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
                     for trace in neurons_to_study)], 
                     len(indices), 
                     neurons_to_study, # traces of neurons per region
                     [ttStat.pvalue[indices] for ttStat in self.TT_STATS], # stats of neuron per region
-                    self.FLUORO_RESP[indices,:,:]) # fluorescence responses of neuron per region
+                    FRs) # fluorescence responses of neuron per region
 
     @staticmethod
     def fluorescence_response (signal: np.ndarray | dict[int:np.ndarray],
@@ -376,9 +382,38 @@ class Analyze:
             return np.squeeze(res) # removes trailing dimension in case want output only for 1 trial type
         else:
             return Fs
+        
+    def pref_dir(self, 
+                 sig1:ndarray, tt1:int, 
+                 sig2:ndarray, tt2:int) -> ndarray:
+        '''
+        Takes in 2 (ntrials, ntimepoints, nneurons) signal arrays
 
+        Returns one (ntrials, ntimepoints, nneurons) signal array with
+        preferred direction (based on Fluorescence response)
+        '''
+        # absolute mean fluorescence responses for all neurons for tts of interest
+        FR = self.FLUORO_RESP[:,0, (tt1, tt2)].__abs__()
+        
+        outSIG = np.full_like(sig1, np.nan)
+        outF = np.full(shape = FR.shape[0], fill_value=np.nan)
+        # Create a boolean mask identifying neurons that are NOT all NaN
+        non_nan_mask = ~np.all(np.isnan(FR), axis=1)
+        # Prepare sense_pref as an integer index array of length nneurons.
+        tt_pref = np.zeros(FR.shape[0], dtype=int)
+        # find preference 
+        tt_pref[non_nan_mask] = np.nanargmax(FR[non_nan_mask], axis = 1)
+        pref1 = np.where(tt_pref == 0)[0]
+        pref2 = np.where(tt_pref == 1)[0]
+        # assign signals from all trials of preferred trial types to neurons
+        outSIG[:,:,pref1] = sig1[:,:,pref1]
+        outSIG[:,:,pref2] = sig2[:,:,pref2]
+        outF[pref1] = self.FLUORO_RESP[pref1, 0, tt1]
+        outF[pref2] = self.FLUORO_RESP[pref2, 0, tt2]
+        return outSIG, outF
 
 ###--------------------------------SPECIFIC analyses with plots-----------------------------------------------
+###                         Without splitting by brain areas
 # overall, not split into neuron groups based on Venn diagram
 def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]],
                 SNAKE_MODE:Literal['onset', 'signif'] = 'onset'):
@@ -542,7 +577,7 @@ if __name__ == '__main__':
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     
     # Neuron types analysis (venn diagrams)
-    neuron_typesVENN_analysis()
+    # neuron_typesVENN_analysis()
     # NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=True, pre_post='pre')
