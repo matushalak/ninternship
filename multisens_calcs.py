@@ -145,41 +145,40 @@ def RCI(preferred_AV:np.ndarray, preferred_1MOD:np.ndarray) -> float:
             - preferred_1MOD[:,0,:].__abs__()
             ) / (preferred_AV[:,0,:].__abs__() + preferred_1MOD[:,0,:].__abs__())
 
-def distances(vectors:np.ndarray, 
-              distance_from:tuple[float,...] = (0,0)
-              )->list[float]:
-    '''
-    Computes Euclidian distance(s) of vectors from a given group
-    '''
-    assert len(vectors.shape) == 2, 'Input to distances() must be a (n_neurons, n_dims) numpy array'
-    assert len(distance_from) == vectors.shape[1], 'The dimensions of distance_from and the vector for each neuron dont match'
-    distance_from = np.array(distance_from)
-    vectors = vectors - distance_from
-    # handles nans
-    eucl_dists = np.linalg.norm(vectors, axis = 1)
-    return eucl_dists
 
 def Quantification(MIdata:pd.DataFrame, 
                    X_VAR:str, Y_VAR:str, HUE_VAR:str,
-                   kind: Literal['distance', 'means'] = 'distance'):
+                   kind: Literal['within', 'between'] = 'within'):
     ngroups = MIdata[HUE_VAR].nunique()
     comparison_values = []
     groups_list = []
-    for g in MIdata[HUE_VAR].unique():
+    for ig, g in enumerate(MIdata[HUE_VAR].unique()):
         vecs = MIdata.loc[MIdata[HUE_VAR] == g][[X_VAR, Y_VAR]].to_numpy()
-        if kind == 'distance':
-            comparison_values.append(distances(vecs))
-            groups_list.append(g)
-        else:
+        if kind == 'within':
             # values for (x, y)
             comparison_values.append((vecs[:,0], vecs[:,1]))
             groups_list.append(g)
+        else:
+            # For between-group comparisons, we take the absolute value for quantifications
+            xABS = vecs[:,0].__abs__()
+            yABS = vecs[:,1].__abs__()
+            if ig == 0:
+                comparison_values.append([xABS])
+                comparison_values.append([yABS])
+                groups_list.append([g+X_VAR])
+                groups_list.append([g+Y_VAR])
+            else:
+                comparison_values[0].append(xABS)
+                comparison_values[1].append(yABS)
+                groups_list[0].append(g+X_VAR)
+                groups_list[1].append(g+Y_VAR)
     
     assert len(comparison_values) in (2,4, 2*4, 4*4), 'Current version compares between 2 or 4 groups (not according to region) or 8 or 16 groups (per region)'
-    match comparison_values:
+    match kind:
         # means comparison
         # TODO: generalize code
-        case (g1pref, g1MST), (g2pref, g2MST):
+        case 'within':
+            (g1pref, g1MST), (g2pref, g2MST) = comparison_values
             # Within group (related test - WCOX)
             WCOX1 = spstats.wilcoxon(g1pref, g1MST, alternative='two-sided', nan_policy='omit')
             pval1 = WCOX1.pvalue
@@ -198,12 +197,23 @@ def Quantification(MIdata:pd.DataFrame,
                     np.array((g1pref_SEM, g1MST_SEM, g2pref_SEM, g2MST_SEM)),
                     (groups_list[0]+X_VAR, groups_list[0]+Y_VAR, groups_list[1]+X_VAR, groups_list[1]+Y_VAR))
 
-        case g1ds, g2ds:
-            MWU = spstats.mannwhitneyu(g1ds, g2ds, alternative='two-sided', nan_policy='omit')
-            pval = MWU.pvalue
-            g1d_mean, g2d_mean = np.nanmean(g1ds), np.nanmean(g2ds)
-            g1d_SEM, g2d_SEM = spstats.sem(g1ds, nan_policy='omit'), spstats.sem(g2ds, nan_policy='omit')
-            return pval, [g1d_mean, g2d_mean], [g1d_SEM, g2d_SEM], groups_list
+        case 'between':
+            (g1A, g2A), (g1B, g2B) = comparison_values
+            MWU1 = spstats.mannwhitneyu(g1A, g2A, alternative='two-sided', nan_policy='omit')
+            pval1 = MWU1.pvalue
+            g1A_mean, g2A_mean = np.nanmean(g1A), np.nanmean(g2A)
+            g1A_SEM, g2A_SEM = spstats.sem(g1A, nan_policy='omit'), spstats.sem(g2A, nan_policy='omit')
+            
+            MWU2 = spstats.mannwhitneyu(g1B, g2B, alternative='two-sided', nan_policy='omit')
+            pval2 = MWU2.pvalue
+            g1B_mean, g2B_mean = np.nanmean(g1B), np.nanmean(g2B)
+            g1B_SEM, g2B_SEM = spstats.sem(g1B, nan_policy='omit'), spstats.sem(g2B, nan_policy='omit')
+            
+            pvals = np.array((pval1, pval2))
+            return (pvals * len(pvals), 
+                    np.array((g1A_mean, g2A_mean, g1B_mean, g2B_mean)), 
+                    np.array((g1A_SEM, g2A_SEM, g1B_SEM, g2B_SEM)),
+                    np.array(groups_list).flatten())
         
 
         # TODO: brain regions, all 4 groups, etc
@@ -286,7 +296,9 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
                           NAME: str,
                           X_VAR: str, Y_VAR:str, HUE_VAR :str, 
                           kde:bool = False, reg:bool = False, square: bool = False,
-                          savedir: str | None = None, statsmethod: Literal['distance', 'means'] = 'distance',
+                          savedir: str | None = None, 
+                          statsmethod: Literal['within', 'between'] = 'within',
+                          BrainArea: str | None = None,
                           colmap: dict[str:str] = {'g1pre' : 'royalblue', 
                                                    'g1post': 'teal', 
                                                    'g2pre' : 'tomato', 
@@ -316,8 +328,8 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
     g = sns.JointGrid(data=MIdata, x=X_VAR, y=Y_VAR, hue = HUE_VAR, palette= colmap,
                       height=8, ratio=8, space = 0, xlim=XLIM, ylim=YLIM)
     g.ax_joint.plot(diagx, diagy, linestyle = '--', color = 'dimgray')
-    g.plot_joint(sns.scatterplot, data = MIdata, alpha = 0.35, style = HUE_VAR, 
-                 markers = markrs, s = 12)
+    g.plot_joint(sns.scatterplot, data = MIdata, alpha = 0.7, style = HUE_VAR, 
+                 markers = markrs, s = 18)
     if kde:
         g.plot_joint(sns.kdeplot, levels = 1)
     
@@ -343,61 +355,22 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
     indices = np.arange(len(group_names))
     # Plot each bar with error bars; use the same colors as in colmap.
     for i, group in enumerate(group_names):
-        if statsmethod == 'means':
-            group = [k for k in colmap if k in group][0]
-            if i % 2 == 0:
-                sig_text = get_sig_label(pval[i//2], sig_label_map)
-                # Connect the means with a dashed line.
-                inset_ax.plot(indices[i:i+2], means[i:i+2], linestyle='--', color='k', marker='o', alpha = 0.8)
-                # Place the significance label above the highest error bar in the inset.
-                x_mid = np.mean(indices[i:i+2])
-                # Calculate y_top from the highest of (mean+sem) values.
-                y_top = np.mean([np.max(means[i:i+2]), np.mean(means[i:i+2])])
-                # Determine a vertical offset relative to the inset's y-range:
-                inset_ax.text(x_mid, y_top, sig_text, ha='center', va='bottom', fontsize=12)
+        group = [k for k in colmap if k in group][0]
+        if i % 2 == 0:
+            sig_text = get_sig_label(pval[i//2], sig_label_map)
+            # Connect the means with a dashed line.
+            inset_ax.plot(indices[i:i+2], means[i:i+2], linestyle='--', color='k', marker='o', alpha = 0.8)
+            # Place the significance label above the highest error bar in the inset.
+            x_mid = np.mean(indices[i:i+2])
+            # Calculate y_top from the highest of (mean+sem) values.
+            y_top = np.mean([np.max(means[i:i+2]), np.mean(means[i:i+2])])
+            # Determine a vertical offset relative to the inset's y-range:
+            inset_ax.text(x_mid, y_top, sig_text, ha='center', va='bottom', fontsize=12)
         
         # Use colmap to get the bar color; default to gray if not found.
         color = colmap.get(group, 'gray')
         inset_ax.bar(indices[i], means[i], yerr=sems[i],
                      color=color, width=0.6, capsize=4, alpha=0.8)
-        
-    if statsmethod == 'distance':
-        sig_text = get_sig_label(pval, sig_label_map)
-        # Connect the means with a dashed line.
-        inset_ax.plot(indices, means, linestyle='--', color='k', marker='o', alpha = 0.8)
-        # Place the significance label above the highest error bar in the inset.
-        x_mid = np.mean(indices)
-        # Calculate y_top from the highest of (mean+sem) values.
-        y_top = np.mean([np.max(means), np.mean(means)])
-        # Determine a vertical offset relative to the inset's y-range:
-        inset_ax.text(x_mid, y_top, sig_text, ha='center', va='bottom', fontsize=12)
-
-        # Set x-ticks with group names and adjust font size/rotation.
-        inset_ax.set_xticks(indices)
-        inset_ax.set_xticklabels(group_names, rotation=45, fontsize=8)
-        inset_ax.set_ylabel(f'Mean {NAME[:3]}', fontsize=8)
-    # else:
-    #     if len(pval) == 3:
-    #         diff_sig_text = get_sig_label(pval[2], sig_label_map)
-    #         # x‑positions: the centres of the two existing dashed lines
-    #         x_pair1 = np.mean(indices[0:2])
-    #         x_pair2 = np.mean(indices[2:4])
-    #         # y‑positions: put the new line a bit above the taller of the two pairwise lines
-    #         # Grab the highest bar‑top (mean+sem) in each pair …
-    #         y_pair1 = np.max(means[0:2] + sems[0:2])
-    #         y_pair2 = np.max(means[2:4] + sems[2:4])
-    #         # … then lift them by a small offset so the new connector sits clear of the bars.
-    #         offset = 0.05 * (np.max(means + sems) - np.min(means - sems))  # 5 % of the data range
-    #         y_pair1 += offset
-    #         y_pair2 += offset
-    #         # Draw the connector
-    #         inset_ax.plot([x_pair1, x_pair2], [y_pair1, y_pair2],
-    #                     linestyle='--', color='k', alpha=0.5)
-    #         # Drop the significance label halfway along
-    #         inset_ax.text(np.mean([x_pair1, x_pair2]),
-    #                     np.mean([y_pair1, y_pair2]) + offset,
-    #                     diff_sig_text, ha='center', va='bottom', fontsize=12)
-    #         inset_ax.set_ylim((0, 1.3* np.max([y_pair1, y_pair2])))
 
     # Set x-ticks with group names and adjust font size/rotation.
     inset_ax.set_xticks(indices)

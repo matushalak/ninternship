@@ -109,33 +109,33 @@ def plot_MI_data(MIdata:pd.DataFrame, savedir: str, name:str = 'all', kde: bool 
     # VIS
     # i] Pref VIS against MST congruent
     MScalc.scatter_hist_reg_join(MIdata, NAME=f'visPref_MS+_{name}_plot', X_VAR='pref_VIS', Y_VAR='VIS_MST+', HUE_VAR='Group',
-                                kde = False, savedir=savedir, statsmethod='means')
+                                kde = False, savedir=savedir, statsmethod='within')
     # ii] Pref VIS against MST incongruent
     MScalc.scatter_hist_reg_join(MIdata, NAME=f'visPref_MS-_{name}_plot', X_VAR='pref_VIS', Y_VAR='VIS_MST-', HUE_VAR='Group',
-                                kde = False, savedir=savedir, statsmethod='means')
+                                kde = False, savedir=savedir, statsmethod='within')
     # AUD
     # iii] Pref AUD against MST congruent
     MScalc.scatter_hist_reg_join(MIdata, NAME=f'audPref_MS+_{name}_plot', X_VAR='pref_AUD', Y_VAR='AUD_MST+', HUE_VAR='Group',
-                                kde = False, savedir=savedir, statsmethod='means')
+                                kde = False, savedir=savedir, statsmethod='within')
     # iv] Pref AUD against MST incongruent
     MScalc.scatter_hist_reg_join(MIdata, NAME=f'audPref_MS-_{name}_plot', X_VAR='pref_AUD', Y_VAR='AUD_MST-', HUE_VAR='Group',
-                                kde = False, savedir=savedir, statsmethod='means')
+                                kde = False, savedir=savedir, statsmethod='within')
 
     # 3) Direction Selectivity Index Plot
     MScalc.scatter_hist_reg_join(MIdata, NAME=f'DSI_{name}_plot', X_VAR='DSI (VIS)', Y_VAR='DSI (AUD)', HUE_VAR='Group',
-                                kde = kde, reg = False, savedir=savedir)
+                                kde = kde, reg = False, savedir=savedir, statsmethod='between')
     print(f'DSI {name} plot done!')
 
     # 4) Response change index plots
     # VIS
     MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_vis', 
                                 X_VAR='RCI (VIS congruent)', Y_VAR='RCI (VIS incongruent)', HUE_VAR='Group',
-                                square=True, reg= False, kde=kde, savedir=savedir)
+                                square=True, reg= False, kde=kde, savedir=savedir, statsmethod='between')
     print(f'VIS RCI {name} plot done!')
     # AUD
     MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_aud', 
                                 X_VAR='RCI (AUD congruent)', Y_VAR='RCI (AUD incongruent)', HUE_VAR='Group',
-                                square=True, reg= False, kde=kde, savedir=savedir)
+                                square=True, reg= False, kde=kde, savedir=savedir, statsmethod='between')
     print(f'AUD RCI {name} plot done!')
 
 
