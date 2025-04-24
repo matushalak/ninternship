@@ -3,13 +3,12 @@
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from statannotations.Annotator import Annotator
 import os
 import scipy.stats as spstats
 import matplotlib.pyplot as plt
 from matplotlib import artist
 from matplotlib.patches import Patch
-from utils import get_sig_label
+from utils import get_sig_label, add_sig
 from typing import Literal
 
 ### ---------- MULTISENSORY INTEGRATION CALCULATIONS ---------------
@@ -154,22 +153,27 @@ def Quantification(MIdata:pd.DataFrame,
     groups_list = []
     for ig, g in enumerate(MIdata[HUE_VAR].unique()):
         vecs = MIdata.loc[MIdata[HUE_VAR] == g][[X_VAR, Y_VAR]].to_numpy()
+        # x and y values
+        xVALS = vecs[:,0]
+        yVALS = vecs[:,1]
+        # For RCI comparisons, we take the absolute value for quantifications
+        if 'RCI' in X_VAR or 'RCI' in Y_VAR:
+            xVALS = xVALS.__abs__()
+            yVALS = yVALS.__abs__()
+        
         if kind == 'within':
             # values for (x, y)
-            comparison_values.append((vecs[:,0], vecs[:,1]))
+            comparison_values.append((xVALS, yVALS))
             groups_list.append(g)
         else:
-            # For between-group comparisons, we take the absolute value for quantifications
-            xABS = vecs[:,0].__abs__()
-            yABS = vecs[:,1].__abs__()
             if ig == 0:
-                comparison_values.append([xABS])
-                comparison_values.append([yABS])
+                comparison_values.append([xVALS])
+                comparison_values.append([yVALS])
                 groups_list.append([g+X_VAR])
                 groups_list.append([g+Y_VAR])
             else:
-                comparison_values[0].append(xABS)
-                comparison_values[1].append(yABS)
+                comparison_values[0].append(xVALS)
+                comparison_values[1].append(yVALS)
                 groups_list[0].append(g+X_VAR)
                 groups_list[1].append(g+Y_VAR)
     
@@ -412,19 +416,31 @@ def RCI_dist_plot(RCIs:np.ndarray,
     
     ax.legend(handles=legend_handles, loc=2, fontsize = 9)
     plt.tight_layout()
+    return df
 
 
+# TODO: Add proportion histograms & significance testing
 def RCI_dist_plots_all(MIdata: pd.DataFrame, 
                        area: str = 'all',
-                       savedir: str | None = None):
+                       savedir: str | None = None,
+                       quantify: bool = True):
     ngroups = MIdata['Group'].nunique()
+    rci_DFlist = []
     for mod in ('VIS', 'AUD'):
         rcifig, rciaxs = plt.subplots(ngroups, 2, sharey='row')
         for ig, group in enumerate(MIdata['Group'].unique()):
             for icond, cond in enumerate(('congruent', 'incongruent')):
                 rcis = MIdata[f'RCI ({mod} {cond})'].loc[MIdata['Group'] == group].copy()
                 print(f'{group}: Area {area} using {rcis.shape[0]} neurons for analysis of RCI {mod} {cond}')
-                RCI_dist_plot(rcis, rciaxs[ig, icond], xlab=True if ig == ngroups-1 else False)
+                rciDF = RCI_dist_plot(rcis, rciaxs[ig, icond], xlab=True if ig == ngroups-1 else False)
+                name = f'{mod}_{group}_{cond}'
+                rciDF.rename(columns={'Response change index': f'RCI'}, inplace=True)
+                rciDF['modality'] = [mod] * len(rciDF)
+                rciDF['group'] = [group] * len(rciDF)
+                rciDF['congruency'] = [cond] * len(rciDF)
+                rciDF.drop(columns='_', inplace=True)
+                rci_DFlist.append(rciDF)
+
                 rciaxs[ig, icond].set_title(f'{group}-{mod}-{cond}')
         # save
         rcifig.tight_layout()
@@ -435,5 +451,113 @@ def RCI_dist_plots_all(MIdata: pd.DataFrame,
         else:
             rcifig.savefig(f'RCIs_{area}_{mod}.png', dpi = 300)
         plt.close('all')
+    
+    # Quantification
+    RCIQuantDF = pd.concat(rci_DFlist)
+    RCI_proportions(RCIQuantDF, area = area, savedir=savedir)
 
+def RCI_proportions(RCIs:pd.DataFrame, area:str, savedir:str):
+    colors = {'+':'green', '-':'red'}
+    # separate plots & stats for each modality
+    for mod, modDF in RCIs.groupby('modality'):
+        within_statTABs = {}
+        between_statTABs = {}
+        plotTABs = {}
+        # separate contingency tables for each group
+        for g, gDF in modDF.groupby('group'):
+            within_statTABs[g] = pd.crosstab(index= gDF['congruency'], columns= gDF['sign'])
+            plotTABs[g] = pd.crosstab(index= gDF['congruency'], columns= gDF['sign'], normalize='index')
+        
+        for c, cDF in modDF.groupby('congruency'):
+            between_statTABs[c] = pd.crosstab(index= cDF['group'], columns= cDF['sign'])
+        
+        # Do Stats
+        cong_comparison = spstats.fisher_exact(between_statTABs['congruent']).pvalue
+        incong_comparison = spstats.fisher_exact(between_statTABs['incongruent']).pvalue
+        
+        ### Do the plots
+        # ── tidy table → long format ------------------------------------
+        long = (pd.concat(plotTABs, names=['group', 'congruency'])   # (group, congruency)
+                .stack()                                           # column 'sign' → rows
+                .rename('value')                                   # <- single value column
+                .reset_index())                                    # cols = [group, congruency, sign, value]
 
+        groups       = long['group'].unique()         # ['g1pre', 'g2pre']
+        congruencies = long['congruency'].unique()    # ['congruent', 'incongruent']
+        signs        = long['sign'].unique()          # ['+', '–', …]
+
+        # ── x-positions --------------------------------------------------
+        bar_w    = 0.35                               # width of each stacked bar
+        inner_gap = 0.05                              # tiny space between g1 & g2
+        outer_gap = 0.60                              # big space between blocks
+
+        # centres of the *congruency* blocks
+        block_cx = np.arange(len(congruencies)) * (2*bar_w + outer_gap)
+        # exact x for every group within each block
+        x_pos = {g: block_cx + (-bar_w/2 - inner_gap/2 if i == 0 else
+                                +bar_w/2 + inner_gap/2)
+                for i, g in enumerate(groups)}
+
+        # ── draw ---------------------------------------------------------
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+        for g in groups:
+            bottoms = np.zeros(len(congruencies))
+            for s in signs:
+                vals = (long
+                        .query('group == @g and sign == @s')
+                        .sort_values('congruency')['value']
+                        .to_numpy())
+                ax.bar(x_pos[g], vals, bar_w,
+                    bottom=bottoms,
+                    label=s if g == groups[0] else "",   # only label once in legend
+                    edgecolor='black',
+                    color=colors[s])                  # your colour palette
+                bottoms += vals
+
+        # ── dual-row x-labels -------------------------------------------
+        # bottom row = groups (minor ticks)
+        ax.set_xticks(np.concatenate(list(x_pos.values())), minor=True)
+        ax.set_xticklabels(np.tile(groups, len(congruencies)),
+                        minor=True, rotation=0, ha='center')
+
+        # upper row = congruency, centred across the pair of bars
+        ax.set_xticks(block_cx)
+        ax.set_xticklabels(congruencies,
+                        rotation=0, ha='center', fontweight='bold')
+        
+        ax.tick_params(axis='x', which='major', pad=16)  # congruency (bottom row)
+
+        ax.set_ylabel('Proportion enhanced / suppressed')
+        ax.tick_params(axis='x', which='both', length=0)
+        ax.legend(title='Sign', bbox_to_anchor=(1.02, 1), loc='upper left')
+        
+        # ❷  Convert your two p-values to star labels
+        cong_label   = get_sig_label(cong_comparison*2)
+        incong_label = get_sig_label(incong_comparison*2)
+
+        # ❸  Work out where to place the bars
+        bars_x     = np.sort(np.array(list(x_pos.values())).flatten())
+        heights    = [1 for _ in range(4)]
+        cong_x1, cong_x2 = bars_x[0], bars_x[1]
+        incong_x1, incong_x2 = bars_x[2], bars_x[3]
+
+        # y position = a tad above the tallest bar in the pair
+        y_offset = 0.03
+        cong_y   = max(heights[0], heights[1]) + y_offset
+        incong_y = max(heights[2], heights[3]) + y_offset
+
+        # keep room for the annotations
+        ax.set_ylim(top = max(cong_y, incong_y) + 0.06)
+
+        # ❹  Actually draw the two annotations
+        add_sig(ax, cong_x1,   cong_x2,   cong_y,   cong_label,
+                color='k', linewidth=1.3)
+        add_sig(ax, incong_x1, incong_x2, incong_y, incong_label,
+                color='k', linewidth=1.3)
+        
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(savedir, f'RCI_proportions_{area}_{mod}'))

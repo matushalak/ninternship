@@ -11,7 +11,11 @@ from tkinter import filedialog
 from collections import defaultdict
 from pandas import DataFrame, read_pickle
 
-def get_sig_label(p, sig_label_map):
+def get_sig_label(p, 
+                  sig_label_map = {0: 'n.s.', 
+                                   1: '*', 
+                                   2: '**', 
+                                   3: '***'}):
         if p > 0.05:
             return sig_label_map[0]
         elif p > 0.01:
@@ -20,6 +24,19 @@ def get_sig_label(p, sig_label_map):
             return sig_label_map[2]
         else:
             return sig_label_map[3]
+
+def add_sig(ax, x1, x2, y, label,
+            bar_height=0.02, text_offset=0.01, **kwargs):
+    """
+    Draw a significance bar between x1 and x2 at height y on `ax`
+    and put `label` centred above it.
+    Extra kwargs are passed to ax.plot (e.g. color, linewidth).
+    """
+    ax.plot([x1, x1, x2, x2],
+            [y,  y + bar_height, y + bar_height, y],
+            **kwargs)
+    ax.text((x1 + x2)/2, y + bar_height + text_offset,
+            label, ha='center', va='bottom', fontsize=12)
 
 def show_me(*args:ndarray):
     plt.figure()
