@@ -7,20 +7,26 @@ from AUDVIS import AUDVIS, Behavior, load_in_data
 from Analyze import Analyze, neuron_typesVENN_analysis
 from analysis_utils import calc_avrg_trace, plot_avrg_trace, snake_plot
 from typing import Literal
-import matplotlib.pyplot as plt
-import pandas as pd
-from matplotlib import artist
-import seaborn as sns
+from scipy.io.matlab import loadmat
+from matplotlib import artist, colors
 from statannotations.Annotator import Annotator
+import matplotlib.pyplot as plt
+import seaborn as sns
 import skimage as ski
 import numpy as np
+import pandas as pd
+from scipy import ndimage
+import os
 
 class Areas:
     def __init__(self, 
                  AV : AUDVIS):
         self.area_names = AV.ABA_regions
         self.region_indices = self.separate_areas(AV)
-        self.dfROI: pd.DataFrame = AV.rois
+        self.overlay = self.getMask()
+        # Adjust to array coordinates
+        self.dfROI: pd.DataFrame = self.adjustROIdf(dfROI=AV.rois, 
+                                                    overlayDIMS=self.overlay.shape)
 
     @staticmethod
     def separate_areas(AV:AUDVIS) -> dict[str : np.ndarray]:
@@ -43,6 +49,89 @@ class Areas:
                                     | (regions_python == 3) 
                                     | (regions_python == 4)),
                 'LM' : np.where(regions_python == 5)}
+    
+    def getMask(self, name:str = 'AllenBrainAtlasOverlay'):
+        if os.path.exists(overlay_file := os.path.join('pydata', f'{name}.npy')):
+            overlay = np.load(overlay_file)
+            return overlay
+        else:
+            overlay_dict = loadmat(overlay_file.replace('npy', 'mat'))
+            overlay_mask:np.ndarray = overlay_dict['mask']
+            overlay_mask = overlay_mask.astype(float)
+            overlay_mask -= 1
+            # overlay_mask[overlay_mask == -1] = 255
+            return overlay_mask
+
+    def show_neurons(self, 
+                     indices: list[np.ndarray] | None = None, 
+                     ind_colors: list[str] = ['navy'],
+                     ind_labels: list[str] | None = None,
+                     region_alpha = 0.2,
+                     title: str | None = None,
+                     svg:bool = False):
+        if indices is not None:
+            if len(indices) == 1:
+                indices = list(self.region_indices.values()) + indices
+                ind_colors = ['mediumseagreen', 'coral', 'rosybrown', 'orchid'] + ind_colors
+                ind_labels = list(self.region_indices.keys()) + ind_labels 
+            elif len(indices) == 2:
+                nonresp, resp = indices
+                ind_labels = ind_labels + list(self.region_indices.keys())
+                brainresp = [np.intersect1d(resp, self.region_indices[k]) for k in ind_labels[1:]]
+                indices = [nonresp] + brainresp
+                ind_colors = ind_colors + ['mediumseagreen', 'coral', 'rosybrown', 'orchid']
+        else:
+            indices = list(self.region_indices.values())
+            ind_colors: list[str] = ['mediumseagreen', 'coral', 'rosybrown', 'orchid']
+            ind_labels = list(self.region_indices.keys())
+        
+        alpha = 0.3
+        outlines = ski.segmentation.find_boundaries(self.overlay.astype(int), connectivity=1, mode='thick')
+        # dilate outline mask (thicker)
+        outlines = ndimage.binary_dilation(outlines, iterations=5)
+        self.overlay[outlines] = 255
+        # Add black outlines
+        areaColors = {6:colors.to_rgba('mediumseagreen', alpha=alpha),#V1
+                      0:colors.to_rgba('coral', alpha=alpha), # PM
+                      1:colors.to_rgba('coral', alpha=alpha), # AM
+                      2:colors.to_rgba('rosybrown', alpha=alpha), # A
+                      3:colors.to_rgba('rosybrown', alpha=alpha), # RL
+                      4:colors.to_rgba('rosybrown', alpha=alpha), # AL
+                      5:colors.to_rgba('orchid', alpha=alpha), # LM
+                      255:colors.to_rgba('black', alpha=1), # outlines
+                      -1:colors.to_rgba('white', alpha=1)} # background
+        
+        overlayRGBA = np.dstack([self.overlay for _ in range(4)])
+        for area, RGBAcolor in areaColors.items():
+            overlayRGBA[(self.overlay==area),:] = RGBAcolor
+        
+        im = plt.imshow(overlayRGBA)
+        for ii, (inds, indcol, indlab) in enumerate(zip(indices, ind_colors, ind_labels)):
+            sc = plt.scatter(self.dfROI.ABAx.iloc[inds],
+                             self.dfROI.ABAy.iloc[inds],
+                             s = 7 if indlab != 'Unresponsive' else 5.5,
+                             alpha= 1 if indlab != 'Unresponsive' else 0.6,
+                             color = indcol,
+                             label = indlab if indlab != 'Unresponsive' else None) 
+        
+        if ind_labels is not None:
+            plt.legend(loc = 1)
+        
+        if title is not None:
+            plt.title(title)
+        plt.tight_layout()
+        if svg:
+            plt.savefig(f'{title}_ALL_NEURONS_ABA.svg')
+        else:
+            plt.savefig(f'{title}_ALL_NEURONS_ABA.png', dpi = 500)
+        plt.close()
+    
+    def adjustROIdf(self, dfROI:pd.DataFrame, overlayDIMS:tuple[int,int]
+                    ) -> pd.DataFrame:
+        yd, xd = overlayDIMS
+        dfROI['ABAx'] *= xd
+        dfROI['ABAy'] *= yd
+        return dfROI
 
 
 def by_areas_VENN(svg:bool=False):
@@ -366,15 +455,37 @@ def Quantification(df: pd.DataFrame,
         else:
             fg.savefig(f'{ar.replace('/', '|')}_traces_QUANT.svg')
         plt.close()
+
+def recordedNeurons(svg:bool = False):
+    AVs : list[AUDVIS] = load_in_data()
+    # ANs : list[Analyze] = [Analyze(av) for av in AVs]
+    ARs: list[Areas] = [Areas(av) for av in AVs]
+
+    for av, ar in zip(AVs, ARs):
+        AN = Analyze(av)
+        # Responsive
+        Total_RESP = AN.NEURON_groups['TOTAL']
+        Total_RESP_color = 'gold'
+        # not responsive
+        Total_NOT_RESP = np.where(~np.isin(np.arange(AN.sess_neur[-1][-1]), Total_RESP))[0]
+        Total_NOT_RESP_color = 'dimgray'
         
+        ar.show_neurons(title=av.NAME, 
+                        indices=[Total_NOT_RESP, Total_RESP], 
+                        ind_colors=[Total_NOT_RESP_color], ind_labels=['Unresponsive'], svg=svg)
+
 if __name__ == '__main__':
-    # Venn diagram of neuron classes in in the 4 different regions
+    ### Venn diagram of neuron classes in in the 4 different regions
     # by_areas_VENN(svg=False)
 
-    # Timeseries plots for neurons from different regions
+    ### Timeseries plots for neurons from different regions
     # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=True)
     # by_areas_TSPLOT(GROUP_type = 'modality_specific', add_CASCADE=True)
     # by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=True)
 
-    QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
-    Quantification(QuantDF, svg=False)
+    ### TOTAL timeseries plot and quantification
+    # QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
+    # Quantification(QuantDF, svg=False)
+
+    # Recorded neurons plot
+    recordedNeurons()

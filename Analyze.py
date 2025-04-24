@@ -220,7 +220,6 @@ class Analyze:
                 'diagram_setup' : [(set(VIS_set), set(AUD_set), set(MST_set)), ('VIS', 'AUD', 'MST'), ('dodgerblue', 'r', 'goldenrod')]}
 
 
-    # TODO> potentially show only response to preferred direction, now averages preferred and nonpreferred
     def tt_BY_neuron_group(self, 
                            GROUP:Literal['VIS', 'AUD', 'MST', 'TOTAL'] = 'VIS',
                            GROUP_type:Literal['modulated', 'modality_specific', 'all', 'TOTAL'] = 'modulated',
