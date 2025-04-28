@@ -90,7 +90,8 @@ class AUDVIS:
                  TRIALS_ALL:ndarray,
                  NAME:str,
                  CASCADE : ndarray | None,
-                 pre_post_trial_time:tuple[float, float] = (1, 2)):
+                 pre_post_trial_time:tuple[float, float] = (1, 2),
+                 raw_plots:bool = False):
         # Group-condition name of AUDVIS object
         self.NAME = NAME 
         
@@ -131,6 +132,8 @@ class AUDVIS:
         self.trial_types =  self.get_trial_types_dict(all_trials=self.trials)
 
         ## 2) SIGNALS
+        if raw_plots:
+            self.raw_plots(self.signal)
         # regress out running speed & OR whisker movement
         # (regression needs to be done on all trials, even the ones we will nan later)
         print(NAME)
@@ -342,8 +345,8 @@ class AUDVIS:
 
             # return residual_signals
 
-            # for rp in reg_params:
-            #     residual_signals = regress_out_neuron(*rp)
+            for rp in reg_params:
+                residual_signals = regress_out_neuron(*rp)
 
             with Pool(processes=cpu_count()) as pool:
                 residual_signals = pool.starmap(regress_out_neuron, reg_params)
@@ -381,6 +384,57 @@ class AUDVIS:
             self.sessions[i]['neurons'] = neurons
         
         return session_neurons
+
+    def raw_plots(self, signal:np.ndarray):
+        sig_by_session, run_by_session, whisk_by_session, pup_by_session = [], [], [], []
+        # Get signal and behavioral data organized by session
+        for i_session, (start, end) in enumerate(self.session_neurons):
+            sig_by_session.append(signal[:,:,start:end])
+            behavior : Behavior = self.sessions[i_session]['behavior']
+            run_by_session.append(behavior.running)
+            if hasattr(behavior, 'whisker'):
+                whisk_by_session.append(behavior.whisker)
+                pup_by_session.append(behavior.pupil)
+            else:
+                whisk_by_session.append(None)
+                pup_by_session.append(None)
+        # hardcoded
+        time = np.linspace(-1, 2, 47)
+        # Go through sessions
+        for isess, (sig, runn, whisk, pup) in enumerate(zip(sig_by_session,
+                                                           run_by_session, 
+                                                           whisk_by_session, 
+                                                           pup_by_session)):
+            if whisk is None:
+                continue
+            n_neur = sig.shape[-1]
+            trial_select = np.random.choice(np.arange(sig.shape[0]), 1)
+            for it in range(sig.shape[0]):
+                if it != trial_select:
+                    continue
+                fg, axs = plt.subplots(nrows=6, ncols=1, sharex='col')
+                neur_select = np.random.choice(np.arange(n_neur), 3)
+                # neurons 1 trial
+                axs[0].plot(time, sig[it, :, neur_select[0]], color = 'k')
+                axs[1].plot(time, sig[it, :, neur_select[1]], color = 'k')
+                axs[2].plot(time, sig[it, :, neur_select[2]], color = 'k')
+                # running
+                axs[3].plot(time, runn[it, :], color = 'k')
+                # whisker
+                axs[4].plot(time, whisk[it, :], color = 'k')
+                # pupil
+                axs[5].plot(time, pup[it, :], color = 'k')
+
+                for ax in axs: 
+                    ax.axvline(x=0, linestyle = 'dashed', color = 'k')
+                    ax.axvline(x=1, linestyle = 'dashed', color = 'k')
+                    ax.set_axis_off()
+                plt.tight_layout()
+                plt.savefig(f'({self.NAME})-Session{isess}_trial{it}_neurons_{neur_select}.svg')
+                print(f'Session {isess}, trial {it}, neurons {neur_select}')
+                plt.show()
+                plt.close()
+
 
 
 
@@ -576,7 +630,6 @@ def prepare_regression_args(sbs:list[ndarray], rbs:list[ndarray|None], wbs:list[
 
     return sig_X_args # arguments for parallelized execution
 
-# TODO: on single trial level, 
 # z-scored behaviors and z-scored ∆F/F for Fig S1 
 def plot_single_neuron_regression(neuron_mat : np.ndarray, X_movement_flat : np.ndarray, 
                                   predicted : np.ndarray, residual : np.ndarray,
@@ -589,55 +642,11 @@ def plot_single_neuron_regression(neuron_mat : np.ndarray, X_movement_flat : np.
     pred_mat = predicted.reshape(neuron_mat.shape)
     res_mat = residual.reshape(neuron_mat.shape) # residual signal
     
-    # axes / rows: 
-    #   timeseries_raw traces + average raw trace + final corrected average trace + average predicted trace
-    #   running traces + average running trace
-    #   whiker traces + average whisker trace
-    rows = 3 if whisk_mat is not None else 2
-    fig, ax = plt.subplots(nrows = rows, ncols = 1, figsize = (8, rows * 5), sharex=True)
-    for trial in range(neuron_mat.shape[0]):
-        # timeseries
-        ax[0].plot(neuron_mat[trial,:], color = 'lavender', alpha = 0.025)#, label = 'z∆F/F0' if trial == neuron_mat.shape[0]-1 else '')
-        # ax[0].plot(pred_mat[trial,:], color = 'orange', alpha = 0.025, label = 'predicted z∆F/F0'if trial == neuron_mat.shape[0]-1 else '')
-        # running
-        ax[1].plot(run_mat[trial,:], color = 'lightgreen', alpha = 0.08)#, label = 'running speed'if trial == neuron_mat.shape[0]-1 else '')
-        # whisker energy
-        if whisk_mat is not None:
-            ax[2].plot(whisk_mat[trial,:], alpha = .08, color = 'lightpink')#), label = 'trial-evoked whisker-energy'if trial == neuron_mat.shape[0]-1 else '')
-    
-    # averages
-    ax[0].plot(neuron_mat.mean(axis = 0), color = 'slateblue', label = 'average z∆F/F0')
-    ax[0].plot(pred_mat.mean(axis = 0), color = 'darkorange', label = 'average predicted z∆F/F0')
-    ax[0].plot(res_mat.mean(axis = 0), color = 'blue', label = 'average residual z∆F/F0', linewidth = 3)
-    ax[0].set_ylabel('z(∆F/F)')
-    ax[0].legend(loc = 2)
-    # ax[0].set_yscale('symlog')
-    ax[0].vlines([15,31], ymin = neuron_mat.min(), ymax=neuron_mat.max(), linestyle = '--', color = 'saddlebrown')
-
-    ax[1].plot(run_mat.mean(axis = 0), color = 'limegreen', label = 'average running speed')
-    ax[1].set_ylabel('a.u.')
-    # ax[1].set_yscale('symlog')
-    ax[1].legend(loc = 2)
-    ax[1].vlines([15,31], ymin = run_mat.min(), ymax=run_mat.max(), linestyle = '--', color = 'saddlebrown')
-    
-    if whisk_mat is not None:
-        ax[2].plot(whisk_mat.mean(axis = 0), color = 'crimson', label = 'average whisker energy')
-        ax[2].legend(loc = 2)
-        # ax[2].set_yscale('symlog')       
-        ax[2].set_ylabel('a.u.')
-        ax[2].vlines([15,31], ymin = whisk_mat.min(), ymax=whisk_mat.max(), linestyle = '--', color = 'saddlebrown')
-    
-    ax[-1].set_xticks([0, 15, 31, 46], ['-1', '0', '1', '2']) # NOTE: hardcoded
-    ax[-1].set_xlabel('Time (s)')
-    plt.tight_layout()
-    # plt.savefig(plot_dir, dpi = 200)
-    plt.show()
-    plt.close()
-    breakpoint()
     # check single trial level
     for i in range(720):
         print(i)
         plt.plot(neuron_mat[i,:], label = 'signal')
+        plt.plot(run_mat[i,:], label = 'running')
         plt.plot(whisk_mat[i,:], label = 'whisker')
         plt.plot(res_mat[i,:], label = 'residual signal')
         plt.legend(loc = 2)
@@ -702,8 +711,8 @@ if __name__ == '__main__':
         names = ['g1pre', 'g1post', 'g2pre', 'g2post']
 
         # 1 core (for debugging)
-        for g, g_name in zip((g1pre, g1post, g2pre, g2post), names):
-            av = CreateAUDVIS(g, g_name)
+        # for g, g_name in zip((g1pre, g1post, g2pre, g2post), names):
+        #     av = CreateAUDVIS(g, g_name)
 
         # multiprocessing on 4 cores (4 groups)
         params = list(zip([g1pre, g1post, g2pre, g2post], names))

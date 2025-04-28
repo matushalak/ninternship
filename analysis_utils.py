@@ -68,8 +68,10 @@ def plot_avrg_trace(time:np.ndarray, avrg:np.ndarray, SEM:np.ndarray | None = No
                      1:'red',
                      2:'goldenrod',
                      3:'goldenrod'}
-        Axis.axvspan(0,1,alpha = 0.15, color = tt_to_col[tt]) # HARDCODED TODO: change based on trial duration
-    
+        # Axis.axvspan(0,1,alpha = 0.15, color = tt_to_col[tt]) # HARDCODED TODO: change based on trial duration
+        Axis.axvline(x=0, linestyle = 'dashed', color = tt_to_col[tt])
+        Axis.axvline(x=1, linestyle = 'dashed', color = tt_to_col[tt])
+
     if SEM is not None:
         Axis.fill_between(time, 
                         avrg - SEM,

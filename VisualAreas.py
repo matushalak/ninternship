@@ -88,7 +88,7 @@ class Areas:
         alpha = 0.3
         outlines = ski.segmentation.find_boundaries(self.overlay.astype(int), connectivity=1, mode='thick')
         # dilate outline mask (thicker)
-        outlines = ndimage.binary_dilation(outlines, iterations=5)
+        outlines = ndimage.binary_dilation(outlines, iterations=7)
         self.overlay[outlines] = 255
         # Add black outlines
         areaColors = {6:colors.to_rgba('mediumseagreen', alpha=alpha),#V1
@@ -105,9 +105,23 @@ class Areas:
         for area, RGBAcolor in areaColors.items():
             overlayRGBA[(self.overlay==area),:] = RGBAcolor
         
-        im = plt.imshow(overlayRGBA)
+        fig, ax = plt.subplots()
+        # im = ax.imshow(overlayRGBA) # raster image
+        labels  = sorted(areaColors)                         # [-1, 0, 1, …, 6, 255]
+        levels  = np.array(labels, dtype=float) - 0.5
+        levels  = np.append(levels, labels[-1] + 0.5)
+
+        # colour list must match the labels order
+        cmap_list = [areaColors[v] for v in labels]
+
+        # draw filled contours  →  each region becomes one closed SVG path
+        im = ax.contourf(self.overlay,
+                        levels=levels,
+                        colors=cmap_list,
+                        antialiased=False)      # cleaner borders in SVG
+        
         for ii, (inds, indcol, indlab) in enumerate(zip(indices, ind_colors, ind_labels)):
-            sc = plt.scatter(self.dfROI.ABAx.iloc[inds],
+            sc = ax.scatter(self.dfROI.ABAx.iloc[inds],
                              self.dfROI.ABAy.iloc[inds],
                              s = 7 if indlab != 'Unresponsive' else 5.5,
                              alpha= 1 if indlab != 'Unresponsive' else 0.6,
@@ -115,15 +129,19 @@ class Areas:
                              label = indlab if indlab != 'Unresponsive' else None) 
         
         if ind_labels is not None:
-            plt.legend(loc = 1)
+            ax.legend(loc = 1)
         
         if title is not None:
-            plt.title(title)
+            fig.suptitle(title)
+        
+        ax.set_axis_off()
+
         plt.tight_layout()
         if svg:
             plt.savefig(f'{title}_ALL_NEURONS_ABA.svg')
         else:
             plt.savefig(f'{title}_ALL_NEURONS_ABA.png', dpi = 500)
+        
         plt.close()
     
     def adjustROIdf(self, dfROI:pd.DataFrame, overlayDIMS:tuple[int,int]
@@ -238,7 +256,7 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                                     for _ in range(4)]
     else:
         Artists = plt.subplots(nrows=tsnrows, ncols=tsncols, 
-                                sharex='col', sharey='row', figsize = ((tsncols * 3) + .8, tsnrows * 3)) 
+                                sharex='col', sharey='all', figsize = ((tsncols * 3) + .8, tsnrows * 3)) 
         
         SnakeArtists = plt.subplots(nrows=tsnrows*len(AVs), ncols=tsncols, 
                         sharex='col', sharey='row', figsize = ((tsncols * 3) + .8, tsnrows * len(AVs) * 3))
@@ -303,6 +321,15 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                     if GROUP_type == 'TOTAL':
                         ts_ax[iarea,itt].spines['top'].set_visible(False)
                         ts_ax[iarea,itt].spines['right'].set_visible(False)
+                        # suppress the x-axis everywhere EXCEPT the last row
+                        if iarea != len(list(AR.region_indices)) - 1:
+                            ts_ax[iarea, itt].spines['bottom'].set_visible(False)
+                            ts_ax[iarea, itt].tick_params(axis='x', bottom=False, labelbottom=False)
+
+                        # suppress the y-axis everywhere EXCEPT the first column
+                        if itt != 0:
+                            ts_ax[iarea, itt].spines['left'].set_visible(False)
+                            ts_ax[iarea, itt].tick_params(axis='y', left=False, labelleft=False, right=False)
 
                     if add_CASCADE:
                         plot_avrg_trace(time = AN.time, avrg=CASCADE_TT_info[itt][0], SEM = None, 
@@ -328,23 +355,31 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
 
                             if itt == 0:
                                 ts_ax[ig, itt].set_ylabel('z(∆F/F)')
+                        # GROUP_TYPE == TOTAL
                         else:
                             if iarea == len(list(AR.region_indices)) - 1:
                                 ts_ax[iarea, itt].set_xlabel('Time (s)')
+                                ts_ax[iarea, itt].spines['bottom'].set_visible(True)
+                                ts_ax[iarea, itt].tick_params(axis='x', bottom=True, labelbottom=True)
 
                             if itt == 0:
                                 ts_ax[iarea, itt].set_ylabel('z(∆F/F)')
+                                ts_ax[iarea, itt].spines['left'].set_visible(True)
+                                ts_ax[iarea, itt].tick_params(axis='y', left=True, labelleft=True)                                
                                 # ts_ax[iarea, itt].legend(loc = 4, fontsize = 8)
 
                         if itt == len(list(TT_info)) - 1:
                             twin = ts_ax[ig, itt].twinx() if GROUP_type != 'TOTAL' else ts_ax[iarea, itt].twinx()
                             twin.spines['top'].set_visible(False)
                             twin.spines['right'].set_visible(False)
+                            twin.spines['left'].set_visible(False)
+                            twin.spines['bottom'].set_visible(False)
+                            
                             rowLab = NEURON_types[ig] if GROUP_type != 'TOTAL' else area_name
                             twin.set_ylabel(rowLab, rotation = 270, 
-                                                        va = 'bottom', 
-                                                        color = COL,
-                                                        fontsize = 20)
+                                            va = 'bottom', 
+                                            color = COL,
+                                            fontsize = 20)
                             twin.set_yticks([])
 
                 if GROUP_type != 'TOTAL':
@@ -476,7 +511,7 @@ def recordedNeurons(svg:bool = False):
 
 if __name__ == '__main__':
     ### Venn diagram of neuron classes in in the 4 different regions
-    # by_areas_VENN(svg=False)
+    by_areas_VENN(svg=False)
 
     ### Timeseries plots for neurons from different regions
     # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=True)
@@ -484,8 +519,8 @@ if __name__ == '__main__':
     # by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=True)
 
     ### TOTAL timeseries plot and quantification
-    # QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
+    # QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=True)
     # Quantification(QuantDF, svg=False)
 
     # Recorded neurons plot
-    recordedNeurons()
+    # recordedNeurons(svg=True)

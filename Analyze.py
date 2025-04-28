@@ -109,11 +109,10 @@ class Analyze:
             # get indices responsive to that trial type
             # TODO: separate analysis for inhibited
             responsive_indices, test_res = self.responsive_trial_locked(neurons = by_tts[tt] if method != 'zeta' else self.TT_zeta[tt],
-                                                                                                    # potentially separate analysis into ON-responsive and OFF-responsive
-                                                                                                    window = self.TRIAL_FRAMES, 
-                                                                                                    trial_ID=tt,
-                                                                                                    criterion = stat_crit if method != 'zscore' else criterion, 
-                                                                                                    method = method)
+                                                                        window = self.TRIAL_FRAMES, 
+                                                                        trial_ID=tt,
+                                                                        criterion = stat_crit if method != 'zscore' else criterion, 
+                                                                        method = method)
             if method != 'zscore':
                 TEST_RESULTS.append(test_res)
             # print(by_tts[tt].shape, len(self.TT_zeta[tt])) # good debugging check
@@ -226,7 +225,7 @@ class Analyze:
                            BrainRegionIndices : np.ndarray | None = None,
                            SIGNALS_TO_USE: dict[int : ndarray] | None = None,
                            return_single_neuron_data: bool = False,
-                           debug:bool = False
+                           debug:bool = False,
                            ) -> list[tuple[ndarray, ndarray]]:
         TT_blc_signal = self.byTTS_blc if SIGNALS_TO_USE is None else SIGNALS_TO_USE
         assert isinstance(TT_blc_signal, dict) & all(isinstance(TT_blc_signal[tt], np.ndarray) for tt in TT_blc_signal.keys()
@@ -263,7 +262,8 @@ class Analyze:
 
         if len(indices) == 0:
             print(f'{GROUP}_{GROUP_type} in the given brain region is an empty set, no SUCH neurons!!!')
-        ###
+        
+        ### Debugging with all stats & Cascade and raw traces
         if debug:
             # DEBUGGING only (or example neurons potentially) to plot single neurons for debugging
             print(GROUP, GROUP_type, indices.size)
@@ -410,6 +410,59 @@ class Analyze:
         outF[pref1] = self.FLUORO_RESP[pref1, 0, tt1]
         outF[pref2] = self.FLUORO_RESP[pref2, 0, tt2]
         return outSIG, outF
+
+    def example_neurons(self, 
+                        gNAME:str,
+                        neuron_group:str = 'TOTAL',
+                        indices:np.ndarray | None = None,
+                        plotNONresponsive:bool = False,
+                        save:bool = False):
+        tt_col_lstl = {6:('dodgerblue', '-'),
+                    7:('dodgerblue', '--'),
+                    0:('red','-'),
+                    3:('red', '--'),
+                    1:('goldenrod', '-'),
+                    5:('goldenrod', '--'),
+                    2:('goldenrod', '-.'),
+                    4:('goldenrod', ':')}
+        
+        nG = self.NEURON_groups[neuron_group]
+        if indices is not None:
+            nG = np.intersect1d(indices, nG)
+        
+        if plotNONresponsive:
+            n_neur = self.sess_neur[-1][-1]
+            allneur = np.arange(n_neur)
+            nG = np.setdiff1d(allneur, nG)
+
+        if indices is None:
+            np.random.shuffle(nG) # to get them in random order
+        else:
+            nG = np.sort(nG)
+
+        for iN in nG:
+            f, ax = plt.subplots()
+            maxes = []
+            mins = []
+            for itt, ttSig in self.byTTS_blc.items():
+                col, lnstl = tt_col_lstl[itt]
+                nttSig = ttSig[:,:,iN]
+                ax.plot(meantrace := np.nanmean(nttSig, axis = 0), 
+                        label = f'{self.tt_names[itt]}', color = col, linestyle = lnstl, linewidth = 4)
+                maxes.append(np.nanmax(meantrace))
+                mins.append(np.nanmin(meantrace))
+            
+            ax.vlines(x=[16, 32],ymin=np.nanmin(mins), ymax=np.nanmax(maxes), 
+                      color = 'k', linestyles='dashed')
+            ax.legend(loc=2)
+            ax.set_title(f'{gNAME}_{iN}')
+            ax.set_axis_off()
+            f.tight_layout()
+            if save:
+                plt.savefig(f'{gNAME}_EXAMPLE{iN}.svg')
+            else:
+                plt.show()
+            plt.close()
 
 ###--------------------------------SPECIFIC analyses with plots-----------------------------------------------
 ###                         Without splitting by brain areas
@@ -568,18 +621,36 @@ def NEURON_TYPES_TT_ANALYSIS(GROUP_type:Literal['modulated',
     ts_fig.legend(loc = 'outside center right')
     ts_fig.savefig(f'Neuron_type({GROUP_type})_average_res({pre_post}).png', dpi = 1000)
 
+def Examples(pre_post: Literal['pre', 'post', 'both'] = 'pre', NONRESPONSIVE:bool = False):
+    # Load in all data and perform necessary initial calculations
+    AVs : list[AUDVIS] = load_in_data(pre_post=pre_post) # -> av1, av2, av3, av4
+    ANs : list[Analyze] = [Analyze(av) for av in AVs]
+    
+    # g1examples = [1503,1515,1360,1518,1411,1544,2214,1621,1241,1377,1520,1904,1509,1456,150,1284,1838,161, 1635, 1694, 1402, 362, 1482, 1339, 323, 1607, 1406, 1273, 346, 1427, 1612, 1473]
+    g1examples = [1509, 323, 161, 1482, 1607, 1621]
+    # g2examples = [2060,1162,1182,964,2108, 1692, 550, 2639, 305, 1977, 1047, 1906, 1139, 799, 2025, 182, 247, 1538, 2542, 528, 822, 2582, 649, 1064, 1080, 119, 1144, 1069, 2319, 1100, 2827, 
+    #               449, 1077, 27, 168, 28, 2571, 699,159, 5, 605, 696, 674, 1695, 1488, 2103, 2832]
+    g2examples = [27, 696, 674, 2571, 2025, 2832]
+    examples = [g1examples, g2examples]
+    for ig, (AV, AN) in enumerate(zip(AVs, ANs)):
+        AN.example_neurons(gNAME=AV.NAME, 
+                           indices=examples[ig],
+                           plotNONresponsive=NONRESPONSIVE,
+                           save=True)
 
 
 ### ---------- Main block that runs the file as a script
 if __name__ == '__main__':
     tt_grid = {0:(0,2),1:(0,0),2:(0,1),3:(1,2),
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
-    
+    # Example neurons
+    Examples()
+
     # Neuron types analysis (venn diagrams)
     # neuron_typesVENN_analysis()
     # NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
-    # NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=True, pre_post='pre')
+    # NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=False, pre_post='pre')
 
     # # Trial type analysis (average & snake plot) - all neurons, not taking into account neuron types groups
     # # NOTE: doesnt work well on cascade
