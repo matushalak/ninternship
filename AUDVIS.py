@@ -361,12 +361,13 @@ class AUDVIS:
     @staticmethod
     def trials_apply_map(trials_array:ndarray[str|int],
                          tmap:dict[str|int:int|str]) -> ndarray[int|str]:
-        dtype = int if isinstance(list(tmap)[0], str) else str # depending on which map used want to map from str->int or from int->str
+        dtype = int if isinstance(list(tmap)[0], str) else 'U4' # depending on which map used want to map from str->int or from int->str
         
         if len(trials_array.shape) == 1:
             return np.fromiter(map(lambda s: tmap[s], trials_array), dtype = dtype)
         else:
-            return np.array([np.fromiter(map(lambda s: tmap[s], trials_array[session, :]), dtype = dtype) 
+            return np.array([np.fromiter(map(lambda s: tmap[s], trials_array[session, :]), 
+                                         dtype = dtype, count=trials_array[session, :].size) 
                             for session in range(trials_array.shape[0])])
         
     def get_trial_types_dict(self, all_trials:ndarray[int]):
