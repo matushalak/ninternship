@@ -60,7 +60,7 @@ class Analyze:
                                            baseline_frames=self.TRIAL_FRAMES[0])
                                            ),
             window = self.TRIAL_FRAMES, 
-            offsetFrames=4,
+            offsetFrames=5,
             method='peak')
         
         # Analyze by trial type
@@ -152,7 +152,7 @@ class Analyze:
             # NOTE: Cohen's d = DiffF := (F_trial - F_baseline) / SD(DiffF)
             case ('ttest', (p_criterion, amp_criterion), (n_trials, n_times, n_nrns)): 
                 bls = np.nanmean(neurons[:,:window[0],:], axis = 1) 
-                trls = self.fluorescence_response(signal = neurons, window=window, offsetFrames=4, returnF=True)[0]
+                trls = self.fluorescence_response(signal = neurons, window=window, offsetFrames=5, returnF=True)[0]
                 TTEST = ttest_rel(trls, bls, alternative = 'two-sided', nan_policy='omit')
                 # Amplitude theshold using Cohen's d effect size of fluorescence responses
                 EXC_thresh = self.FLUORO_RESP[:,2,trial_ID] > amp_criterion
@@ -163,8 +163,8 @@ class Analyze:
             
             # wilcoxon signed-rank test
             case ('wilcoxon', (p_criterion, amp_criterion), (n_trials, n_times, n_nrns),):
-                # NOTE: average over time bins (axis = 0)[16 vs 16 values] vs average over baseline vs stimulus window in each trial (axis = 1)(before)[90 vs 90 values]
-                bls, trls = np.nanmean(neurons[:,:window[0],:],axis = 1), self.FLUORO_RESP[:,0,trial_ID]
+                bls = np.nanmean(neurons[:,:window[0],:], axis = 1) 
+                trls = self.fluorescence_response(signal = neurons, window=window, offsetFrames=5, returnF=True)[0]
                 WCOX = wilcoxon(trls, bls, alternative='two-sided', nan_policy = 'omit')
                 # Amplitude theshold
                 EXC_thresh = self.FLUORO_RESP[:,2,trial_ID] > amp_criterion
@@ -173,6 +173,7 @@ class Analyze:
                 return where((WCOX.pvalue < p_criterion) & (EXC_thresh | INH_thresh))[0], WCOX
             
             # already have zeta significances and Zeta values (n_nrns, 2[zeta_p, zeta_score])
+            # NOTE: does not account for offset
             case ('zeta', (p_criterion, amp_criterion), (n_nrns, stats)):
                 # Amplitude theshold
                 EXC_thresh = self.FLUORO_RESP[:,2,trial_ID] > amp_criterion
@@ -310,7 +311,7 @@ class Analyze:
 
     @staticmethod
     def fluorescence_response (signal: np.ndarray | dict[int:np.ndarray],
-                               window: tuple[int, int] = (16,32),
+                               window: tuple[int, int],
                                offsetFrames: int | None = None,
                                returnF: bool = False,
                                method: Literal['mean', 'peak'] = 'peak') -> np.ndarray:
@@ -413,6 +414,7 @@ class Analyze:
 
     def example_neurons(self, 
                         gNAME:str,
+                        trange:tuple[int, int],
                         neuron_group:str = 'TOTAL',
                         indices:np.ndarray | None = None,
                         plotNONresponsive:bool = False,
@@ -452,7 +454,7 @@ class Analyze:
                 maxes.append(np.nanmax(meantrace))
                 mins.append(np.nanmin(meantrace))
             
-            ax.vlines(x=[16, 32],ymin=np.nanmin(mins), ymax=np.nanmax(maxes), 
+            ax.vlines(x=trange,ymin=np.nanmin(mins), ymax=np.nanmax(maxes), 
                       color = 'k', linestyles='dashed')
             ax.legend(loc=2)
             ax.set_title(f'{gNAME}_{iN}')
@@ -634,9 +636,10 @@ def Examples(pre_post: Literal['pre', 'post', 'both'] = 'pre', NONRESPONSIVE:boo
     examples = [g1examples, g2examples]
     for ig, (AV, AN) in enumerate(zip(AVs, ANs)):
         AN.example_neurons(gNAME=AV.NAME, 
+                           trange= AV.TRIAL,
                            indices=examples[ig],
                            plotNONresponsive=NONRESPONSIVE,
-                           save=True)
+                           save=False)
 
 
 ### ---------- Main block that runs the file as a script

@@ -20,11 +20,11 @@ class Behavior:
                  speed:ndarray, 
                  trialIDs: list,
                  facemap:Dict_to_Class|None = None,
-                 baseline_frames:int = 16):
+                 baseline_frames:int = 15): #NOTE: was 16 before!!!
         '''
         Z-scored and baseline-corrected behaviors on trial level, to control for trial-evoked running / whisker movements / blinking / pupil
         '''
-        # NOTE: baseline frames (16) hardcoded now!
+        # NOTE: baseline frames (15) hardcoded now!
         trialIDs = np.array(trialIDs)
         self.running = self.trial_evoked_non_nan(behavior=speed, trialIDs=trialIDs, baseline_frames=baseline_frames)
         if facemap: # some sessions don't have video & facemap
@@ -37,7 +37,7 @@ class Behavior:
     @staticmethod
     def trial_evoked_non_nan(behavior: np.ndarray, 
                              trialIDs: np.ndarray,
-                             baseline_frames:int = 16,
+                             baseline_frames:int = 15,
                              debug:bool = False) -> np.ndarray:
         '''
         behavior: ndarray is a (trials, timepoints) signal
@@ -91,7 +91,8 @@ class AUDVIS:
                  NAME:str,
                  CASCADE : ndarray | None,
                  pre_post_trial_time:tuple[float, float] = (1, 2),
-                 raw_plots:bool = False):
+                 raw_plots:bool = False,
+                 SF:float = 15.4570):
         # Group-condition name of AUDVIS object
         self.NAME = NAME 
         
@@ -117,11 +118,11 @@ class AUDVIS:
 
         ## 1) TRIAL INFORMATION
         # Sampling Frequency
-        self.SF = self.signal.shape[1] / sum(self.trial_sec) 
+        self.SF = SF#self.signal.shape[1] / sum(self.trial_sec) 
         # Trial window (pre_trial, post_trial) in frames
         self.trial_frames = (self.SF * np.array(self.trial_sec)).round().astype(int)
         # TRIAL duration between frames hardcoded TODO: fixed based on indicated trial duration
-        self.TRIAL = (self.trial_frames[0], 2*self.trial_frames[0]) 
+        self.TRIAL = self.trial_frames#(self.trial_frames[0], 2*self.trial_frames[0]) 
 
         # Trial MAPS from str->int and int->str
         self.str_to_int_trials_map, self.int_to_str_trials_map = trialMAPS(self.trials)
@@ -143,7 +144,7 @@ class AUDVIS:
         # NAN trials with too much confounding trial-locked behavior 
         # (must be AFTER regression, regression cannot deal with NaNs)
         # NOTE: if offset included, consider longer period for excluding trials (+ 250 ms, 4 frames)
-        self.extTRIAL = (self.TRIAL[0], self.TRIAL[1]+4) # to capture offset
+        self.extTRIAL = (self.TRIAL[0], self.TRIAL[1]+5) # to capture offset
         self.signal_CORR = self.nantrials(signal=self.signal_CORR, Zthresh=2, 
                                           whiskWindow=self.extTRIAL)
         self.zsig_CORR = self.nantrials(signal=self.zsig_CORR, Zthresh=2, whiskWindow=self.extTRIAL)
