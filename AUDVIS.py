@@ -186,15 +186,21 @@ class AUDVIS:
         assert isinstance(ttypes, dict), 'ttypes must be a dictionary with indices for all occurences of each trial type across sessions'
 
         for tt in sorted(list(ttypes)): # 0-n_trial types
-            signal_tt = []
-            for (n_first, n_last) in self.session_neurons:
-                _, trials = ttypes[tt]
-                trials = trials[tt*trials_per_TT : (tt+1)*trials_per_TT]
-                signal_tt.append(signal[trials,:,n_first:n_last])
+            _, trials = ttypes[tt]
+            trials = trials[tt*trials_per_TT : (tt+1)*trials_per_TT]
             
-            signal_by_trials[tt] = np.concatenate(signal_tt,
-                                                  axis = 2)
-            
+            # if (trials, time, neurons)
+            if len(signal.shape) == 3:
+                signal_tt = []
+                for (n_first, n_last) in self.session_neurons:
+                    signal_tt.append(signal[trials,:,n_first:n_last])
+                
+                signal_by_trials[tt] = np.concatenate(signal_tt,
+                                                    axis = 2)
+            # one neuron / behavior (trials, time)
+            elif len(signal.shape) == 2:
+                signal_by_trials[tt] = signal[trials, :]
+
         return signal_by_trials
     
     def nantrials(self, signal: np.ndarray, 

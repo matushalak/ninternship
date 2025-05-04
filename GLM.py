@@ -2,8 +2,8 @@ import pandas as pd
 import pyglmnet as glm
 import numpy as np
 import scipy as sp
+import scipy.signal as sig
 import sklearn as skl
-
 import seaborn as sns
 import matplotlib.pyplot as plt
 
@@ -24,7 +24,9 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre'):
                                         nts=AV.signal.shape[1],
                                         SF = AV.SF,
                                         trial_frames=AV.TRIAL,
-                                        n_basis=9)
+                                        n_basis=9,
+                                        basis_window=(0,0.4),
+                                        basis_width=0.1)
 
         breakpoint()        
         # Behavior kernels - only for sessions with behavioral information [SESSION-level]
@@ -32,7 +34,9 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre'):
                                         nts=AV.signal.shape[1],
                                         SF = AV.SF,
                                         trial_frames=AV.TRIAL,
-                                        n_basis=9)
+                                        n_basis=9,
+                                        basis_window=(0,0.4),
+                                        basis_width=0.1)
 
         # TODO? [NEURON-level]
         # Spike history
@@ -42,7 +46,9 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre'):
 
 def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                      trial_frames:tuple[int, int],
-                     n_basis:int)->np.ndarray:
+                     n_basis:int,
+                     basis_window:tuple[float, float],
+                     basis_width:float)->np.ndarray:
     '''
     Generates stimulus kernels for GLM separately for bars and sounds (2 mod)
         (for M in (bar, sound)
@@ -68,7 +74,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
     stimuli = np.linspace(0,1, nstim_ts)
     # Raised cosine bases (for now, same used for all variables, 
     # can VARY for each column)
-    CosineBases = rcb(n_basis=n_basis, window_s=(0,0.4), width_s=0.1,
+    CosineBases = rcb(n_basis=n_basis, window_s=basis_window, width_s=basis_width,
                       dt = 1/SF)
     all_session_Xs = []
     for isess in range(nsessions):
@@ -126,9 +132,15 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
 def behavior_kernels(sessions:dict,
                      nts:int, SF:float,
                      trial_frames:tuple[int, int],
-                     n_basis:int)->np.ndarray:
+                     n_basis:int,
+                     basis_window:tuple[float, float],
+                     basis_width:float)->np.ndarray:
     behaviors = [sessions[i]['behavior'] 
                  for i in sorted(sessions.keys())]
+    all_session_Xb = []
+    for isess in range(len(behaviors)):
+        pass
+
 
 
 
