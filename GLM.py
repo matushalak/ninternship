@@ -18,6 +18,7 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre'):
     AVs = load_in_data(pre_post=pre_post)
     
     for AV in AVs:
+        n_sessions = len(AV.session_neurons)
         str_tbs = AV.trials_apply_map(AV.trials, AV.int_to_str_trials_map)
         # Stimulus kernels - same for each session [SESSION-level]
         stim_kernels = stimulus_kernels(tbs=str_tbs, 
@@ -25,9 +26,12 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre'):
                                         SF = AV.SF,
                                         trial_frames=AV.TRIAL,
                                         n_basis=9,
-                                        basis_window=(0,0.4),
-                                        basis_width=0.1)
-
+                                        basis_window=(-0.2,1),
+                                        basis_width=0.25,
+                                        plot_bases=True)
+        
+        plt.imshow(stim_kernels[:180, :, 0])
+        plt.show()
         breakpoint()        
         # Behavior kernels - only for sessions with behavioral information [SESSION-level]
         behav_kernels = behavior_kernels(sessions=AV.sessions,
@@ -48,7 +52,8 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                      trial_frames:tuple[int, int],
                      n_basis:int,
                      basis_window:tuple[float, float],
-                     basis_width:float)->np.ndarray:
+                     basis_width:float,
+                     plot_bases:bool = False)->np.ndarray:
     '''
     Generates stimulus kernels for GLM separately for bars and sounds (2 mod)
         (for M in (bar, sound)
@@ -74,8 +79,8 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
     stimuli = np.linspace(0,1, nstim_ts)
     # Raised cosine bases (for now, same used for all variables, 
     # can VARY for each column)
-    CosineBases = rcb(n_basis=n_basis, window_s=basis_window, width_s=basis_width,
-                      dt = 1/SF)
+    CosineBases, frame_lags = rcb(n_basis=n_basis, window_s=basis_window, width_s=basis_width,
+                                  dt = 1/SF, plot=plot_bases)
     all_session_Xs = []
     for isess in range(nsessions):
         trials = trs[:,isess]
@@ -120,7 +125,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
             trial_idx += nts
         
         # All trials done, get bases to account for lags
-        xbases = [getBases(Xcol=Xstim[:,ic], Bases=CosineBases)
+        xbases = [getBases(Xcol=Xstim[:,ic], Bases=CosineBases, lags=frame_lags)
                   for ic in range(Xstim.shape[1])]
         Xbases = np.column_stack(xbases)
         X_sess = np.column_stack([Xstim, Xbases])
@@ -128,7 +133,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
     X = np.dstack(all_session_Xs)
     return X
 
-
+# TODO: consider extracting more PCs for whisker movement (not just average movement energy)
 def behavior_kernels(sessions:dict,
                      nts:int, SF:float,
                      trial_frames:tuple[int, int],
@@ -149,7 +154,6 @@ def behavior_kernels(sessions:dict,
 def rcb(n_basis:int, 
         window_s:tuple[float, float], 
         width_s:float, dt:float,
-        returnLags:bool = False,
         plot:bool = False):
     """
     raised_cosine_basis
@@ -176,21 +180,20 @@ def rcb(n_basis:int,
         phi[np.abs(x) > 1] = 0
         B.append(phi)
         if plot:
-            ax.plot(phi)
+            ax.plot(np.linspace(t_min, t_max, len(lags)), phi)
 
     if plot:
         plt.tight_layout()
+        print(lags)
         plt.show() 
 
-    if not returnLags:
-        return np.asarray(B) # (n_basis x n_lags)
-    else:
-        return (np.asarray(B), 
-                lags) # array of frame lags
+    return (np.asarray(B), 
+            lags) # array of frame lags
 
 
 def getBases(Xcol:np.ndarray, 
              Bases:np.ndarray,
+             lags:np.ndarray,
              dropFirst:bool = True) -> np.ndarray:
     '''
     Xcol is a 1D array shape (n_trials * n_ts_per_trial)
@@ -200,14 +203,18 @@ def getBases(Xcol:np.ndarray,
         The purpose of this is to be able to account for different delays in response
     '''
     basesCols = []
-    nbases = Bases.shape[0]
-    for ib in range(nbases):
+    lag_offset = -lags[0]
+    n_ts = Xcol.size
+    for ib, basis in enumerate(Bases):
         if dropFirst and ib == 0:
             continue
 
         # Convolution with the given basis
-        Xcol_conv = np.convolve(Xcol, Bases[ib, :])[:Xcol.size]
-        basesCols.append(Xcol_conv)
+        # need to reverse basis for lag-embedding (Cross-correlation)
+        Xcol_conv = np.convolve(Xcol, basis[::-1])
+        # align around trial start
+        Xcol_conv_trimmed = Xcol_conv[lag_offset:lag_offset+n_ts]
+        basesCols.append(Xcol_conv_trimmed)
     
     Xcol_bases = np.column_stack(basesCols)
     assert Xcol_bases.shape == (Xcol.size, Bases.shape[0] if not dropFirst 

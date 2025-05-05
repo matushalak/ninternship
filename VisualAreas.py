@@ -519,8 +519,8 @@ if __name__ == '__main__':
     # by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=True)
 
     ### TOTAL timeseries plot and quantification
-    QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
-    Quantification(QuantDF, svg=False)
+    # QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
+    # Quantification(QuantDF, svg=False)
 
     # Recorded neurons plot
     # recordedNeurons(svg=True)

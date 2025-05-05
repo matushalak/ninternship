@@ -56,7 +56,7 @@ class Analyze:
         # Get Fluorescence response statistics
         self.FLUORO_RESP: np.ndarray = self.fluorescence_response(
             signal = av.separate_signal_by_trial_types(
-                av.baseline_correct_signal(av.zsig_CORR,#signal_CORR, 
+                av.baseline_correct_signal(av.zsig_CORR,
                                            baseline_frames=self.TRIAL_FRAMES[0])
                                            ),
             window = self.TRIAL_FRAMES, 
@@ -108,7 +108,7 @@ class Analyze:
         for tt in trial_types:
             # get indices responsive to that trial type
             # TODO: separate analysis for inhibited
-            responsive_indices, test_res = self.responsive_trial_locked(neurons = by_tts[tt] if method != 'zeta' else self.TT_zeta[tt],
+            responsive_indices, test_res = self.responsive_trial_locked(neurons = by_tts_blc[tt] if method != 'zeta' else self.TT_zeta[tt],
                                                                         window = self.TRIAL_FRAMES, 
                                                                         trial_ID=tt,
                                                                         criterion = stat_crit if method != 'zscore' else criterion, 
@@ -647,10 +647,10 @@ if __name__ == '__main__':
     tt_grid = {0:(0,2),1:(0,0),2:(0,1),3:(1,2),
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     # Example neurons
-    Examples()
+    # Examples()
 
     # Neuron types analysis (venn diagrams)
-    # neuron_typesVENN_analysis()
+    neuron_typesVENN_analysis()
     # NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=False, pre_post='pre')

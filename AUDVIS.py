@@ -133,6 +133,12 @@ class AUDVIS:
         self.trial_types =  self.get_trial_types_dict(all_trials=self.trials)
 
         ## 2) SIGNALS
+        # average signal over all neurons per session
+        self.session_average_zsig = [
+            np.nanmean(self.baseline_correct_signal(self.zsig)[:,:,start:stop], 
+                       axis = 2) 
+            for start, stop in self.session_neurons]
+        
         if raw_plots:
             self.raw_plots(self.signal)
         # regress out running speed & OR whisker movement
