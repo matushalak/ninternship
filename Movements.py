@@ -8,13 +8,12 @@ from collections import defaultdict
 from AUDVIS import AUDVIS, Behavior, load_in_data
 from typing import Literal
 
-# TODO: clean up into separate functions for each plot
 class Movements:
+    '''
+    Explores running, whisker and pupil signals
+    '''
     def __init__(self,
                  pre_post: Literal['pre', 'post', 'both'] = 'pre'):
-        '''
-        Builds design matrix for GLM
-        '''
         # Setup attributes used across methods
         self.AVs : list[AUDVIS] = load_in_data(pre_post=pre_post)
         self.n_ts = self.AVs[0].signal.shape[1]
@@ -45,17 +44,26 @@ class Movements:
         # Perform intividual analyses
         # 0) behavior by group sessions (self.BBGSs)
         self.BBGSs = self.get_behaviors_by_session()
+        print('0) Behavior by Group, Session, and Trial-type DONE')
+        
         # 1) first plot average behavior (over trials) per session per trial type (overlaid)
         self.aggregated_behavior, self.pltdir = self.aggregate_trial_type_behavior_by_session(
             plot=False)
+        print('1) Behavior by Group, Trial-type and Session DONE')
+        
         # 2) second plot comparing average behavior (over trials and sessions) per trial type between DR and NR (overlaid)
         # self.behaviors_DR_vs_NR(show=True)
+        # print('2) Averaged comparison between DR and NR DONE')
 
         # 3) third series of plots is per session raw signal during each trial type and corresponding behaviors
-        self.raw_signals()
+        # separate plot per trial type
+        # self.raw_signals()
+
+        # 4) separate plot per session (random chunk from session of consecutive trials of all trial types)
+        self.raw_signals(all_TT_together=True, N_example_trials=100)
     
     
-    def get_behaviors_by_session(self)->dict:
+    def get_behaviors_by_session(self, addTT:bool = True)->dict:
         BBGSs = []
         for AV in self.AVs:
             behavior_by_session = {
@@ -68,11 +76,17 @@ class Movements:
                 for attr in list(behavior_by_session):
                     if hasattr(beh, attr):
                         beh_sig = getattr(beh, attr)
-                        behavior_by_session[attr][f'sess{isess}'] = AV.separate_signal_by_trial_types(beh_sig)
+                        if addTT:
+                            behavior_by_session[attr][f'sess{isess}'] = AV.separate_signal_by_trial_types(beh_sig)
+                        else:
+                            behavior_by_session[attr][f'sess{isess}'] = beh_sig
                     else:
                         print(f'Session{isess}, {attr} missing')
-                        behavior_by_session[attr][f'sess{isess}'] = {tt:np.full((90, self.n_ts), np.nan) 
-                                                                    for tt in np.unique(AV.trials)}
+                        if addTT:
+                            behavior_by_session[attr][f'sess{isess}'] = {tt:np.full((90, self.n_ts), np.nan) 
+                                                                         for tt in np.unique(AV.trials)}
+                        else:
+                            behavior_by_session[attr][f'sess{isess}'] = np.full((720, self.n_ts), np.nan)
 
             BBGSs.append(behavior_by_session)
         
@@ -173,82 +187,163 @@ class Movements:
         plt.close()
 
     
-    # to plot raw concatenated signals
-    # TODO: 1 plot / session with comlete signal
-    def raw_signals(self):
-        # tt_grid = {
-        #     # AUD trials
-        #     0:(4,0), 3:(4,0),
-        #     # MST+ congruent
-        #     1:(0,1), 5:(0,1),
-        #     # MST- incongruent
-        #     2:(4,1), 4:(4,1),
-        #     # VIS trials
-        #     6:(0,0), 7:(0,0)}
-        
+    def raw_signals(self,
+                    all_TT_together:bool = False,
+                    N_example_trials:int = 135):
+        if all_TT_together:
+            Group_Beh_by_sess = self.get_behaviors_by_session(addTT=False)
+            print('Full behavior by session done')
         for ig, AV in enumerate(self.AVs):
-            if ig == 0:
-                continue
-            Group_all_TT_behaviors: dict[
-                str:dict[
-                    int:list[np.ndarray]
-                    ]] = self.aggregated_behavior[f'g{ig+1}']
+            if not all_TT_together:
+                Group_all_TT_behaviors: dict[
+                    str:dict[
+                        int:list[np.ndarray]
+                        ]] = self.aggregated_behavior[f'g{ig+1}']
             n_sessions = len(AV.session_neurons)
             # concatenated plot
             for isess in range(n_sessions):
-                if isess < 8:
-                    continue
                 if not os.path.exists(sess_dir:= os.path.join(
                     self.pltdir, f'g{ig+1}', f'session{isess}')):
                     os.makedirs(sess_dir)
 
                 averaged_neurons = AV.session_average_zsig[isess]
-                averaged_neurons_TT:dict[
-                    int:np.ndarray] = AV.separate_signal_by_trial_types(averaged_neurons)
-                
-                for itt in range(len(self.tnames)):
-                    f3, a3 = plt.subplots(nrows=4, figsize = (20, 9), sharex='col')    
-                    # row, col = tt_grid[itt]
+                # one plot per session with all trial types
+                if all_TT_together:
+                    sess_TT_indices = find_session_tt_indices(isess, AV)
+                    Beh_by_sess = Group_Beh_by_sess[ig]
+                    f4, a4 = plt.subplots(nrows=4, figsize = (20, 9), sharex='col')    
                     row = 0
-                    clr, lnstl = self.tt_col_lstl[itt] #if ig == 0 else self.tt_col_lstl2[itt]
-                    ntrials = averaged_neurons_TT[itt].shape[0]
-                    average_sig_flat = averaged_neurons_TT[itt].flatten()
-                    flat_time = np.linspace(0, average_sig_flat.size * (1/AV.SF), 
-                                            average_sig_flat.size)
-                    # plot raw signal (average over neurons)
-                    a3[row].plot(flat_time, average_sig_flat, 
-                                color = 'k') 
-                    # stimulus onsets
-                    yrange = (np.nanmin(average_sig_flat), np.nanmax(average_sig_flat))
-                    ymin = yrange[1] - 0.2 * (yrange[1] - yrange[0])
-                    a3[row].vlines(x = np.arange(AV.TRIAL[0], average_sig_flat.size - 32, 47
-                                                 ) * (1/AV.SF),
-                                   ymin = ymin, ymax = yrange[1],
-                                   color = clr, linestyle = lnstl, linewidth = 2.5,
-                                   label = self.tnames[itt])
-                    a3[row].legend(loc = 1)
-                    a3[row].set_ylabel('Z-dF/F')
+                    ntrials = averaged_neurons.shape[0]
+                    avsig_flat_full = averaged_neurons.flatten()
+                    full_flat_time = np.linspace(0, avsig_flat_full.size * (1/AV.SF),
+                                                 avsig_flat_full.size)
                     
-                    for ib, (behavior_name, behavior_all_tt) in enumerate(Group_all_TT_behaviors.items()):
-                        row += 1
-                        # plot raw behaviors
-                        beh_tt_flat = behavior_all_tt[itt][isess].flatten()
-                        a3[row].plot(flat_time, beh_tt_flat, 
+                    random_segment = np.random.choice(np.arange(0, avsig_flat_full.size - (N_example_trials*self.n_ts)))
+                    # can finetune how big example want
+                    example_trials = np.array([full_flat_time[random_segment], full_flat_time[random_segment] + (N_example_trials*self.n_ts*1/AV.SF)])
+                    
+                    # plot population average signal for whole session
+                    a4[row].plot(full_flat_time, avsig_flat_full, color = 'k')
+                    # stimulus onsets
+                    yrange = (np.nanmin(avsig_flat_full), np.nanmax(avsig_flat_full))
+                    ymin = yrange[1] - 0.2 * (yrange[1] - yrange[0])
+                    add_TT_onsets(ax = a4[row], session_ttindices=sess_TT_indices, SF = AV.SF,
+                                  ymin=ymin, ymax = yrange[1], tt_col_lstl=self.tt_col_lstl,
+                                  full_sig_size=avsig_flat_full.size,
+                                  stim_start_idx_within_trial=AV.TRIAL[0])
+                    a4[row].legend(loc = 1)
+                    a4[row].set_ylabel('Z-dF/F')
+                    a4[row].set_xlim(example_trials)
+
+                    # add behaviors
+                    for beh_name, allsessbeh in Beh_by_sess.items():
+                        row +=1
+                        behsess = allsessbeh[f'sess{isess}']
+                        beh_flat = behsess.flatten()
+                        a4[row].plot(full_flat_time, beh_flat, color = 'k')
+                        # stimulus onsets
+                        yrange = (np.nanmin(beh_flat), np.nanmax(beh_flat))
+                        ymin = yrange[1] - 0.2 * (yrange[1] - yrange[0])
+                        add_TT_onsets(ax = a4[row], session_ttindices=sess_TT_indices, SF = AV.SF,
+                                      ymin=ymin, ymax = yrange[1], tt_col_lstl=self.tt_col_lstl,
+                                      full_sig_size=avsig_flat_full.size,
+                                      stim_start_idx_within_trial=AV.TRIAL[0])
+                        a4[row].legend(loc = 1)
+                        a4[row].set_ylabel(f'Z-{beh_name}')
+                        a4[row].set_xlim(example_trials)
+                        if row == 3:
+                            a4[row].set_xlabel(f'Time (s)')
+                    
+                    
+                    f4.tight_layout()
+                    f4.savefig(os.path.join(sess_dir, f'raw_SIGS_allTT(ntrials:{N_example_trials}).png'), dpi = 300)
+                    plt.close()
+                    print(f'Group {ig} Session {isess} raw_SIGS_allTT(ntrials:{N_example_trials}) saved!')
+                    
+
+                # separate plot per TT and session
+                else:
+                    averaged_neurons_TT:dict[
+                        int:np.ndarray] = AV.separate_signal_by_trial_types(averaged_neurons)
+                    
+                    for itt in range(len(self.tnames)):
+                        f3, a3 = plt.subplots(nrows=4, figsize = (20, 9), sharex='col')    
+                        row = 0
+                        clr, lnstl = self.tt_col_lstl[itt] #if ig == 0 else self.tt_col_lstl2[itt]
+                        ntrials = averaged_neurons_TT[itt].shape[0]
+                        average_sig_flat = averaged_neurons_TT[itt].flatten()
+                        flat_time = np.linspace(0, average_sig_flat.size * (1/AV.SF), 
+                                                average_sig_flat.size)
+                        # plot raw signal (average over neurons)
+                        a3[row].plot(flat_time, average_sig_flat, 
                                     color = 'k') 
                         # stimulus onsets
-                        yrange = (np.nanmin(beh_tt_flat), np.nanmax(beh_tt_flat))
+                        yrange = (np.nanmin(average_sig_flat), np.nanmax(average_sig_flat))
                         ymin = yrange[1] - 0.2 * (yrange[1] - yrange[0])
-                        a3[row].vlines(x = np.arange(AV.TRIAL[0], average_sig_flat.size - 32, 47
+                        a3[row].vlines(x = np.arange(AV.TRIAL[0], (47+average_sig_flat.size) - 32, 47
                                                     ) * (1/AV.SF),
                                     ymin = ymin, ymax = yrange[1],
-                                    color = clr, linestyle = lnstl, linewidth = 2.5)
-                        a3[row].set_ylabel(f'Z-{behavior_name}')
-                        if row == len(Group_all_TT_behaviors):
-                            a3[row].set_xlabel(f'Time (s)')
-                
-                    f3.tight_layout()
-                    f3.savefig(os.path.join(sess_dir, f'raw_SIGS_{self.tnames[itt]}.png'), dpi = 300)
-                    plt.close()
+                                    color = clr, linestyle = lnstl, linewidth = 2.5,
+                                    label = self.tnames[itt])
+                        a3[row].legend(loc = 1)
+                        a3[row].set_ylabel('Z-dF/F')
+                        
+                        for ib, (behavior_name, behavior_all_tt) in enumerate(Group_all_TT_behaviors.items()):
+                            row += 1
+                            # plot raw behaviors
+                            beh_tt_flat = behavior_all_tt[itt][isess].flatten()
+                            a3[row].plot(flat_time, beh_tt_flat, 
+                                        color = 'k') 
+                            # stimulus onsets
+                            yrange = (np.nanmin(beh_tt_flat), np.nanmax(beh_tt_flat))
+                            ymin = yrange[1] - 0.2 * (yrange[1] - yrange[0])
+                            a3[row].vlines(x = np.arange(AV.TRIAL[0], (47+average_sig_flat.size) - 32, 47
+                                                        ) * (1/AV.SF),
+                                        ymin = ymin, ymax = yrange[1],
+                                        color = clr, linestyle = lnstl, linewidth = 2.5)
+                            a3[row].set_ylabel(f'Z-{behavior_name}')
+                            if row == len(Group_all_TT_behaviors):
+                                a3[row].set_xlabel(f'Time (s)')
+                    
+                        f3.tight_layout()
+                        f3.savefig(os.path.join(sess_dir, f'raw_SIGS_{self.tnames[itt]}.png'), dpi = 300)
+                        plt.close()
+                        print(f'Group {ig} Session {isess} raw_SIGS_{self.tnames[itt]} saved!')
+
+
+    def Quantify(self):
+        '''
+        Quantifies differences in movements (& movement characteristics)
+        between DR and NR animals across trial types
+        '''
+        pass
+# -------------- Helpers ----------------
+def find_session_tt_indices(sess_idx:int, AV:AUDVIS
+                    )->np.ndarray:
+    tt_indices = []
+    for tt, (sess_indices, trial_indices) in AV.trial_types.items():
+        sess_mask = sess_indices == sess_idx
+        assert sum(sess_mask) == 90
+        tt_indices.append(trial_indices[sess_mask])
+    
+    return np.array(tt_indices)
+
+def add_TT_onsets(ax, 
+                  stim_start_idx_within_trial:int,
+                  full_sig_size:int,
+                  session_ttindices:np.ndarray,
+                  SF:float,
+                  ymin:float, ymax:float, 
+                  tt_col_lstl:dict[int:tuple[str, str]]):
+    for itt in range(session_ttindices.shape[0]):
+        clr, lnstl = tt_col_lstl[itt]
+        x = np.arange(stim_start_idx_within_trial, (47+full_sig_size) - 32, 47) * (1/SF)
+
+        ax.vlines(x = x[session_ttindices[itt,:]],
+                  ymin = ymin, ymax = ymax,
+                  color = clr, linestyle = lnstl, linewidth = 2.5)
+
+
 
 if __name__ == '__main__':
     Movements()
