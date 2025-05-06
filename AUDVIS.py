@@ -68,10 +68,20 @@ class Behavior:
             behavior[nan_tt_indices[itt]] = mean_behavior_tt_correct[itt]
         assert np.isnan(behavior).all() == False, 'All behavioral NaNs should have been removed in previous step!'
         
-        # baseline correction and z-scoring on trial level
-        bsl_means = np.mean(behavior[:,:baseline_frames], axis = 1, keepdims=True)
-        bsl_stds = np.std(behavior[:,:baseline_frames],axis = 1, keepdims=True) + 0.01 # to prevent divide by 0 error
-        behavior_trial_evoked = (behavior - bsl_means) / bsl_stds
+        # NOTE!!! 3 possible z-scoring schemes:
+        #1) Z-score on trial-level beh_i = (beh_i - µ_beh_i_bsl) / std_beh_i_bsl [What was initially done]
+            # PROBLEM: trials not comparable because trials with low baseline variability overestimated
+        #2) Z-score on global µ_beh_global_bsl and std_beh_global_bsl
+            # PROBLEM: not centered around 0
+        #3) Z-score on global µ_beh_global_bsl and std_beh_global_bsl & subsequently baseline correct
+        # with beh_i = (beh_i - µ_beh_i_bsl) [NOTE: CURRENTLY USED]
+        
+        # Z-scoring on global baseline µ and std
+        bsl_means = np.mean(behavior[:,:baseline_frames])#, axis = 1, keepdims=True)
+        bsl_stds = np.std(behavior[:,:baseline_frames])#,axis = 1, keepdims=True) + 0.01 # to prevent divide by 0 error
+        behavior_trial_evoked = (behavior - bsl_means) / bsl_stds # z-scoring step
+        # baseline correct on trial-level
+        behavior_trial_evoked -= np.mean(behavior_trial_evoked[:,:baseline_frames], axis = 1, keepdims=True)
         # if debug:
         #     plt.plot(np.nanmean(behavior, axis = 0))
         #     plt.plot(np.nanmean(behavior_trial_evoked, axis = 0))
@@ -358,8 +368,8 @@ class AUDVIS:
 
             # return residual_signals
 
-            for rp in reg_params:
-                residual_signals = regress_out_neuron(*rp)
+            # for rp in reg_params:
+            #     residual_signals = regress_out_neuron(*rp)
 
             with Pool(processes=cpu_count()) as pool:
                 residual_signals = pool.starmap(regress_out_neuron, reg_params)

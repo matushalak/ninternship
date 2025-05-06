@@ -57,10 +57,10 @@ class Movements:
 
         # 3) third series of plots is per session raw signal during each trial type and corresponding behaviors
         # separate plot per trial type
-        # self.raw_signals()
+        self.raw_signals()
 
         # 4) separate plot per session (random chunk from session of consecutive trials of all trial types)
-        self.raw_signals(all_TT_together=True, N_example_trials=100)
+        # self.raw_signals(all_TT_together=True, N_example_trials=100)
     
     
     def get_behaviors_by_session(self, addTT:bool = True)->dict:

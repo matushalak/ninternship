@@ -511,7 +511,7 @@ def recordedNeurons(svg:bool = False):
 
 if __name__ == '__main__':
     ### Venn diagram of neuron classes in in the 4 different regions
-    by_areas_VENN(svg=False)
+    # by_areas_VENN(svg=False)
 
     ### Timeseries plots for neurons from different regions
     # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=True)
@@ -519,8 +519,8 @@ if __name__ == '__main__':
     # by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=True)
 
     ### TOTAL timeseries plot and quantification
-    # QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
-    # Quantification(QuantDF, svg=False)
+    QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
+    Quantification(QuantDF, svg=False)
 
     # Recorded neurons plot
     # recordedNeurons(svg=True)
