@@ -56,6 +56,20 @@ class EncodingModel:
                          X:np.ndarray, y:np.ndarray,
                          split_proportion:float,
                          trial_size:int, trial_types:np.ndarray):
+        '''
+        NOTE on overfitting & train / test split:
+        -----------------------------------------
+        When trying to simply fit the model to data as good as possible for the purpose of 
+        isolating non-whisker-related activity, we "want" to "overfit" and therefore, 
+        it does not make sense to do a train / test split, since we do not want to generalize
+        (Cross-validation is still carried out within RidgeCV to determine the regularization parameter)
+
+        To make claims about contibutions of Stimulus (V / A / AV) vs Behavior (Run, Whisk, Pupil) to explained variance (EV),
+        we need to base the estimated EV on held-out test set.
+        
+        Similarly, when we want to compare EV between reduced models fit only on (certain) Stimulus \ Behavior features, 
+        we need to report numbers from held-out test set.
+        '''
         all_tt_indices = np.arange(len(trial_types))
         n_train_trials = round(len(trial_types) * split_proportion)
         n_test_trials = len(trial_types) - n_train_trials
