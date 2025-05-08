@@ -13,9 +13,7 @@ from functools import reduce
 from collections import defaultdict
 from typing import Literal
 
-# TODO: Quantifications with stats & Bar Plots to accompany traces
-# TODO: z-scored Whisker signals with trial plots
-# TODO: if offsets included, change trial duration for statistical tests etc.
+
 # ----------- Main ANALYSIS class -----------
 class Analyze:
     ''' 

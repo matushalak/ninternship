@@ -3,12 +3,52 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.stats import wilcoxon, ttest_rel, sem, norm, _result_classes
+from scipy.stats import sem, norm, _result_classes
 from matplotlib import artist
 from typing import Literal
 
 
 ###-------------------------------- GENERAL Helper functions --------------------------------
+def general_separate_signal(sig:np.ndarray,
+                            trial_types:np.ndarray,
+                            trial_type_combinations:list[tuple]|None = None,
+                            separation_labels:list[str]|None = None
+                            )-> dict[str | int : np.ndarray]:
+    '''
+    Input:
+    ------------
+    sig : 2D / 3D np.ndarray 
+        w dimensions (ntrials, nts, (optional: nneurons))
+    trial_types : 1D np.ndarray 
+        shape (ntrials)
+    trial_type_combinations : list[tuple[int, ...], ...] 
+        individual entries of this list contain trial types that will be grouped.
+            if None, separate signal between all unique values within trial_types
+    separation_labels : list[str, ...] 
+        labels for entries of trial_type_combinations.
+            if None, give integer labels from 0 : len(trial_type_combinations) - 1
+    
+    Returns:
+    ------------
+    separated_signal: dict[str | int : np.ndarray(nTT_trials, nts, (optional: nneurons))]
+    '''
+    assert sig.shape[0] == trial_types.shape[0], 'First dimension of signal must match first dimension of trial_types'
+    if trial_type_combinations is None:
+        trial_type_combinations = [(tt,) for tt in np.unique(trial_types)]
+    
+    if separation_labels is None:
+        separation_labels = [i for i in range(len(trial_type_combinations))]
+    
+    separated_signal = dict()
+
+    for label, tt_combo in zip (separation_labels, trial_type_combinations):
+        tt_indices = np.where(np.isin(trial_types, tt_combo))[0]
+        # Ellipses (...) slices everything from following dimensions
+        separated_signal[label] = sig[tt_indices, ...]
+
+    return separated_signal
+    
+
 def calc_avrg_trace(trace:np.ndarray, time:np.ndarray, PLOT:bool = True
                     )->tuple[np.ndarray, np.ndarray, np.ndarray]:
     '''
