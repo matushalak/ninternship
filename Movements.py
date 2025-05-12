@@ -8,6 +8,8 @@ from collections import defaultdict
 from AUDVIS import AUDVIS, Behavior, load_in_data
 from typing import Literal
 
+# TODO: correlation with signal across time bins all neurons (between groups)
+# TODO: quantify differences
 class Movements:
     '''
     Explores running, whisker and pupil signals
@@ -311,12 +313,18 @@ class Movements:
                         print(f'Group {ig} Session {isess} raw_SIGS_{self.tnames[itt]} saved!')
 
 
+    # TODO:
+    def signal_correlations(self):
+        pass
+    
     def Quantify(self):
         '''
         Quantifies differences in movements (& movement characteristics)
         between DR and NR animals across trial types
         '''
-        pass
+        raise NotImplementedError
+    
+    
 # -------------- Helpers ----------------
 def find_session_tt_indices(sess_idx:int, AV:AUDVIS
                     )->np.ndarray:

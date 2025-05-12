@@ -15,9 +15,8 @@ from typing import Literal
 from collections import defaultdict
 
 # ----------------------- Encoding model ---------------------------
+# NOTE: Fairly general encoding model for disentangling behavioral confounds from neural activity
 # TODO: umberto figure 6F
-# TODO: include ElasticNet
-# TODO: consistent test/train split & cross-validation
 class EncodingModel:
     '''
     Encoding model for neural activity,
@@ -197,7 +196,8 @@ class EncodingModel:
             case X:
                 return self.model.predict(X)
     
-
+    
+    # TODO: not general function, move to different section
     def plotGLM(self,
                 ypred:np.ndarray, 
                 model_label:str = 'full model', 
@@ -264,8 +264,9 @@ class EncodingModel:
 
 
 # --------------------------- DESIGN MATRIX SECTION ---------------------------------
-# TODO: z-score each analog column
-# TODO: do not convolve bases with continous signals
+# NOTE: These functions need to be adapted to different experimental regimes
+# TODO CHECK: z-score each analog column?
+# TODO CHECK: do not convolve bases with continous signals?
 def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                   show:bool = False)-> dict[str:dict[str:np.ndarray]]:
     '''
@@ -603,7 +604,7 @@ def getBases(Xcol:np.ndarray,
 
 
 # -------------- running Models -------------------
-# TODO: in each subplot (Original signal, 
+# These functions need to be adapted to different experimental regimes
 # full model, Stimulus predictors (V, A, AV), Behavioral predictors (Whisk, Run, Pupil)
 def decompose(Model:EncodingModel, motor_together:bool = True
               )->dict[str:np.ndarray]:
@@ -652,20 +653,26 @@ def decompose(Model:EncodingModel, motor_together:bool = True
     
     return decomposed_drives
 
-
+#TODO: parallelize
 def evaluate_encoding_models(gXY, 
                              yTYPE:Literal['neuron', 'population'] = 'population',
-                             plot:bool = True):
+                             plot:bool = True,
+                             EV:bool = False):
     '''
     Build up dataframe to analyze within dictionary
     if yTYPE == "neuron"
-        neuron_id | session_id | group_id | trial_type | EV_vis | EV_aud | EV_mot | EV_full | EV_test
+        neuron_id | session_id | group_id | trial_type | EV_V_* | EV_A_* | EV_Motor_* | EV_Model_*
     if yTYPE == "population" (average over all neurons recorded in session)
-        session_id | group_id | trial_type| EV_vis | EV_aud | EV_mot | EV_full | EV_test
+        session_id | group_id | trial_type| EV_V_* | EV_A_* | EV_Motor_* | EV_Model_*
+    
+    for * in (a, t) which stands for a=trial_type average, t=trial-trial variability
+    Explained variance on the full signal (trial-by-trial variability) [low]
+    Explained variance on the trial-type averages [high]
 
     trial_types can be: 'V', 'A', 'AV+', 'AV-', 'all'
     '''
-    model_results = defaultdict(list())
+    if EV: # collect explained variance results
+        all_model_EV_results = defaultdict(lambda:list()) 
 
     for ig, (groupName, groupDict) in enumerate(gXY.items()):
         Xall, yall = groupDict['X'], groupDict['y']
@@ -686,82 +693,96 @@ def evaluate_encoding_models(gXY,
             ysession = yall[isess]
             TTsession = TTall[:,isess]
 
-            if yTYPE == 'neuron':
+            if yTYPE == 'neuron': # single-neuron encoding model
                 for ineuron in range(ysession.shape[-1]):
                     y = ysession[:,:,ineuron].flatten()
-                    SessionModel = EncodingModel(X = X, y = y, 
-                                                 Xcolumn_names=Xcolnames,
-                                                 trial_types=TTsession, 
-                                                 trial_size=trial_size, stimulus_window=stimulus_window,
-                                                 params=None)
-                    SessionModel.fit(full=True)
-                    # To check regularization parameters
-                    # print(SessionModel.model.alpha_)
-
-                    predicted = SessionModel.predict(full=True)
-
-                    pred_components:dict[str:np.ndarray] = decompose(Model=SessionModel,
-                                                                    motor_together=True)
-                    cleaned_signal = SessionModel.y - pred_components['Motor']
+                    modelFULL_results = run_model(X=X, y=y, Xcolnames=Xcolnames, 
+                                                  fit_full=True,
+                                                  TTsession=TTsession,
+                                                  trial_size=trial_size, stimulus_window=stimulus_window,
+                                                  component_colors=component_colors, 
+                                                  plot=plot, EV_analysis=EV)
                     
-                    if plot:
-                        f, axfull, axbottom = SessionModel.plotGLM(ypred=predicted, plot_original=True)
-                        # Clean signal by subtracting motor predictions
-                        SessionModel.plotGLM(ypred=cleaned_signal, plot_original=False,
-                                            model_label='clean dF/F',
-                                            col_pred='grey', lnstl='--',
-                                            ax_full=axfull, ax_bottom=axbottom, fig = f)
+                    if EV:
+                        # train/test split (80/20)
+                        modelEVAL_results = run_model(X=X, y=y, Xcolnames=Xcolnames, 
+                                                     fit_full=False,
+                                                     TTsession=TTsession,
+                                                     trial_size=trial_size, stimulus_window=stimulus_window,
+                                                     component_colors=component_colors, 
+                                                     plot=False, EV_analysis=EV)
 
-                        for ic, (component_name, component_signal) in enumerate(pred_components.items()):
-                            SessionModel.plotGLM(ypred=component_signal, plot_original=False,
-                                                model_label=component_name, 
-                                                col_pred=component_colors[component_name],
-                                                ax_full=axfull, ax_bottom=axbottom, fig = f)
+                        for col, dataFULL in modelFULL_results.items():
+                            if col == 'trial_type': # neuron, session and group id
+                                all_model_EV_results['neuron_id'].extend([ineuron]*len(dataFULL))
+                                all_model_EV_results['session_id'].extend([isess]*len(dataFULL))
+                                all_model_EV_results['group_id'].extend([ig]*len(dataFULL))
+                                all_model_EV_results[col].extend(dataFULL) # trial type
+                            else:
+                                dataEVAL = modelEVAL_results[col]
+                                all_model_EV_results[f'{col}_full'].extend(dataFULL)
+                                all_model_EV_results[f'{col}_eval'].extend(dataEVAL)
+                        
+                        print(f'Group {ig} Session{isess}, neuron {ineuron} completed')
+
                     
-                        plt.show()
-                        plt.close()
-
             else: # population-level encoding model
                 y = np.nanmean(ysession, axis = 2).flatten()
-                SessionModel = EncodingModel(X = X, y = y,
-                                             Xcolumn_names=Xcolnames,
-                                             trial_types=TTsession, 
-                                             trial_size=trial_size, stimulus_window=stimulus_window,
-                                             params=None)
-                SessionModel.fit(full=True)
-                predicted = SessionModel.predict(full=True)
-                pred_components:dict[str:np.ndarray] = decompose(Model=SessionModel,
-                                                                 motor_together=True)
-                cleaned_signal = SessionModel.y - pred_components['Motor']
+                modelFULL_results = run_model(X=X, y=y, Xcolnames=Xcolnames, 
+                                            fit_full=True,
+                                            TTsession=TTsession,
+                                            trial_size=trial_size, stimulus_window=stimulus_window,
+                                            component_colors=component_colors, 
+                                            plot=plot, EV_analysis=EV)
+                print('Full model completed')
+                if EV:
+                    # train/test split (80/20)
+                    modelEVAL_results = run_model(X=X, y=y, Xcolnames=Xcolnames, 
+                                                fit_full=False,
+                                                TTsession=TTsession,
+                                                trial_size=trial_size, stimulus_window=stimulus_window,
+                                                component_colors=component_colors, 
+                                                plot=False, EV_analysis=EV)
 
-                if plot:
-                    f, axfull, axbottom = SessionModel.plotGLM(ypred=predicted, plot_original=True)
-                    # Clean signal by subtracting motor predictions
-                    SessionModel.plotGLM(ypred=cleaned_signal, plot_original=False,
-                                            model_label='clean dF/F',
-                                            col_pred='grey', lnstl='--',
-                                            ax_full=axfull, ax_bottom=axbottom, fig = f)
+                    for col, dataFULL in modelFULL_results.items():
+                        if col == 'trial_type': # only session id and group id
+                            all_model_EV_results['session_id'].extend([isess]*len(dataFULL))
+                            all_model_EV_results['group_id'].extend([ig]*len(dataFULL))
+                            all_model_EV_results[col].extend(dataFULL) # trial type
+                        else:
+                            dataEVAL = modelEVAL_results[col]
+                            all_model_EV_results[f'{col}_full'].extend(dataFULL)
+                            all_model_EV_results[f'{col}_eval'].extend(dataEVAL)
+                    print('Train / Test model completed')
 
-                    for ic, (component_name, component_signal) in enumerate(pred_components.items()):
-                        SessionModel.plotGLM(ypred=component_signal, plot_original=False,
-                                            model_label=component_name, 
-                                            col_pred=component_colors[component_name],
-                                            ax_full=axfull, ax_bottom=axbottom, fig = f)
-                    
-                    plt.show()
-                    plt.close()
+
+    if EV:
+        EV_DF:pd.DataFrame = pd.DataFrame(all_model_EV_results)
+        EV_DF.to_csv(f'GLM_ev_results_{yTYPE}')
+        return EV_DF
 
 
 def run_model(X:np.ndarray, y:np.ndarray, 
+              fit_full:bool,
               Xcolnames:list[str], TTsession:np.ndarray, 
               trial_size:int, stimulus_window:tuple[int,int],
-              component_colors:dict[str:str], plot:bool = False
+              component_colors:dict[str:str], 
+              plot:bool = False, EV_analysis:bool = False
               )->dict[str:list]:
     '''
     Trains and evaluates one instance of encoding model. 
-    Returns a small model_results dictionary:
-    list[float, float, float, float, float]: where entries correspond to
-        trial_type | EV_vis | EV_aud | EV_mot | EV_full | EV_test
+
+    fit_full:bool determines whether model is fit and evaluated 
+    on data from the whole session (fit_full = True) OR
+    fit on 80 % of data and evaluated on 20% of data
+
+    If EV_analysis == True Returns model_results dictionary with entries specifying
+        Explained variance of trial-type averages, as well as,
+        Explained variance of the trial-trial variability using the full signals
+    dict[str:list]: where entries correspond to
+        trial_type| EV_V_* | EV_A_* | EV_Motor_* | EV_Model_*
+    
+    for * in (a, t) which stands for a=trial_type average, t=trial-trial variability
     
     trial_types can be: 'V', 'A', 'AV+', 'AV-', 'all'
     '''
@@ -770,25 +791,36 @@ def run_model(X:np.ndarray, y:np.ndarray,
                                 trial_types=TTsession, 
                                 trial_size=trial_size, stimulus_window=stimulus_window,
                                 params=None)
-    SessionModel.fit(full=True)
-    best_regularization = SessionModel.model.alpha_
+    # fits to the whole session if fit_full == True 
+    # otherwise fits to 80% of trials (even distribution of each trial type)
+    # in both cases with 5-fold cross-validation to find regularization parameter
+    SessionModel.fit(full=fit_full)
+    
     # To check cross-validated regularization parameter
+    best_regularization = SessionModel.model.alpha_
     # print(best_regularization)
 
-    predicted = SessionModel.predict(full=True)
+    # shows prediction of the whole session if fit_full == True
+    # otherwise predicts 20% held-out trials (even distribution of each trial type)
+    predicted = SessionModel.predict(full=fit_full)
 
+    # full continous one signal / predictor
     pred_components:dict[str:np.ndarray] = decompose(Model=SessionModel,
                                                     motor_together=True)
+    # always full cleaned signal, but if fit_full == False, 
+    #   predicted contribution of motor only based on train set (80% trials)
     cleaned_signal = SessionModel.y - pred_components['Motor']
     
+    # Plotting the predictions and raw signal
     if plot:
+        # Start with full model
         f, axfull, axbottom = SessionModel.plotGLM(ypred=predicted, plot_original=True)
         # Clean signal by subtracting motor predictions
         SessionModel.plotGLM(ypred=cleaned_signal, plot_original=False,
                             model_label='clean dF/F',
                             col_pred='grey', lnstl='--',
                             ax_full=axfull, ax_bottom=axbottom, fig = f)
-
+        # Show predicted portions of signal by other predictor blocks
         for ic, (component_name, component_signal) in enumerate(pred_components.items()):
             SessionModel.plotGLM(ypred=component_signal, plot_original=False,
                                 model_label=component_name, 
@@ -798,9 +830,91 @@ def run_model(X:np.ndarray, y:np.ndarray,
         plt.show()
         plt.close()
 
+    # Explained Variance (EV) analysis
+    if EV_analysis:
+        # Trial lock target
+        target = SessionModel.y if fit_full else SessionModel.ytest
+        target_trial_locked = (SessionModel.yTRIAL if fit_full 
+                            else target.reshape((len(target)//trial_size, trial_size))
+                            )
+        
+        # Analyze explained variance
+        model_results = explained_variance(target_trial_locked=target_trial_locked,
+                                        # for consistency we want the full signal prediction and slice it later
+                                        predicted=predicted if fit_full else SessionModel.predict(full=True),
+                                        pred_components=pred_components,
+                                        TTsession=TTsession,
+                                        trial_size=trial_size,
+                                        test_trial_indices=(None if fit_full 
+                                                            else SessionModel.TESTtrials))
+        
+        return model_results
+
+
+# TODO: docstring to explain inputs        
+def explained_variance(target_trial_locked:np.ndarray, 
+                       pred_components:dict[int:np.ndarray], 
+                       predicted:np.ndarray,
+                       TTsession:np.ndarray, 
+                       trial_size:int,
+                       test_trial_indices:np.ndarray|None = None
+                       )->dict[str:list[float]]:
+    # collect results here
+    model_results = defaultdict(lambda:list())
+
+    # Explained variance metric
+    EV : function = lambda ypred, truth: 1 - (np.var(truth - ypred)/np.var(truth))
+    trial_groups = [(6,7), (0,3), (1,5), (2,4)]
+    trial_group_labels = ['V', 'A', 'AV+', 'AV-']
+
+    if test_trial_indices is not None:
+        # Index only into TEST trials
+        TTsession = TTsession[test_trial_indices]
+
+    # target signal across trial types
+    target_TT: dict[int:np.ndarray] = general_separate_signal(sig=target_trial_locked,
+                                                            trial_types=TTsession,
+                                                            trial_type_combinations=trial_groups,
+                                                            separation_labels=trial_group_labels)
+
+    
+    pred_components2 = pred_components.copy()
+    pred_components2['Model'] = predicted
+    # Go through trial types for individual predictors + full model
+    for ip, (predictor_name, predictor_drive) in enumerate(pred_components2.items()):
+        predictor_drive = predictor_drive.reshape((len(predictor_drive)//trial_size, trial_size))
+
+        if test_trial_indices is not None:
+        # Index only into TEST trials
+            predictor_drive = predictor_drive[test_trial_indices,:]
+
+        predictor_TT:dict[int:np.ndarray] = general_separate_signal(sig=predictor_drive,
+                                                                    trial_types=TTsession,
+                                                                    trial_type_combinations=trial_groups,
+                                                                    separation_labels=trial_group_labels)
+        for i, (ttname, pred_ttsignal) in enumerate(predictor_TT.items()):
+            # Explained variance for trial-type average
+            pred_tt_average = np.mean(pred_ttsignal, axis=0)
+            target_tt_average = np.mean(target_TT[ttname], axis = 0)
+            EV_average= EV(pred_tt_average, target_tt_average)
+            if ip == 0:
+                model_results['trial_type'].append(ttname)
+                if i == 0:
+                    print(f'TT Average predictor_shape:{pred_tt_average.shape}, TT Average target_shape:{target_tt_average.shape}')
+            model_results[f'EV_{predictor_name}_a'].append(EV_average)
+
+            # Explained variance for trial-trial signal within trial-type
+            pred_tt_flat = pred_ttsignal.flatten()
+            target_tt_flat = target_TT[ttname].flatten()
+            EV_trial= EV(pred_tt_flat, target_tt_flat)
+            model_results[f'EV_{predictor_name}_t'].append(EV_trial)
+            if ip == 0 and i ==0:
+                print(f'Trial_level predictor_shape:{pred_tt_flat.shape}, Trial_level target_shape:{target_tt_flat.shape}')
+    
+    return model_results
 
 
 if __name__ == '__main__':
-    gXY = design_matrix()
-    evaluate_encoding_models(gXY=gXY, yTYPE='population', plot=False)
+    gXY = design_matrix(pre_post='pre')
+    evaluate_encoding_models(gXY=gXY, yTYPE='neuron', plot=False, EV=True)
     

@@ -32,7 +32,9 @@ def general_separate_signal(sig:np.ndarray,
     ------------
     separated_signal: dict[str | int : np.ndarray(nTT_trials, nts, (optional: nneurons))]
     '''
-    assert sig.shape[0] == trial_types.shape[0], 'First dimension of signal must match first dimension of trial_types'
+    assert sig.shape[0] == trial_types.shape[0], (
+        f'First dimension of signal {sig.shape[0]} must match first dimension of trial_types {trial_types.shape[0]}'
+        )
     if trial_type_combinations is None:
         trial_type_combinations = [(tt,) for tt in np.unique(trial_types)]
     
