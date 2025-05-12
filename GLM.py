@@ -17,6 +17,7 @@ from collections import defaultdict
 # ----------------------- Encoding model ---------------------------
 # TODO: umberto figure 6F
 # TODO: include ElasticNet
+# TODO: consistent test/train split & cross-validation
 class EncodingModel:
     '''
     Encoding model for neural activity,
@@ -63,21 +64,30 @@ class EncodingModel:
         self.colnames = Xcolumn_names
 
         # Train / Test split for quantifications
-        (self.Xtrain, self.ytrain), (self.Xtest, self.ytest) = self.train_test_split(
-            X=self.X, y=self.y, split_proportion=train_test_prop, trial_size=trial_size, trial_types=trial_types)
-
+        TRAIN, TEST = self.train_test_split(X=self.X, y=self.y, 
+                                            split_proportion=train_test_prop, 
+                                            trial_size=trial_size, trial_types=trial_types)
+        
+        self.Xtrain, self.ytrain, self.TRAINtrials = TRAIN
+        self.Xtest, self.ytest, self.TESTtrials = TEST
+        
         self.model = self.define_model(params=params)
 
 
     def define_model(self, params:dict | None = None):
         if params is None:
-            return skLin.RidgeCV(alphas = np.logspace(-3,3,20), fit_intercept=True)
+            # NOTE: Finetune / justify this range of alphas ?
+            # DOES regularize heavily on its own
+            return skLin.RidgeCV(alphas = np.logspace(-.2,4,20), 
+                                fit_intercept=True)
         else:
+            # Tried Ellastic net, didn't work better 
+            # + many papers argue against and use pure ridge
             raise NotImplementedError
 
 
-    def train_test_split(self, 
-                         X:np.ndarray, y:np.ndarray,
+    @staticmethod
+    def train_test_split(X:np.ndarray, y:np.ndarray,
                          split_proportion:float,
                          trial_size:int, trial_types:np.ndarray):
         '''
@@ -100,13 +110,16 @@ class EncodingModel:
 
         train_i = []
         test_i = []
-        # fair split between trial types
+        # fair split between trial types always in the same way
         for tt in np.unique(trial_types):
             ttindices = np.where(trial_types == tt)[0]
             n_train_tttrials = round(len(ttindices) * split_proportion)
+            n_test_tttrials = len(ttindices) - n_train_tttrials
+            ilist = np.arange(ttindices.size)
+            test_tt_trials_mask = np.mod(ilist, len(ttindices)//n_test_tttrials) == 0
 
-            train_i.append(train_tt_indices := np.random.choice(ttindices, size = n_train_tttrials, replace=False))
-            test_i.append(ttindices[(np.isin(ttindices, train_tt_indices, invert=True))])
+            test_i.append(ttindices[test_tt_trials_mask])
+            train_i.append(ttindices[~test_tt_trials_mask])
 
         train_i = np.concatenate(train_i)
         test_i = np.concatenate(test_i)
@@ -137,11 +150,12 @@ class EncodingModel:
 
         assert Xtrain.size == 4*Xtest.size and ytrain.size == 4*ytest.size
 
-        return ((Xtrain, ytrain), 
-                (Xtest, ytest))
+        return ((Xtrain, ytrain, train_i), 
+                (Xtest, ytest, test_i))
 
 
-    # TODO: QR decomposition (within each CV fold separately)
+    # TODO: QR decomposition 
+    # (should be within each CV fold separately, otherwise data leakage)
     # maybe not necessary?
     def orthogonalize(self):
         pass
@@ -189,6 +203,7 @@ class EncodingModel:
                 model_label:str = 'full model', 
                 col_pred:str = 'magenta', 
                 plot_original:bool = True,
+                lnstl:str = '-',
                 ax_full = None,
                 ax_bottom = None,
                 fig = None):
@@ -204,7 +219,14 @@ class EncodingModel:
 
             # 2.  Create the axes
             ax_full     = fig.add_subplot(grid[0, :]) 
-            ax_bottom   = [fig.add_subplot(grid[1, c]) for c in range(4)]
+            # ax_bottom   = [fig.add_subplot(grid[1, c]) for c in range(4)]
+            ax_bottom = []
+            for c in range(4):
+                if c == 0:
+                    ax = fig.add_subplot(grid[1, c])
+                else:
+                    ax = fig.add_subplot(grid[1, c], sharey=ax_bottom[0])
+                ax_bottom.append(ax)
 
         # Continuous full trace (top row in grid[0,:])
         if plot_original:
@@ -232,7 +254,9 @@ class EncodingModel:
             if plot_original:
                 ax_bottom[i].plot(np.mean(y_TT[ttname], axis = 0), color = 'k', alpha = 0.8, label = 'dF/F data')
             
-            ax_bottom[i].plot(np.mean(pred_ttsignal, axis = 0), color = col_pred, label = model_label)
+            ax_bottom[i].plot(np.mean(pred_ttsignal, axis = 0), 
+                              color = col_pred, label = model_label,
+                              linestyle = lnstl)
             ax_bottom[i].set_title(ttname)
             ax_bottom[i].legend(loc = 2)
 
@@ -589,10 +613,11 @@ def decompose(Model:EncodingModel, motor_together:bool = True
     NOTE: assumes linear model which can be decomposed easily!
     '''
     decomposed_drives = dict()
+    # AV first so V and A drawn over it in unimodal plots
     if motor_together:
-        components = ['V', 'A', 'AV', 'Motor']
+        components = ['AV', 'V', 'A', 'Motor']
     else:
-        components = ['V', 'A', 'AV', 'Running', 'Whisker', 'Pupil']
+        components = ['AV', 'V', 'A', 'Running', 'Whisker', 'Pupil']
     
     for component in components:
         match component:
@@ -617,8 +642,11 @@ def decompose(Model:EncodingModel, motor_together:bool = True
                 components_i = [True if component.lower() in colName 
                                 else False for colName in Model.colnames]
         
+        # get predictor block corresponding to one of components defined above
         X_component = Model.X[:, components_i]
+        # get model coefficients for selected predictor block
         coefficients_component = Model.model.coef_[components_i]
+        # get predictions only based on selected predictor block and it's coefficients
         component_drive = X_component @ coefficients_component
         decomposed_drives[component] = component_drive
     
@@ -626,7 +654,19 @@ def decompose(Model:EncodingModel, motor_together:bool = True
 
 
 def evaluate_encoding_models(gXY, 
-                             yTYPE:Literal['neuron', 'population'] = 'population'):
+                             yTYPE:Literal['neuron', 'population'] = 'population',
+                             plot:bool = True):
+    '''
+    Build up dataframe to analyze within dictionary
+    if yTYPE == "neuron"
+        neuron_id | session_id | group_id | trial_type | EV_vis | EV_aud | EV_mot | EV_full | EV_test
+    if yTYPE == "population" (average over all neurons recorded in session)
+        session_id | group_id | trial_type| EV_vis | EV_aud | EV_mot | EV_full | EV_test
+
+    trial_types can be: 'V', 'A', 'AV+', 'AV-', 'all'
+    '''
+    model_results = defaultdict(list())
+
     for ig, (groupName, groupDict) in enumerate(gXY.items()):
         Xall, yall = groupDict['X'], groupDict['y']
         TTall, trial_size, stimulus_window = (groupDict['trial_types'], 
@@ -638,6 +678,9 @@ def evaluate_encoding_models(gXY,
         assert all(Xall.shape[0] == yall[i].shape[0] * yall[i].shape[1] for i in range(len(yall))
                    ), 'Entries of y should still be in shape (all_trials, n_ts, neurons)'
         
+        component_colors = {'V':'dodgerblue', 'A':'red', 
+                            'AV':'goldenrod', 'Motor':'green'}
+
         for isess in range(len(yall)):
             X = Xall[:,:,isess]
             ysession = yall[isess]
@@ -652,22 +695,31 @@ def evaluate_encoding_models(gXY,
                                                  trial_size=trial_size, stimulus_window=stimulus_window,
                                                  params=None)
                     SessionModel.fit(full=True)
-                    predicted = SessionModel.predict(full=True)
-    
-                    pred_components:dict[str:np.ndarray] = decompose(Model=SessionModel,
-                                                                 motor_together=True)
-                    component_colors = ['dodgerblue', 'red', 'goldenrod', 'green']
+                    # To check regularization parameters
+                    # print(SessionModel.model.alpha_)
 
-                    f, axfull, axbottom = SessionModel.plotGLM(ypred=predicted, plot_original=True)
-                    for ic, (component_name, component_signal) in enumerate(pred_components.items()):
-                        SessionModel.plotGLM(ypred=component_signal, plot_original=False,
-                                            model_label=component_name, 
-                                            col_pred=component_colors[ic],
-                                            ax_full=axfull, ax_bottom=axbottom, fig = f)
+                    predicted = SessionModel.predict(full=True)
+
+                    pred_components:dict[str:np.ndarray] = decompose(Model=SessionModel,
+                                                                    motor_together=True)
+                    cleaned_signal = SessionModel.y - pred_components['Motor']
                     
-                    f.tight_layout()
-                    plt.show()
-                    plt.close()
+                    if plot:
+                        f, axfull, axbottom = SessionModel.plotGLM(ypred=predicted, plot_original=True)
+                        # Clean signal by subtracting motor predictions
+                        SessionModel.plotGLM(ypred=cleaned_signal, plot_original=False,
+                                            model_label='clean dF/F',
+                                            col_pred='grey', lnstl='--',
+                                            ax_full=axfull, ax_bottom=axbottom, fig = f)
+
+                        for ic, (component_name, component_signal) in enumerate(pred_components.items()):
+                            SessionModel.plotGLM(ypred=component_signal, plot_original=False,
+                                                model_label=component_name, 
+                                                col_pred=component_colors[component_name],
+                                                ax_full=axfull, ax_bottom=axbottom, fig = f)
+                    
+                        plt.show()
+                        plt.close()
 
             else: # population-level encoding model
                 y = np.nanmean(ysession, axis = 2).flatten()
@@ -680,22 +732,75 @@ def evaluate_encoding_models(gXY,
                 predicted = SessionModel.predict(full=True)
                 pred_components:dict[str:np.ndarray] = decompose(Model=SessionModel,
                                                                  motor_together=True)
-                component_colors = ['dodgerblue', 'red', 'goldenrod', 'green']
+                cleaned_signal = SessionModel.y - pred_components['Motor']
 
-                f, axfull, axbottom = SessionModel.plotGLM(ypred=predicted, plot_original=True)
-                for ic, (component_name, component_signal) in enumerate(pred_components.items()):
-                    SessionModel.plotGLM(ypred=component_signal, plot_original=False,
-                                        model_label=component_name, 
-                                        col_pred=component_colors[ic],
-                                        ax_full=axfull, ax_bottom=axbottom, fig = f)
-                
-                f.tight_layout()
-                plt.show()
-                plt.close()
+                if plot:
+                    f, axfull, axbottom = SessionModel.plotGLM(ypred=predicted, plot_original=True)
+                    # Clean signal by subtracting motor predictions
+                    SessionModel.plotGLM(ypred=cleaned_signal, plot_original=False,
+                                            model_label='clean dF/F',
+                                            col_pred='grey', lnstl='--',
+                                            ax_full=axfull, ax_bottom=axbottom, fig = f)
+
+                    for ic, (component_name, component_signal) in enumerate(pred_components.items()):
+                        SessionModel.plotGLM(ypred=component_signal, plot_original=False,
+                                            model_label=component_name, 
+                                            col_pred=component_colors[component_name],
+                                            ax_full=axfull, ax_bottom=axbottom, fig = f)
+                    
+                    plt.show()
+                    plt.close()
+
+
+def run_model(X:np.ndarray, y:np.ndarray, 
+              Xcolnames:list[str], TTsession:np.ndarray, 
+              trial_size:int, stimulus_window:tuple[int,int],
+              component_colors:dict[str:str], plot:bool = False
+              )->dict[str:list]:
+    '''
+    Trains and evaluates one instance of encoding model. 
+    Returns a small model_results dictionary:
+    list[float, float, float, float, float]: where entries correspond to
+        trial_type | EV_vis | EV_aud | EV_mot | EV_full | EV_test
+    
+    trial_types can be: 'V', 'A', 'AV+', 'AV-', 'all'
+    '''
+    SessionModel = EncodingModel(X = X, y = y, 
+                                Xcolumn_names=Xcolnames,
+                                trial_types=TTsession, 
+                                trial_size=trial_size, stimulus_window=stimulus_window,
+                                params=None)
+    SessionModel.fit(full=True)
+    best_regularization = SessionModel.model.alpha_
+    # To check cross-validated regularization parameter
+    # print(best_regularization)
+
+    predicted = SessionModel.predict(full=True)
+
+    pred_components:dict[str:np.ndarray] = decompose(Model=SessionModel,
+                                                    motor_together=True)
+    cleaned_signal = SessionModel.y - pred_components['Motor']
+    
+    if plot:
+        f, axfull, axbottom = SessionModel.plotGLM(ypred=predicted, plot_original=True)
+        # Clean signal by subtracting motor predictions
+        SessionModel.plotGLM(ypred=cleaned_signal, plot_original=False,
+                            model_label='clean dF/F',
+                            col_pred='grey', lnstl='--',
+                            ax_full=axfull, ax_bottom=axbottom, fig = f)
+
+        for ic, (component_name, component_signal) in enumerate(pred_components.items()):
+            SessionModel.plotGLM(ypred=component_signal, plot_original=False,
+                                model_label=component_name, 
+                                col_pred=component_colors[component_name],
+                                ax_full=axfull, ax_bottom=axbottom, fig = f)
+    
+        plt.show()
+        plt.close()
 
 
 
 if __name__ == '__main__':
     gXY = design_matrix()
-    evaluate_encoding_models(gXY=gXY, yTYPE='neuron')
+    evaluate_encoding_models(gXY=gXY, yTYPE='population', plot=False)
     
