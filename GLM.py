@@ -5,6 +5,7 @@ import scipy.signal as sig
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as pltGrid
+import os
 
 import multiprocessing as MP
 from multiprocessing import shared_memory
@@ -273,6 +274,7 @@ class EncodingModel:
 # TODO CHECK: z-score each analog column?
 # TODO CHECK: do not convolve bases with continous signals?
 def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
+                  group:Literal['g1', 'g2', 'both'] = 'both',
                   show:bool = False)-> dict[str:dict[str:np.ndarray]]:
     '''
     Builds design matrix for GLM
@@ -282,6 +284,9 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
     output = defaultdict(lambda : defaultdict(dict))
     
     for AV in AVs:
+        if group != 'both' and group not in AV.NAME:
+            continue
+
         n_sessions = len(AV.session_neurons)
         str_tbs = AV.trials_apply_map(AV.trials, AV.int_to_str_trials_map)
 
@@ -661,11 +666,11 @@ def decompose(Model:EncodingModel, motor_together:bool = True
 #TODO: parallelize
 # NOTE: unparallelized version would take 20 hours to run for all neurons!
 @time_loops
-def evaluate_encoding_models(gXY, 
+def quantify_encoding_models(gXY, 
                              yTYPE:Literal['neuron', 'population'] = 'population',
                              plot:bool = True,
-                             EV:bool = False,
-                             return_clean:bool = False):
+                             EV:bool = False, 
+                             rerun:bool = False):
     '''
     Build up dataframe to analyze within dictionary
     if yTYPE == "neuron"
@@ -680,7 +685,13 @@ def evaluate_encoding_models(gXY,
     trial_types can be: 'V', 'A', 'AV+', 'AV-', 'all'
     '''
     if EV: # collect explained variance results
-        all_model_EV_results = defaultdict(lambda:list()) 
+        savepath=os.path.join('pydata', f'GLM_ev_results_{yTYPE}.csv')
+        if not plot and not rerun and os.path.exists(savepath):
+            print(f'Returning explained variance results stored in :{savepath}!')
+            return 1, pd.read_csv(savepath, index_col=False)
+        
+        if yTYPE == 'population':
+            all_model_EV_results = defaultdict(lambda:list()) 
         # try to join this into dataframe
         allres:list[dict] = []
     # for timing
@@ -701,74 +712,54 @@ def evaluate_encoding_models(gXY,
                             'AV':'goldenrod', 'Motor':'green'}
 
         for isess in range(len(yall)):
-            # if isess != 0:
-            #     continue
-
+            # get session data
             X = Xall[:,:,isess]
             ysession = yall[isess]
             TTsession = TTall[:,isess]
 
+            print(f'Processing group {groupName} session {isess} ...')
+
             if yTYPE == 'neuron': # single-neuron encoding model
                 n_evaluations += ysession.shape[-1]
-
-                # shmX = shared_memory.SharedMemory(create=True, size = X.nbytes)
-                # Xsh = np.ndarray(X.shape, dtype=X.dtype, buffer = shmX.buf)
-                # Xsh[:] = X
-
-                # shmY = shared_memory.SharedMemory(create=True, size = ysession.nbytes)
-                # ysh = np.ndarray(ysession.shape, dtype=ysession.dtype, buffer = shmY.buf)
-                # ysh[:] = ysession
                 
-                # shmTT = shared_memory.SharedMemory(create=True, size = TTsession.nbytes)
-                # TTsessionsh = np.ndarray(TTsession.shape, dtype=TTsession.dtype, buffer = shmTT.buf)
-                # TTsessionsh[:] = TTsession
+                if EV and not plot:
+                    shmX = shared_memory.SharedMemory(create=True, size = X.nbytes)
+                    Xsh = np.ndarray(X.shape, dtype=X.dtype, buffer = shmX.buf)
+                    Xsh[:] = X
 
-
-                # SD = SessionData(shmX, shmY, shmTT,
-                #                 X.shape, ysession.shape, TTsession.shape,
-                #                 X.dtype, ysession.dtype, TTsession.dtype,
-                #                 Xcolnames, trial_size, stimulus_window)
-                SD = SessionData(X, ysession, TTsession,
-                                Xcolnames, trial_size, stimulus_window)
-
-                worker_args = [(SD, (ineur, isess, ig), EV, return_clean) for ineur in range(ysession.shape[-1])]
-                
-                with MP.Pool(processes=MP.cpu_count()) as worker_pool:
-                    session_results = worker_pool.starmap(neuron_worker, worker_args)
-                allres += session_results
-                # shmX.close();shmX.unlink()
-                # shmY.close();shmY.unlink()
-                # shmTT.close();shmTT.unlink()
-                # for ineuron in range(ysession.shape[-1]):
-                #     y = ysession[:,:,ineuron].flatten()
-                #     modelFULL_results = run_model(X=X, y=y, Xcolnames=Xcolnames, 
-                #                                   fit_full=True,
-                #                                   TTsession=TTsession,
-                #                                   trial_size=trial_size, stimulus_window=stimulus_window,
-                #                                   component_colors=component_colors, 
-                #                                   plot=plot, EV_analysis=EV)
+                    shmY = shared_memory.SharedMemory(create=True, size = ysession.nbytes)
+                    ysh = np.ndarray(ysession.shape, dtype=ysession.dtype, buffer = shmY.buf)
+                    ysh[:] = ysession
                     
-                #     if EV:
-                #         # train/test split (80/20)
-                #         modelEVAL_results = run_model(X=X, y=y, Xcolnames=Xcolnames, 
-                #                                      fit_full=False,
-                #                                      TTsession=TTsession,
-                #                                      trial_size=trial_size, stimulus_window=stimulus_window,
-                #                                      component_colors=component_colors, 
-                #                                      plot=False, EV_analysis=EV)
+                    shmTT = shared_memory.SharedMemory(create=True, size = TTsession.nbytes)
+                    TTsessionsh = np.ndarray(TTsession.shape, dtype=TTsession.dtype, buffer = shmTT.buf)
+                    TTsessionsh[:] = TTsession
+                    SD = SessionData(Xsh, ysh, TTsessionsh,
+                                    Xcolnames, trial_size, stimulus_window)
 
-                #         for col, dataFULL in modelFULL_results.items():
-                #             if col == 'trial_type': # neuron, session and group id
-                #                 all_model_EV_results['neuron_id'].extend([ineuron]*len(dataFULL))
-                #                 all_model_EV_results['session_id'].extend([isess]*len(dataFULL))
-                #                 all_model_EV_results['group_id'].extend([ig]*len(dataFULL))
-                #                 all_model_EV_results[col].extend(dataFULL) # trial type
-                #             else:
-                #                 dataEVAL = modelEVAL_results[col]
-                #                 all_model_EV_results[f'{col}_full'].extend(dataFULL)
-                #                 all_model_EV_results[f'{col}_eval'].extend(dataEVAL)
+                    worker_args = [(SD, (ineur, isess, groupName), EV) for ineur in range(ysession.shape[-1])]
+                    
+                    with MP.Pool() as worker_pool:
+                        session_results = worker_pool.starmap(neuron_worker, worker_args, 
+                                                            chunksize=60
+                                                            )
+                    allres += session_results
+
+                    shmX.close(); shmY.close(); shmTT.close()
+                    shmX.unlink(); shmY.unlink(); shmTT.unlink()
+
+
+                if plot:
+                    for ineuron in range(ysession.shape[-1]):
+                        y = ysession[:,:,ineuron].flatten()
+                        modelFULL_results = run_model(X=X, y=y, Xcolnames=Xcolnames, 
+                                                    fit_full=True,
+                                                    TTsession=TTsession,
+                                                    trial_size=trial_size, stimulus_window=stimulus_window,
+                                                    component_colors=component_colors, 
+                                                    plot=plot, EV_analysis=False)
                         
-                #         print(f'Group {ig} Session{isess}, neuron {ineuron} completed')
+                        print(f'Group {groupName} Session{isess}, neuron {ineuron} completed')
 
                     
             else: # population-level encoding model, speed is fine, few evaluations
@@ -781,7 +772,7 @@ def evaluate_encoding_models(gXY,
                                             component_colors=component_colors, 
                                             plot=plot, EV_analysis=EV)
                 print('Full model completed')
-                if EV:
+                if EV and not plot:
                     # train/test split (80/20)
                     modelEVAL_results = run_model(X=X, y=y, Xcolnames=Xcolnames, 
                                                 fit_full=False,
@@ -793,7 +784,7 @@ def evaluate_encoding_models(gXY,
                     for col, dataFULL in modelFULL_results.items():
                         if col == 'trial_type': # only session id and group id
                             all_model_EV_results['session_id'].extend([isess]*len(dataFULL))
-                            all_model_EV_results['group_id'].extend([ig]*len(dataFULL))
+                            all_model_EV_results['group_id'].extend([groupName]*len(dataFULL))
                             all_model_EV_results[col].extend(dataFULL) # trial type
                         else:
                             dataEVAL = modelEVAL_results[col]
@@ -803,12 +794,109 @@ def evaluate_encoding_models(gXY,
 
 
     if EV:
-        # EV_DF:pd.DataFrame = pd.DataFrame(all_model_EV_results)
-        EV_DF:pd.DataFrame = pd.DataFrame(allres)
-        EV_DF.to_csv(f'GLM_ev_results_{yTYPE}')
+        if yTYPE == 'population':
+            EV_DF:pd.DataFrame = pd.DataFrame(all_model_EV_results)     
+        else:
+            resdict = defaultdict(list)
+            for dct in allres:
+                for k, v in dct.items():
+                    resdict[k] += v
+
+            EV_DF:pd.DataFrame = pd.DataFrame(resdict)
+
+        EV_DF.to_csv(savepath, index=False)
         return n_evaluations, EV_DF
     else:
         return n_evaluations, None
+
+
+def clean_group_signal(group_name:str,
+                       pre_post: Literal['pre', 'post', 'both'] = 'pre',
+                       yTYPE:Literal['neuron', 'population'] = 'neuron',
+                       exportDrives:bool = False
+                       )->np.ndarray:
+    '''
+    Unlike quantify encoding models, this is supposed to be used purely to clean the signal
+    based on the model fit to the full data
+
+    exportDrives:bool specifies whether also the model predictions based on the different 
+        predictor blocks should be exported in a trial-locked manner
+    '''
+    # design matrix (containing signal) for chosen group
+    gXY = design_matrix(pre_post=pre_post, group=group_name)
+
+    groupDict = gXY[group_name]
+    Xall, yall = groupDict['X'], groupDict['y']
+    TTall, trial_size, stimulus_window = (groupDict['trial_types'], 
+                                        groupDict['trial_size'], 
+                                        groupDict['stimulus_window'])
+    Xcolnames = groupDict['Xcolnames']
+    assert isinstance(yall, list) and len(yall) == Xall.shape[-1], 'y should be a list of (trials x ts x neurons) arrays for each session'
+    assert all(Xall.shape[0] == yall[i].shape[0] * yall[i].shape[1] for i in range(len(yall))
+                   ), 'Entries of y should still be in shape (all_trials, n_ts, neurons)'
+    
+    CLEAN_sessions = []
+    if exportDrives:
+        session_DRIVES = defaultdict(list)
+
+    for isess in range(len(yall)):
+        # get session data
+        X = Xall[:,:,isess]
+        ysession = yall[isess]
+        TTsession = TTall[:,isess]
+
+        print(f'Cleaning group {group_name} session {isess} ...')
+        if yTYPE == 'neuron':
+            for ineuron in range(ysession.shape[-1]):
+                print(ineuron)
+                y = ysession[:,:,ineuron].flatten()
+                SIGNALS = run_model(X=X, y=y, Xcolnames=Xcolnames, 
+                                    fit_full=True,
+                                    TTsession=TTsession,
+                                    trial_size=trial_size, stimulus_window=stimulus_window,
+                                    return_clean=True, return_drives=exportDrives)
+                
+                clean_session = SIGNALS[0]
+                clean_session_trial_locked = clean_session.reshape(
+                    (len(clean_session)//trial_size, trial_size))
+                CLEAN_sessions.append(clean_session_trial_locked)
+
+                if exportDrives:
+                    for dname, dSig in SIGNALS[1].items():
+                        trial_locked_drive = dSig.reshape((len(dSig)//trial_size, 
+                                                           trial_size))
+                        session_DRIVES[dname].append(trial_locked_drive)
+
+        else: # population average
+            y = np.nanmean(ysession, axis = 2).flatten()
+            SIGNALS = run_model(X=X, y=y, Xcolnames=Xcolnames, 
+                                    fit_full=True,
+                                    TTsession=TTsession,
+                                    trial_size=trial_size, stimulus_window=stimulus_window,
+                                    return_clean=True, return_drives=exportDrives)
+                
+            clean_session = SIGNALS[0]
+            clean_session_trial_locked = clean_session.reshape(
+                (len(clean_session)//trial_size, trial_size))
+            CLEAN_sessions.append(clean_session_trial_locked)
+
+            if exportDrives:
+                for dname, dSig in SIGNALS[1].items():
+                    trial_locked_drive = dSig.reshape((len(dSig)//trial_size, 
+                                                       trial_size))
+                    session_DRIVES[dname].append(trial_locked_drive)
+
+    # After all signals processed
+    SIG_CLEAN = np.dstack(CLEAN_sessions)
+    if exportDrives:
+        for drive, drive_list in session_DRIVES.items():
+            session_DRIVES[drive] = np.dstack(drive_list)
+
+        return SIG_CLEAN, session_DRIVES
+    else:
+        return SIG_CLEAN
+
+
 
 # Holds data
 @dataclass
@@ -820,41 +908,34 @@ class SessionData:
     trial_size:int
     stimulus_window:tuple[int,int]
 
-# @dataclass
-# class SessionData:
-#     shm_X:  shared_memory.SharedMemory
-#     shm_y:  shared_memory.SharedMemory
-#     shm_TT: shared_memory.SharedMemory
-#     shape_X: tuple
-#     shape_y: tuple
-#     shape_TT: tuple
-#     dtype_X: np.dtype
-#     dtype_y: np.dtype
-#     dtype_TT: np.dtype
-#     Xcolnames:list[str]
-#     trial_size:int
-#     stimulus_window:tuple[int,int]
-
-    # convenience getters (executed in each process)
-    # @property
-    # def X(self):
-    #     return np.ndarray(self.shape_X, self.dtype_X, buffer=self.shm_X.buf)
-
-    # @property
-    # def y(self):
-    #     return np.ndarray(self.shape_y, self.dtype_y, buffer=self.shm_y.buf)
-
-    # @property
-    # def TT(self):
-    #     return np.ndarray(self.shape_TT, self.dtype_TT, buffer=self.shm_TT.buf)
-
 
 # if this is called, it's for efficiency and plot is disabled
+def cleaning_worker(sess:SessionData, neuron_i:int, export_drives:bool
+                    )->np.ndarray|dict|tuple[np.ndarray, dict]:
+    '''wrapper on over neuron_worker for cleaning the signal'''
+    SIGNALS = neuron_worker(sess=sess, indices=(neuron_i, None, None),
+                            EV=False, clean=True, export_drives=export_drives)
+    clean_session = SIGNALS[0]
+    clean_session_trial_locked = clean_session.reshape(
+        (len(clean_session)//sess.trial_size, sess.trial_size))
+    print(f'Neuron {neuron_i} done!')
+    if export_drives:
+        neuron_DRIVES = defaultdict(list)
+        for dname, dSig in SIGNALS[1].items():
+            trial_locked_drive = dSig.reshape((len(dSig)//sess.trial_size, 
+                                               sess.trial_size))
+            neuron_DRIVES[dname].append(trial_locked_drive)
+    
+        return clean_session_trial_locked, neuron_DRIVES
+    else:
+        return clean_session_trial_locked
+
+
 def neuron_worker(sess:SessionData,
                 indices:tuple[int,int,int],
                 EV:bool = False,
-                clean:bool = False
-                )->np.ndarray|dict:
+                clean:bool = False, export_drives:bool = False
+                )->np.ndarray|dict|tuple[np.ndarray, dict]:
     ineuron, isess, ig = indices
     modelFULL_results = run_model(X=sess.X, y=sess.y[:,:,ineuron].flatten(), 
                                   Xcolnames=sess.Xcolnames, 
@@ -862,12 +943,16 @@ def neuron_worker(sess:SessionData,
                                   TTsession=sess.TT,
                                   trial_size=sess.trial_size, 
                                   stimulus_window=sess.stimulus_window,
-                                  EV_analysis=EV,return_clean = clean)
+                                  EV_analysis=EV,
+                                  return_clean = clean, return_drives=export_drives)
     if clean:
-        return modelFULL_results
+        if export_drives:
+            return modelFULL_results
+        else:
+            return modelFULL_results[0]
     
     if EV:
-        results_dict = defaultdict(lambda:list()) 
+        results_dict = defaultdict(list) 
         # train/test split (80/20)
         modelEVAL_results = run_model(X=sess.X, y=sess.y[:,:,ineuron].flatten(), 
                                       Xcolnames=sess.Xcolnames, 
@@ -879,15 +964,15 @@ def neuron_worker(sess:SessionData,
 
         for col, dataFULL in modelFULL_results.items():
             if col == 'trial_type': # neuron, session and group id
-                results_dict['neuron_id'].extend([ineuron]*len(dataFULL))
-                results_dict['session_id'].extend([isess]*len(dataFULL))
-                results_dict['group_id'].extend([ig]*len(dataFULL))
-                results_dict[col].extend(dataFULL) # trial type
+                results_dict['neuron_id'] += [ineuron]*len(dataFULL)
+                results_dict['session_id'] += [isess]*len(dataFULL)
+                results_dict['group_id'] += [ig]*len(dataFULL)
+                results_dict[col] += [*dataFULL] # trial type
             else:
                 dataEVAL = modelEVAL_results[col]
-                results_dict[f'{col}_full'].extend(dataFULL)
-                results_dict[f'{col}_eval'].extend(dataEVAL)
-        print(f'Group {ig}, Session {isess}, Neuron {ineuron} done!')
+                results_dict[f'{col}_full'] += [*dataFULL]
+                results_dict[f'{col}_eval'] += [*dataEVAL]
+        print(f'Group {ig}, Session {isess}, Neuron {ineuron} done!', flush=True)
         return results_dict
         
 
@@ -897,8 +982,8 @@ def run_model(X:np.ndarray, y:np.ndarray,
               trial_size:int, stimulus_window:tuple[int,int],
               component_colors:dict[str:str]|None = None, 
               plot:bool = False, EV_analysis:bool = False,
-              return_clean:bool=False
-              )->dict[str:list]:
+              return_clean:bool=False, return_drives:bool = False
+              )->dict[str:list] | np.ndarray | tuple[np.ndarray, dict[str:np.ndarray]]:
     '''
     Trains and evaluates one instance of encoding model. 
 
@@ -927,6 +1012,7 @@ def run_model(X:np.ndarray, y:np.ndarray,
     SessionModel.fit(full=fit_full)
     
     # To check cross-validated regularization parameter
+    # TODO: use same regularization in both models
     best_regularization = SessionModel.model.alpha_
     # print(best_regularization)
 
@@ -941,7 +1027,10 @@ def run_model(X:np.ndarray, y:np.ndarray,
     #   predicted contribution of motor only based on train set (80% trials)
     cleaned_signal = SessionModel.y - pred_components['Motor']
     if return_clean:
-        return cleaned_signal
+        if not return_drives:
+            return (cleaned_signal,)
+        else:
+            return cleaned_signal, pred_components
     
     # Plotting the predictions and raw signal
     if plot:
@@ -992,7 +1081,7 @@ def explained_variance(target_trial_locked:np.ndarray,
                        test_trial_indices:np.ndarray|None = None,
                        )->dict[str:list[float]]:
     # collect results here
-    model_results = defaultdict(lambda:list())
+    model_results = defaultdict(list)
 
     # Explained variance metric
     EV : function = lambda ypred, truth: 1 - (np.var(truth - ypred)/np.var(truth))
@@ -1031,7 +1120,6 @@ def explained_variance(target_trial_locked:np.ndarray,
             EV_average= EV(pred_tt_average, target_tt_average)
             if ip == 0:
                 model_results['trial_type'].append(ttname)
-                
                 # if i == 0: # degbugging check
                 #     print(f'TT Average predictor_shape:{pred_tt_average.shape}, TT Average target_shape:{target_tt_average.shape}')
             model_results[f'EV_{predictor_name}_a'].append(EV_average)
@@ -1041,14 +1129,41 @@ def explained_variance(target_trial_locked:np.ndarray,
             target_tt_flat = target_TT[ttname].flatten()
             EV_trial= EV(pred_tt_flat, target_tt_flat)
             model_results[f'EV_{predictor_name}_t'].append(EV_trial)
-            
             # if ip == 0 and i ==0: debugging check
             #     print(f'Trial_level predictor_shape:{pred_tt_flat.shape}, Trial_level target_shape:{target_tt_flat.shape}')
     
     return model_results
 
 
+# ------------ Class that analyzes explained variance calculated above -----------
+class EvAnalysis:
+    def __init__(self,
+                 resultsDF: str | pd.DataFrame):
+        if isinstance(resultsDF, str):
+            resultsDF = pd.read_csv(resultsDF)
+        
+        self.df = resultsDF
+        self.n_per_group = self.add_absolute_neuron_ids()
+    
+    def add_absolute_neuron_ids(self):
+        n_per_group = self.df.groupby("group_id").size().values // self.df["trial_type"].nunique()
+        neuron_ids = np.concatenate([np.repeat(np.arange(npg), repeats=self.df["trial_type"].nunique())
+                                    for npg in n_per_group])
+        self.df["neuron_id_overall"] = neuron_ids
+        return n_per_group
+
+
+# ----------- Running as a script ---------------
 if __name__ == '__main__':
-    gXY = design_matrix(pre_post='pre')
-    evaluate_encoding_models(gXY=gXY, yTYPE='population', plot=False, EV=True)
+    res = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=True)
+    breakpoint()
+    gXY = design_matrix(pre_post='pre', group='both')
+    EV_res = quantify_encoding_models(
+        gXY=gXY, yTYPE='neuron', 
+        plot=False, EV=True,
+        # rerun=True
+        )
+    
+    EVA = EvAnalysis(EV_res)
+    
     

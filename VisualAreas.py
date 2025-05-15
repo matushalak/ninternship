@@ -27,7 +27,7 @@ class Areas:
         # Adjust to array coordinates
         self.dfROI: pd.DataFrame = self.adjustROIdf(dfROI=AV.rois, 
                                                     overlayDIMS=self.overlay.shape)
-
+        
     @staticmethod
     def separate_areas(AV:AUDVIS) -> dict[str : np.ndarray]:
         '''

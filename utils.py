@@ -15,13 +15,12 @@ from time import time
 def time_loops(func):
     def wrapper(*args, **kwargs):
         t1 = time()
-        res = func(*args, **kwargs)
+        nevals, res = func(*args, **kwargs)
         t2 = time()
         duration = t2-t1
-        assert isinstance(res[0], (int,float)), 'This wrapper expects first output to be number of evaluations (loops) within function'
-        nloops = res[0]
-        print(f'Function {func.__name__!r} finished in {(duration)} s ({duration/nloops} per loop)')
-        return res[1:]
+        assert isinstance(nevals, (int,float)), 'This wrapper expects first output to be number of evaluations (loops) within function'
+        print(f'Function {func.__name__!r} finished in {(duration)} s ({duration/nevals} per loop)')
+        return res
     return wrapper
 
 def get_sig_label(p, 

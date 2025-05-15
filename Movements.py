@@ -12,6 +12,7 @@ from typing import Literal
 # TODO: quantify differences
 class Movements:
     '''
+    Figure 1: Stimulus-evoked neural activity correlates with stimulus-evoked movement across visuo-cortical regions
     Explores running, whisker and pupil signals
     '''
     def __init__(self,
@@ -63,6 +64,22 @@ class Movements:
 
         # 4) separate plot per session (random chunk from session of consecutive trials of all trial types)
         # self.raw_signals(all_TT_together=True, N_example_trials=100)
+
+        # TODO: Correlation Behavior (choose Whisker) and signal throughout trial (47 bins)
+        # In each time bin, take correlation between 90 values from signal and 90 values from behavior [or 180 if combining LR]
+        # (calculate seperately for each neuron, then show average over all neurons of a given brain area (4 columns)
+        # across 3 types of stimuli) (V / A / AV) - 3 lines
+        # for DR and NR separately (2 rows)
+
+        # TODO: Supplementary - same figure for Running and Pupil
+
+        # TODO: Heatmap / snakeplot
+
+        # TODO: Direction selectivity in whisker movements / running / pupil vs Neuronal activity!
+
+        # TODO: contourplot across brain regions (on top of ABA) with color indicating correlation with whisker, run, pupil
+        # (overall of one per trial type)
+        # can place neurons with np.meshgrid(neuron_xs, neuron_ys)
     
     
     def get_behaviors_by_session(self, addTT:bool = True)->dict:
