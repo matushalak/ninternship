@@ -275,7 +275,8 @@ class EncodingModel:
 @time_loops
 def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                   group:Literal['g1', 'g2', 'both'] = 'both',
-                  show:bool = False)-> dict[str:dict[str:np.ndarray]]:
+                  show:bool = False,
+                  returnAVs:bool = False)-> dict[str:dict[str:np.ndarray]]:
     '''
     Builds design matrix for GLM
     '''
@@ -341,7 +342,6 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                              stim_kernels,
                              behav_kernels,
                              ))
-        
         Xcolnames = ['trial'] + stim_col_names + beh_col_names
         assert len(Xcolnames) == X.shape[1], f'Mismatch between number of column names:{len(Xcolnames)} and X columns:{X.shape[1]}'
 
@@ -365,7 +365,10 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
         output[AV.NAME]['trial_size'] = AV.signal.shape[1]
         output[AV.NAME]['stimulus_window'] = AV.TRIAL
     
-    return output
+    if not returnAVs:
+        return output
+    else:
+        return output, AVs
 
 
 def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
@@ -465,6 +468,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                     XcolNames.append(f'{XcolNames[icol]}_basis{ibase}')
 
         Xbases = np.column_stack(xbases)
+        Xbases = Xbases / np.std(Xbases, axis=0) # scale continuous columns so that on equal footing for regularization
         X_sess = np.column_stack([Xstim, Xbases])
         all_session_Xs.append(X_sess)
     X = np.dstack(all_session_Xs)
@@ -473,6 +477,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
 
 
 # TODO: consider extracting more PCs for whisker movement (not just average movement energy)
+# TODO: add derivative and onset
 def behavior_kernels(sessions:dict,
                      nts:int, SF:float,
                      trial_frames:tuple[int, int],
@@ -507,7 +512,9 @@ def behavior_kernels(sessions:dict,
         if isess == len(behaviors) -1:
             XcolNames = []
 
-        Xbeh = np.zeros(shape=(ntrials*nts, 8)) # 3 behaviors, 3 interaction terms, 2 square terms
+        # setup matrix for initial
+        Xbeh = np.zeros(shape=(ntrials*nts, 11)) # 3 behaviors, 3 interaction terms, 2 square terms, 3 derivative terms
+
         for ib, bname in enumerate(['running', 'whisker', 'pupil']):
             if isess == len(behaviors) -1:
                 XcolNames.append(bname)
@@ -515,6 +522,8 @@ def behavior_kernels(sessions:dict,
             if hasattr(BS, bname):
                 behavior = getattr(BS, bname)
                 Xbeh[:,ib] = behavior.flatten()
+                # Derivative term
+                Xbeh[:, ib+8] = np.diff(behavior, axis=1, prepend=0).flatten() * SF
         
         # square and interaction terms
         Xbeh[:,3] = Xbeh[:,1]**2 # whisker nonlinear term
@@ -523,7 +532,7 @@ def behavior_kernels(sessions:dict,
         Xbeh[:,6] = Xbeh[:,0]*Xbeh[:,2] # running * pupil term
         Xbeh[:,7] = Xbeh[:,0]**2 # whisker nonlinear term
         if isess == len(behaviors) -1:
-            XcolNames += ['whisker2', 'whisker*run', 'whisker*pup', 'running*pup', 'running2']
+            XcolNames += ['whisker2', 'whisker*run', 'whisker*pup', 'running*pup', 'running2', 'running_derivative', 'whisker_derivative', 'pupil_derivative']
 
 
         # have all behaviors, convolve with bases
@@ -539,8 +548,13 @@ def behavior_kernels(sessions:dict,
 
         Xbases = np.column_stack(xbases)
         X_sess = np.column_stack([Xbeh, Xbases])
-        # X_sess = (X_sess - np.mean(X_sess, axis=0)) / np.std(X_sess, axis=0) # zscore all columns (shifts and no longer baseline corrected)
+        col_std = np.std(X_sess, axis=0)
+        nancol = (col_std == 0)
+        col_std[nancol] = 1
+        X_sess = X_sess / col_std # variance scaling puts columns on equal footing for ridge
+        assert not np.isnan(X_sess).any()
         all_session_Xb.append(X_sess)
+
     X = np.dstack(all_session_Xb)
     assert X.shape[1] == len(XcolNames), f'Mismatch between number of column names:{len(XcolNames)} and X columns:{X.shape[1]}'
     return X, XcolNames
@@ -699,10 +713,10 @@ def quantify_encoding_models(gXY,
         savepath=os.path.join('pydata', f'GLM_ev_results_{yTYPE}.csv')
         if not plot and not rerun and os.path.exists(savepath):
             print(f'Returning explained variance results stored in :{savepath}!')
-            return 1, pd.read_csv(savepath, index_col=False)
+            return pd.read_csv(savepath, index_col=False)
         
         if yTYPE == 'population':
-            all_model_EV_results = defaultdict(lambda:list()) 
+            all_model_EV_results = defaultdict(list) 
         # try to join this into dataframe
         allres:list[dict] = []
     # for timing
@@ -749,14 +763,16 @@ def quantify_encoding_models(gXY,
                     # if program crashes no leaked memory
                     atexit.register(lambda: safeMPexit([shmX, shmY, shmTT]))
 
-                    SD = SessionData(Xsh, ysh, TTsessionsh,
+                    SD = SessionData((shmX.name, Xsh.shape, Xsh.dtype), 
+                                    (shmY.name, ysh.shape, ysh.dtype), 
+                                    (shmTT.name, TTsessionsh.shape, TTsessionsh.dtype),
                                     Xcolnames, trial_size, stimulus_window)
 
                     worker_args = [(SD, (ineur, isess, groupName), EV) for ineur in range(ysession.shape[-1])]
                     
                     with MP.Pool() as worker_pool:
                         session_results = worker_pool.starmap(neuron_worker, worker_args, 
-                                                            chunksize=60
+                                                            chunksize=len(worker_args) // 6
                                                             )
                     allres += session_results
 
@@ -782,7 +798,7 @@ def quantify_encoding_models(gXY,
                     
             else: # population-level encoding model, speed is fine, few evaluations
                 n_evaluations +=1
-                y = np.nanmean(ysession, axis = 2).flatten()
+                y = np.mean(ysession, axis = 2).flatten()
                 modelFULL_results = run_model(X=X, y=y, Xcolnames=Xcolnames, 
                                             fit_full=True,
                                             TTsession=TTsession,
@@ -842,15 +858,15 @@ def clean_group_signal(group_name:str,
         predictor blocks should be exported in a trial-locked manner
     '''
     # try to load and return the files if possible
-    if os.path.exists(sigpath := os.path.join(storage_folder, 
-                                f'{group_name}_{yTYPE}_signal_GLMclean.npy')):
-        SIG_CLEAN = np.load(sigpath)
-        print(f'Loaded signal from {sigpath}')
-        if not exportDrives:    
-           return SIG_CLEAN
+    # if os.path.exists(sigpath := os.path.join(storage_folder, 
+    #                             f'{group_name}_{yTYPE}_signal_GLMclean.npy')):
+    #     SIG_CLEAN = np.load(sigpath)
+    #     print(f'Loaded signal from {sigpath}')
+    #     if not exportDrives:    
+    #        return SIG_CLEAN
 
-    if exportDrives:
-        raise NotImplementedError
+    # if exportDrives:
+    #     raise NotImplementedError
     
     # design matrix (containing signal) for chosen group
     gXY = design_matrix(pre_post=pre_post, group=group_name)
@@ -894,26 +910,28 @@ def clean_group_signal(group_name:str,
             # if program crashes no leaked memory
             atexit.register(lambda: safeMPexit([shmX, shmY, shmTT]))
 
-            SD = SessionData(Xsh, ysh, TTsessionsh,
+            SD = SessionData((shmX.name, Xsh.shape, Xsh.dtype), 
+                             (shmY.name, ysh.shape, ysh.dtype), 
+                             (shmTT.name, TTsessionsh.shape, TTsessionsh.dtype),
                             Xcolnames, trial_size, stimulus_window)
 
             worker_args = [(SD, ineur, exportDrives) for ineur in range(ysession.shape[-1])]
             
             with MP.Pool() as worker_pool:
                 session_results = worker_pool.starmap(cleaning_worker, worker_args, 
-                                                      chunksize=len(worker_args)//5)
+                                                      chunksize=len(worker_args)//6)
             
             session_worker_outputs.append(session_results)
             shmX.close(); shmY.close(); shmTT.close()
             shmX.unlink(); shmY.unlink(); shmTT.unlink()
 
         else: # population average
-            y = np.nanmean(ysession, axis = 2).flatten()
+            y = np.mean(ysession, axis = 2).flatten()
             SIGNALS = run_model(X=X, y=y, Xcolnames=Xcolnames, 
-                                    fit_full=True,
-                                    TTsession=TTsession,
-                                    trial_size=trial_size, stimulus_window=stimulus_window,
-                                    return_clean=True, return_drives=exportDrives)
+                                fit_full=True,
+                                TTsession=TTsession,
+                                trial_size=trial_size, stimulus_window=stimulus_window,
+                                return_clean=True, return_drives=exportDrives)
                 
             clean_session = SIGNALS[0]
             clean_session_trial_locked = clean_session.reshape(
@@ -951,9 +969,9 @@ def clean_group_signal(group_name:str,
 # Holds data
 @dataclass
 class SessionData:
-    X:np.ndarray 
-    y:np.ndarray
-    TT:np.ndarray 
+    X:tuple
+    y:tuple
+    TT:tuple
     Xcolnames:list[str]
     trial_size:int
     stimulus_window:tuple[int,int]
@@ -990,10 +1008,21 @@ def neuron_worker(sess:SessionData,
                 clean:bool = False, export_drives:bool = False
                 )->np.ndarray|dict|tuple[np.ndarray, dict]:
     ineuron, isess, ig = indices
-    modelFULL_results = run_model(X=sess.X, y=sess.y[:,:,ineuron].flatten(), 
+    # unpack shared memory inside each worker
+    (shmXname, Xshape, Xdtype) = sess.X
+    (shmYname, Yshape, Ydtype) = sess.y
+    (shmTTname, TTshape, TTdtype) = sess.TT
+    shmX = shared_memory.SharedMemory(name=shmXname)
+    shmY = shared_memory.SharedMemory(name=shmYname)
+    shmTT = shared_memory.SharedMemory(name=shmTTname)
+    X = np.ndarray(shape=Xshape, dtype=Xdtype, buffer=shmX.buf)
+    Y = np.ndarray(shape=Yshape, dtype=Ydtype, buffer=shmY.buf)
+    TT = np.ndarray(shape=TTshape, dtype=TTdtype, buffer=shmTT.buf)
+
+    modelFULL_results = run_model(X=X, y=Y[:,:,ineuron].flatten(), 
                                   Xcolnames=sess.Xcolnames, 
                                   fit_full=True,
-                                  TTsession=sess.TT,
+                                  TTsession=TT,
                                   trial_size=sess.trial_size, 
                                   stimulus_window=sess.stimulus_window,
                                   EV_analysis=EV,
@@ -1004,10 +1033,10 @@ def neuron_worker(sess:SessionData,
     if EV:
         results_dict = defaultdict(list) 
         # train/test split (80/20)
-        modelEVAL_results = run_model(X=sess.X, y=sess.y[:,:,ineuron].flatten(), 
+        modelEVAL_results = run_model(X=X, y=Y[:,:,ineuron].flatten(), 
                                       Xcolnames=sess.Xcolnames, 
                                       fit_full=False,
-                                      TTsession=sess.TT,
+                                      TTsession=TT,
                                       trial_size=sess.trial_size, 
                                       stimulus_window=sess.stimulus_window,
                                       EV_analysis=EV)
@@ -1189,14 +1218,21 @@ def explained_variance(target_trial_locked:np.ndarray,
 # ----------- Running as a script ---------------
 if __name__ == '__main__':
     # res = clean_group_signal(group_name='g1pre', yTYPE='population', exportDrives=False)
+    # get cleaned signals
+    # res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=False)
+    # res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=False)
     # breakpoint()
     
     gXY = design_matrix(pre_post='pre', group='both')
     EV_res = quantify_encoding_models(
         gXY=gXY, yTYPE='neuron', 
         plot=True, EV=False,
-        # rerun=True
+        rerun=False
         )
+    
+    # if time
+    # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=False)
+    # res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=False)
     
     
     

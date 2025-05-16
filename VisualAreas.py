@@ -20,13 +20,21 @@ import os
 
 class Areas:
     def __init__(self, 
-                 AV : AUDVIS):
+                 AV : AUDVIS,
+                 get_indices:bool = False):
+        self.NAME = AV.NAME
         self.area_names = AV.ABA_regions
         self.region_indices = self.separate_areas(AV)
         self.overlay = self.getMask()
         # Adjust to array coordinates
         self.dfROI: pd.DataFrame = self.adjustROIdf(dfROI=AV.rois, 
                                                     overlayDIMS=self.overlay.shape)
+        if get_indices:
+            self.area_indices = self.separate_areas(AV=AV)
+            regions = np.full(shape = self.dfROI.shape[0], fill_value='', dtype='U7')
+            for region_name, where_region in self.area_indices.items():
+                regions[where_region] = str(region_name)
+            self.dfROI['Region'] = regions
         
     @staticmethod
     def separate_areas(AV:AUDVIS) -> dict[str : np.ndarray]:
