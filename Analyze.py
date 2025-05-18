@@ -12,7 +12,7 @@ from scipy.stats import wilcoxon, ttest_rel
 from functools import reduce
 from collections import defaultdict
 from typing import Literal
-
+from GLM import clean_group_signal
 
 # ----------- Main ANALYSIS class -----------
 class Analyze:
@@ -50,20 +50,21 @@ class Analyze:
             # Zeta test results dF/F0 or spike_prob
             self.TT_zeta = responsive_zeta(SPECIFIEDcond = av.NAME, signal_to_use = 'dF/F0',
                                            RegressOUT_behavior=False)
-
+        # get GLM cleaned signal
+        self.SIG = clean_group_signal(group_name=av.NAME)
         # Get Fluorescence response statistics
         self.FLUORO_RESP: np.ndarray = self.fluorescence_response(
             signal = av.separate_signal_by_trial_types(
-                av.baseline_correct_signal(av.zsig_CORR,
+                av.baseline_correct_signal(self.SIG,#av.zsig_CORR,
                                            baseline_frames=self.TRIAL_FRAMES[0])
                                            ),
             window = self.TRIAL_FRAMES, 
             offsetFrames=5,
-            method='peak')
+            method='mean')
         
         # Analyze by trial type
         self.TT_RES, self.TT_STATS, self.byTTS_blc, self.byTTS, self.NEURON_groups = self.tt_average(av, signal_to_use = self.signal_type)
-        _, _, self.CASCADE, _, _ = self.tt_average(av, signal_to_use = 'spike_prob') # for debugging
+        # _, _, self.CASCADE, _, _ = self.tt_average(av, signal_to_use = 'spike_prob') # for debugging
 
 
     # Analyze average response to trial type
@@ -83,7 +84,7 @@ class Analyze:
             case 'spike_prob', _:
                 signal = av.CASCADE_CORR * self.SF # to convert to est. IFR
 
-        SIG = signal 
+        SIG = self.SIG#signal 
         # 1. Baseline correct z-scored signal; residual signal without running speed OR whisker movement
         BLC_SIG = av.baseline_correct_signal(signal=SIG)
 

@@ -161,15 +161,15 @@ class AUDVIS:
         # (must be AFTER regression, regression cannot deal with NaNs)
         # NOTE: if offset included, consider longer period for excluding trials (+ 250 ms, 4 frames)
         self.extTRIAL = (self.TRIAL[0], self.TRIAL[1]+5) # to capture offset
-        self.signal_CORR = self.nantrials(signal=self.signal_CORR, Zthresh=2, 
-                                          whiskWindow=self.extTRIAL)
-        self.zsig_CORR = self.nantrials(signal=self.zsig_CORR, Zthresh=2, whiskWindow=self.extTRIAL)
+        # self.signal_CORR = self.nantrials(signal=self.signal_CORR, Zthresh=2, 
+        #                                   whiskWindow=self.extTRIAL)
+        # self.zsig_CORR = self.nantrials(signal=self.zsig_CORR, Zthresh=2, whiskWindow=self.extTRIAL)
 
         # load spike probability estimated using CASCADE algorithm and regress out trial-evoked whisker and running
-        if CASCADE is not None:
-            self.CASCADE = CASCADE
-            self.CASCADE_CORR = self.regress_out_behavior(self.CASCADE, signalname = 'CASCADE')
-            self.CASCADE_CORR = self.nantrials(signal=self.CASCADE_CORR, Zthresh=2, whiskWindow=self.extTRIAL) # NAN trial locked behavior
+        # if CASCADE is not None:
+        #     self.CASCADE = CASCADE
+        #     self.CASCADE_CORR = self.regress_out_behavior(self.CASCADE, signalname = 'CASCADE')
+        #     self.CASCADE_CORR = self.nantrials(signal=self.CASCADE_CORR, Zthresh=2, whiskWindow=self.extTRIAL) # NAN trial locked behavior
 
     # Methods: to use on instance of the class in a script
     # NOTE: subtract mean of baseline period in each trial

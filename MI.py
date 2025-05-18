@@ -103,14 +103,14 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
 def plot_MI_data(MIdata:pd.DataFrame, savedir: str, name:str = 'all', kde: bool = False):
     # WITHIN Group RCI
     # VIS
-    # MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_vis', 
-    #                             X_VAR='RCI (VIS congruent)', Y_VAR='RCI (VIS incongruent)', HUE_VAR='Group',
-    #                             square=True, reg= False, kde=kde, savedir=savedir, statsmethod='within')
-    # print(f'VIS RCI {name} plot done!')
-    # # AUD
-    # MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_aud', 
-    #                             X_VAR='RCI (AUD congruent)', Y_VAR='RCI (AUD incongruent)', HUE_VAR='Group',
-    #                             square=True, reg= False, kde=kde, savedir=savedir, statsmethod='within')
+    MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_vis', 
+                                X_VAR='RCI (VIS congruent)', Y_VAR='RCI (VIS incongruent)', HUE_VAR='Group',
+                                square=True, reg= False, kde=kde, savedir=savedir, statsmethod='within')
+    print(f'VIS RCI {name} plot done!')
+    # AUD
+    MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_aud', 
+                                X_VAR='RCI (AUD congruent)', Y_VAR='RCI (AUD incongruent)', HUE_VAR='Group',
+                                square=True, reg= False, kde=kde, savedir=savedir, statsmethod='within')
     # return 0
     # 1) Main plot!
     MScalc.RCI_dist_plots_all(MIdata, area = name, savedir = savedir)

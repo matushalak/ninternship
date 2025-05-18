@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 
 from typing import Literal
 
@@ -93,7 +94,7 @@ class EvAnalysis:
                                 (self.df['Region'] == reg))].copy()
             bp = sns.catplot(data=data, x = 'Predictors', y = 'EV', 
                             hue = 'group_id', col = 'trial_type',
-                            kind='bar')
+                            kind='boxen')
             
             plt.suptitle(reg)
             plt.show()
@@ -101,14 +102,14 @@ class EvAnalysis:
     
 if __name__ == '__main__':
     gXY, AVs = design_matrix(pre_post='pre', group='both', returnAVs=True)
-    EV_res = quantify_encoding_models(
-        gXY=gXY, yTYPE='neuron', 
-        plot=False, EV=True,
-        rerun=False
-        )
+    # EV_res = quantify_encoding_models(
+    #     gXY=gXY, yTYPE='neuron', 
+    #     plot=False, EV=True,
+    #     rerun=False
+    #     )
     
     # Initialize class
-    EVa = EvAnalysis(EV_res, 
+    EVa = EvAnalysis(resultsDF=os.path.join('pydata', 'GLM_ev_results_neuron.csv'), 
                      ARs=[Areas(av, get_indices=True) for av in AVs])
 
     # Analysis 1) Compare across :
@@ -120,7 +121,7 @@ if __name__ == '__main__':
     # averaged vs trial - 2 figures
     # in sample vs held out, 2 figures
     EVa.comparison(calc='averaged')
-    EVa.comparison(calc='averaged', dataset='held_out')
+    # EVa.comparison(calc='averaged', dataset='held_out')
     # EVa.comparison(calc='trial')
     # EVa.comparison(calc='trial', dataset='held_out')
     

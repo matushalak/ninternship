@@ -160,8 +160,9 @@ class Areas:
         return dfROI
 
 
-def by_areas_VENN(svg:bool=False):
-    AVs : tuple[AUDVIS] = load_in_data()
+def by_areas_VENN(svg:bool=False,
+                  pre_post: Literal['pre', 'post', 'both'] = 'both'):
+    AVs : tuple[AUDVIS] = load_in_data(pre_post=pre_post)
     ANs : tuple[Analyze] = [Analyze(av) for av in AVs]
     
     for i, (AV, AN) in enumerate(zip(AVs, ANs)):
@@ -519,7 +520,7 @@ def recordedNeurons(svg:bool = False):
 
 if __name__ == '__main__':
     ### Venn diagram of neuron classes in in the 4 different regions
-    # by_areas_VENN(svg=False)
+    by_areas_VENN(svg=False, pre_post='pre')
 
     ### Timeseries plots for neurons from different regions
     # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=True)

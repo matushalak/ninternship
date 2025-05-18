@@ -10,6 +10,7 @@ import atexit
 
 import multiprocessing as MP
 from multiprocessing import shared_memory
+from joblib import Parallel, delayed
 
 import sklearn.linear_model as skLin
 
@@ -344,7 +345,7 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                              ))
         Xcolnames = ['trial'] + stim_col_names + beh_col_names
         assert len(Xcolnames) == X.shape[1], f'Mismatch between number of column names:{len(Xcolnames)} and X columns:{X.shape[1]}'
-
+        
         # Full design matrix
         if show:
             plt.imshow(X[:180, :, 7])
@@ -406,6 +407,11 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
     CosineBases, frame_lags = rcb(n_basis=n_basis, window_s=basis_window, width_s=basis_width,
                                   dt = 1/SF, plot=plot_bases)
     all_session_Xs = []
+
+    # prepare trial-type specific intercepts
+    tt_to_gain_col = {'Vl':10, 'Vr':11, 'Al':12, 'Ar':13, 
+                    'AlVl':14, 'ArVr': 15, 'AlVr':16, 'ArVl':17}
+    
     for isess in range(nsessions):
         # Column names
         if isess == nsessions -1:
@@ -413,12 +419,16 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                 # Visual stimulus columns 0-4
                 'Vpresent', 'Vdirection', 'Vposition', 'Vonset', 'Voffset',
                 # Auditory stimulus columns 5-9
-                'Apresent', 'Adirection', 'Aposition', 'Aonset', 'Aoffset',]
+                'Apresent', 'Adirection', 'Aposition', 'Aonset', 'Aoffset',
+                # Trial-type specific gain / intercept 9-18
+                'Vlgain', 'Vrgain', 'Algain', 'Argain', 'AlVlgain', 'ArVrgain', 'AlVrgain', 'ArVlgain',
+                ]
 
         trials = trs[:,isess]
         # diff features as columns of bigger matrix
         Xstim = np.zeros(shape=(ntrials*nts, 
-                                (5 * 2) # 2 modalities of stimuli
+                                (5 * 2 # 2 modalities of stimuli
+                                 ) +8 # 8 gain terms
                                 ))
         
         trial_idx = 0
@@ -426,6 +436,11 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
             tname = trials[it]
 
             stimStart, stimEnd = trial_frames + trial_idx
+            trialStart, trialEnd = np.array([0, nts]) + trial_idx
+            # Add trial-type specific gain
+            gaincol = tt_to_gain_col[tname]
+            Xstim[trialStart:trialEnd, gaincol] = 1
+
             # Visual stimulus characteristics
             if 'V' in tname:
                 # column 0: Vpresent
@@ -459,7 +474,8 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
         
         # All trials done, convolve with bases to account for lags
         xbases = [getBases(Xcol=Xstim[:,ic], Bases=CosineBases, lags=frame_lags)
-                  for ic in range(Xstim.shape[1])]
+                  for ic in range(Xstim.shape[1] - 8 # not include trial-type intercepts (gain)
+                                  )]
         
         # Get column names for predictor convolved with each basis
         if isess == nsessions - 1:
@@ -484,8 +500,7 @@ def behavior_kernels(sessions:dict,
                      n_basis:int,
                      basis_window:tuple[float, float],
                      basis_width:float,
-                     plot_bases:bool = False,
-                     onset_kernels:bool = False)->np.ndarray:
+                     plot_bases:bool = False)->np.ndarray:
     '''
     Generates behavior kernels for GLM separately for 
     trial-evoked running, whisking and pupil measurements
@@ -513,7 +528,7 @@ def behavior_kernels(sessions:dict,
             XcolNames = []
 
         # setup matrix for initial
-        Xbeh = np.zeros(shape=(ntrials*nts, 11)) # 3 behaviors, 3 interaction terms, 2 square terms, 3 derivative terms
+        Xbeh = np.zeros(shape=(ntrials*nts, 11)) # 3 behaviors, (3 interaction terms), 2 square terms, 3 derivative terms, 3 event ONSET terms
 
         for ib, bname in enumerate(['running', 'whisker', 'pupil']):
             if isess == len(behaviors) -1:
@@ -523,16 +538,31 @@ def behavior_kernels(sessions:dict,
                 behavior = getattr(BS, bname)
                 Xbeh[:,ib] = behavior.flatten()
                 # Derivative term
-                Xbeh[:, ib+8] = np.diff(behavior, axis=1, prepend=0).flatten() * SF
+                Xbeh[:, ib+5] = np.diff(behavior, axis=1, prepend=0).flatten() * SF
+                
+                # Onset terms
+                onst = np.zeros_like(behavior) # 720 x 47
+                beh_bsl0 = np.abs(behavior)
+                beh_bsl0[:, :trial_frames[0]] = 0
+                beh_bsl0[:, trial_frames[1]:] = 0
+                max_col_mask = np.argmax(beh_bsl0, axis = 1)
+                max_row_mask = np.max(beh_bsl0[:, trial_frames[0]:trial_frames[1]], axis = 1) > 2
+                onst[max_row_mask, max_col_mask[max_row_mask]] = 1
+                Xbeh[:,ib+8] = onst.flatten() 
+
+
+
         
-        # square and interaction terms
-        Xbeh[:,3] = Xbeh[:,1]**2 # whisker nonlinear term
-        Xbeh[:,4] = Xbeh[:,1]*Xbeh[:,0] # whisker * running term
-        Xbeh[:,5] = Xbeh[:,1]*Xbeh[:,2] # whisker * pupil term
-        Xbeh[:,6] = Xbeh[:,0]*Xbeh[:,2] # running * pupil term
-        Xbeh[:,7] = Xbeh[:,0]**2 # whisker nonlinear term
+        # square terms
+        Xbeh[:,3] = Xbeh[:,1]**2 # whisker nonlinear term (onset would be better)
+        Xbeh[:,4] = Xbeh[:,0]**2 # running nonlinear term (onset would be better)
+        # interaction terms
+        # Xbeh[:,4] = Xbeh[:,1]*Xbeh[:,0] # whisker * running term
+        # Xbeh[:,5] = Xbeh[:,1]*Xbeh[:,2] # whisker * pupil term
+        # Xbeh[:,6] = Xbeh[:,0]*Xbeh[:,2] # running * pupil term
         if isess == len(behaviors) -1:
-            XcolNames += ['whisker2', 'whisker*run', 'whisker*pup', 'running*pup', 'running2', 'running_derivative', 'whisker_derivative', 'pupil_derivative']
+            XcolNames += ['whisker2', 'running2', 'running_derivative', 'whisker_derivative', 'pupil_derivative',
+                          'running_onset', 'whisker_onset', 'pupil_onset']
 
 
         # have all behaviors, convolve with bases
@@ -550,7 +580,9 @@ def behavior_kernels(sessions:dict,
         X_sess = np.column_stack([Xbeh, Xbases])
         col_std = np.std(X_sess, axis=0)
         nancol = (col_std == 0)
+        onset_col = [8, 9, 10]
         col_std[nancol] = 1
+        col_std[onset_col] = 1
         X_sess = X_sess / col_std # variance scaling puts columns on equal footing for ridge
         assert not np.isnan(X_sess).any()
         all_session_Xb.append(X_sess)
@@ -715,10 +747,9 @@ def quantify_encoding_models(gXY,
             print(f'Returning explained variance results stored in :{savepath}!')
             return pd.read_csv(savepath, index_col=False)
         
-        if yTYPE == 'population':
-            all_model_EV_results = defaultdict(list) 
-        # try to join this into dataframe
-        allres:list[dict] = []
+        # to join into DataFrame
+        all_model_EV_results = defaultdict(list) 
+    
     # for timing
     n_evaluations = 0
     
@@ -766,15 +797,29 @@ def quantify_encoding_models(gXY,
                     SD = SessionData((shmX.name, Xsh.shape, Xsh.dtype), 
                                     (shmY.name, ysh.shape, ysh.dtype), 
                                     (shmTT.name, TTsessionsh.shape, TTsessionsh.dtype),
-                                    Xcolnames, trial_size, stimulus_window)
+                                    Xcolnames, trial_size, stimulus_window,
+                                    isess, group_i=groupName)
 
-                    worker_args = [(SD, (ineur, isess, groupName), EV) for ineur in range(ysession.shape[-1])]
+                    neuron_indices = np.arange(ysession.shape[-1])
+                    neuron_batches = np.array_split(neuron_indices, MP.cpu_count())
+                    neuron_batches = [b for b in neuron_batches if len(b) != 0]
+                    worker_args = [(SD, nbi, EV, False, False) for nbi in neuron_batches]
                     
-                    with MP.Pool() as worker_pool:
-                        session_results = worker_pool.starmap(neuron_worker, worker_args, 
-                                                            chunksize=len(worker_args) // 6
-                                                            )
-                    allres += session_results
+                    # Multicore
+                    # Python multiprocessing - doesn't work great
+                    # with MP.Pool(processes=MP.cpu_count()) as worker_pool:
+                    #     session_results = worker_pool.starmap(batch_worker, worker_args)
+                    
+                    # Joblib parallel
+                    session_results = Parallel(n_jobs=MP.cpu_count())(delayed(batch_worker)(*args) for args in worker_args)
+                    
+                    # 1 core
+                    # session_results = [batch_worker(*args) for args in worker_args]
+
+                    for batch_res in session_results:
+                        for neur_res in batch_res:
+                            for k, v in neur_res.items():
+                                all_model_EV_results[k] += v
 
                     shmX.close(); shmY.close(); shmTT.close()
                     shmX.unlink(); shmY.unlink(); shmTT.unlink()
@@ -828,15 +873,7 @@ def quantify_encoding_models(gXY,
 
 
     if EV:
-        if yTYPE == 'population':
-            EV_DF:pd.DataFrame = pd.DataFrame(all_model_EV_results)     
-        else:
-            resdict = defaultdict(list)
-            for dct in allres:
-                for k, v in dct.items():
-                    resdict[k] += v
-
-            EV_DF:pd.DataFrame = pd.DataFrame(resdict)
+        EV_DF:pd.DataFrame = pd.DataFrame(all_model_EV_results)     
 
         EV_DF.to_csv(savepath, index=False)
         return n_evaluations, EV_DF
@@ -848,7 +885,8 @@ def clean_group_signal(group_name:str,
                        pre_post: Literal['pre', 'post', 'both'] = 'pre',
                        yTYPE:Literal['neuron', 'population'] = 'neuron',
                        exportDrives:bool = False,
-                       storage_folder:str = 'pydata'
+                       storage_folder:str = 'pydata',
+                       redo:bool = False
                        )->np.ndarray:
     '''
     Unlike quantify_encoding_models, this is supposed to be used purely to clean the signal
@@ -858,15 +896,15 @@ def clean_group_signal(group_name:str,
         predictor blocks should be exported in a trial-locked manner
     '''
     # try to load and return the files if possible
-    # if os.path.exists(sigpath := os.path.join(storage_folder, 
-    #                             f'{group_name}_{yTYPE}_signal_GLMclean.npy')):
-    #     SIG_CLEAN = np.load(sigpath)
-    #     print(f'Loaded signal from {sigpath}')
-    #     if not exportDrives:    
-    #        return SIG_CLEAN
-
-    # if exportDrives:
-    #     raise NotImplementedError
+    if os.path.exists(sigpath := os.path.join(storage_folder, 
+                                f'{group_name}_{yTYPE}_signal_GLMclean.npy')
+                    ) and not redo:
+        SIG_CLEAN = np.load(sigpath)
+        print(f'Loaded signal from {sigpath}')
+        if not exportDrives:    
+           return SIG_CLEAN
+        else:
+            raise NotImplementedError
     
     # design matrix (containing signal) for chosen group
     gXY = design_matrix(pre_post=pre_post, group=group_name)
@@ -885,22 +923,22 @@ def clean_group_signal(group_name:str,
     if exportDrives:
         session_DRIVES = defaultdict(list)
 
-    session_worker_outputs = []
-
     for isess in range(len(yall)):
         # get session data
         X = Xall[:,:,isess]
-        ysession = yall[isess]
+        ysession = yall[isess][:,:,:]
         TTsession = TTall[:,isess]
 
         print(f'Cleaning group {group_name} session {isess} ...')
         if yTYPE == 'neuron':
+            # pre-allocate memory for session info ONCE
             shmX = shared_memory.SharedMemory(create=True, size = X.nbytes)
             Xsh = np.ndarray(X.shape, dtype=X.dtype, buffer = shmX.buf)
             Xsh[:] = X
 
             shmY = shared_memory.SharedMemory(create=True, size = ysession.nbytes)
-            ysh = np.ndarray(ysession.shape, dtype=ysession.dtype, buffer = shmY.buf)
+            ysh = np.ndarray(ysession.shape, 
+                             dtype=ysession.dtype, buffer = shmY.buf)
             ysh[:] = ysession
             
             shmTT = shared_memory.SharedMemory(create=True, size = TTsession.nbytes)
@@ -913,15 +951,32 @@ def clean_group_signal(group_name:str,
             SD = SessionData((shmX.name, Xsh.shape, Xsh.dtype), 
                              (shmY.name, ysh.shape, ysh.dtype), 
                              (shmTT.name, TTsessionsh.shape, TTsessionsh.dtype),
-                            Xcolnames, trial_size, stimulus_window)
-
-            worker_args = [(SD, ineur, exportDrives) for ineur in range(ysession.shape[-1])]
+                            Xcolnames, trial_size, stimulus_window,
+                            isess, group_i=group_name)
             
-            with MP.Pool() as worker_pool:
-                session_results = worker_pool.starmap(cleaning_worker, worker_args, 
-                                                      chunksize=len(worker_args)//6)
+            neuron_indices = np.arange(ysession.shape[-1])
+            neuron_batches = np.array_split(neuron_indices, MP.cpu_count())
+            neuron_batches = [b for b in neuron_batches if len(b) != 0]
+            worker_args = [(SD, nbi, False, True, exportDrives) for nbi in neuron_batches]
             
-            session_worker_outputs.append(session_results)
+            # Multicore
+            # Python multiprocessing - doesn't work great
+            # with MP.Pool(processes=MP.cpu_count()) as worker_pool:
+            #     session_results = worker_pool.starmap(batch_worker, worker_args)
+            
+            # Joblib parallel
+            session_results = Parallel(n_jobs=MP.cpu_count())(delayed(batch_worker)(*args) for args in worker_args)
+            
+            # 1 core
+            # session_results = [batch_worker(*args) for args in worker_args]
+            
+            for batch_res in session_results:
+                CLEAN_sessions += batch_res
+                if exportDrives:
+                    CLEAN_sessions += [batch_res[0]]
+                    for dname, dSig in batch_res[1].items():
+                        session_DRIVES[dname].append(dSig)
+            
             shmX.close(); shmY.close(); shmTT.close()
             shmX.unlink(); shmY.unlink(); shmTT.unlink()
 
@@ -945,13 +1000,6 @@ def clean_group_signal(group_name:str,
                     session_DRIVES[dname].append(trial_locked_drive)
 
     # After all signals processed
-    if yTYPE == 'neuron':
-        for sess_output in session_worker_outputs:
-            CLEAN_sessions.append(sess_output[0])
-            if exportDrives:
-                for d, darr in sess_output[1]:
-                    session_DRIVES[d].append(darr)
-
     SIG_CLEAN = np.dstack(CLEAN_sessions)
     np.save(sigpath, SIG_CLEAN)
     if exportDrives:
@@ -964,8 +1012,8 @@ def clean_group_signal(group_name:str,
     else:
         return SIG_CLEAN
 
-
-
+# POTENTIAL for Parallelization (not working right now)
+# =======================================================
 # Holds data
 @dataclass
 class SessionData:
@@ -975,39 +1023,29 @@ class SessionData:
     Xcolnames:list[str]
     trial_size:int
     stimulus_window:tuple[int,int]
+    sess_i:int
+    group_i:int
+
+# @dataclass
+# class SessionData:
+#     X:np.ndarray
+#     y:np.ndarray
+#     TT:np.ndarray
+#     Xcolnames:list[str]
+#     trial_size:int
+#     stimulus_window:tuple[int,int]
+#     sess_i:int
+#     group_i:int
+
 
 def safeMPexit(sharedMems:list[shared_memory.SharedMemory]):
     for sm in sharedMems:
         sm.unlink()
 
-# if this is called, it's for efficiency and plot is disabled
-def cleaning_worker(sess:SessionData, neuron_i:int, export_drives:bool
-                    )->np.ndarray|dict|tuple[np.ndarray, dict]:
-    '''wrapper on over neuron_worker for cleaning the signal'''
-    SIGNALS = neuron_worker(sess=sess, indices=(neuron_i, None, None),
-                            EV=False, clean=True, export_drives=export_drives)
-    clean_session = SIGNALS[0]
-    clean_session_trial_locked = clean_session.reshape(
-        (len(clean_session)//sess.trial_size, sess.trial_size))
-    print(f'Neuron {neuron_i} done!', flush=True)
-    if export_drives:
-        neuron_DRIVES = dict()
-        for dname, dSig in SIGNALS[1].items():
-            trial_locked_drive = dSig.reshape((len(dSig)//sess.trial_size, 
-                                               sess.trial_size))
-            neuron_DRIVES[dname] = trial_locked_drive
-    
-        return clean_session_trial_locked, neuron_DRIVES
-    else:
-        return (clean_session_trial_locked,)
-
-
-def neuron_worker(sess:SessionData,
-                indices:tuple[int,int,int],
-                EV:bool = False,
-                clean:bool = False, export_drives:bool = False
-                )->np.ndarray|dict|tuple[np.ndarray, dict]:
-    ineuron, isess, ig = indices
+def batch_worker(sess:SessionData, 
+                 neuron_index_ranges:np.ndarray,
+                 EV:bool, clean:bool, export_drives:bool
+                 ):
     # unpack shared memory inside each worker
     (shmXname, Xshape, Xdtype) = sess.X
     (shmYname, Yshape, Ydtype) = sess.y
@@ -1018,13 +1056,73 @@ def neuron_worker(sess:SessionData,
     X = np.ndarray(shape=Xshape, dtype=Xdtype, buffer=shmX.buf)
     Y = np.ndarray(shape=Yshape, dtype=Ydtype, buffer=shmY.buf)
     TT = np.ndarray(shape=TTshape, dtype=TTdtype, buffer=shmTT.buf)
+    res_collection = []
+    for ineur in neuron_index_ranges:
+        y = Y[:,:,ineur].flatten()
+        if clean:
+            res = cleaning_worker(X=X, Y=y, 
+                                  TT= TT, 
+                                  Xcolnames=sess.Xcolnames,
+                                  trial_size=sess.trial_size, stimulus_window=sess.stimulus_window, 
+                                  neuron_i=ineur, export_drives=export_drives)
+        elif EV:
+            res = neuron_worker(X=X, Y=y, 
+                                TT= TT, Xcolnames=sess.Xcolnames,
+                                trial_size=sess.trial_size, stimulus_window=sess.stimulus_window, 
+                                indices=(ineur, sess.sess_i, sess.group_i),
+                                EV=True, clean=False,
+                                export_drives=False)
+        res_collection += [res]
+    
+    return res_collection
 
-    modelFULL_results = run_model(X=X, y=Y[:,:,ineuron].flatten(), 
-                                  Xcolnames=sess.Xcolnames, 
+
+# if this is called, it's for efficiency and plot is disabled
+def cleaning_worker(X:np.ndarray, Y:np.ndarray, TT:np.ndarray,
+                    Xcolnames:list[str], 
+                    trial_size:int, 
+                    stimulus_window:tuple[int,int], 
+                    neuron_i:int, export_drives:bool
+                    )->np.ndarray|dict|tuple[np.ndarray, dict]:
+    '''wrapper on over neuron_worker for cleaning the signal'''
+    SIGNALS = neuron_worker(X=X,Y=Y,TT=TT,
+                            Xcolnames=Xcolnames, 
+                            trial_size=trial_size,
+                            stimulus_window=stimulus_window,
+                            indices=(neuron_i, None, None),
+                            EV=False, clean=True, export_drives=export_drives)
+    clean_session = SIGNALS[0]
+    clean_session_trial_locked = clean_session.reshape(
+        (len(clean_session)//trial_size, trial_size))
+    print(f'Neuron {neuron_i} done!', flush=True)
+    if export_drives:
+        neuron_DRIVES = dict()
+        for dname, dSig in SIGNALS[1].items():
+            trial_locked_drive = dSig.reshape((len(dSig)//trial_size, 
+                                               trial_size))
+            neuron_DRIVES[dname] = trial_locked_drive
+    
+        return clean_session_trial_locked, neuron_DRIVES
+    else:
+        return (clean_session_trial_locked,)
+
+
+def neuron_worker(X:np.ndarray, Y:np.ndarray, TT:np.ndarray,
+                Xcolnames:list[str], 
+                trial_size:int, 
+                stimulus_window:tuple[int,int],
+                indices:tuple[int,int,int],
+                EV:bool = False,
+                clean:bool = False, export_drives:bool = False
+                )->np.ndarray|dict|tuple[np.ndarray, dict]:
+    ineuron, isess, ig = indices
+
+    modelFULL_results = run_model(X=X, y=Y, 
+                                  Xcolnames=Xcolnames, 
                                   fit_full=True,
                                   TTsession=TT,
-                                  trial_size=sess.trial_size, 
-                                  stimulus_window=sess.stimulus_window,
+                                  trial_size=trial_size, 
+                                  stimulus_window=stimulus_window,
                                   EV_analysis=EV,
                                   return_clean = clean, return_drives=export_drives)
     if clean:
@@ -1033,12 +1131,12 @@ def neuron_worker(sess:SessionData,
     if EV:
         results_dict = defaultdict(list) 
         # train/test split (80/20)
-        modelEVAL_results = run_model(X=X, y=Y[:,:,ineuron].flatten(), 
-                                      Xcolnames=sess.Xcolnames, 
+        modelEVAL_results = run_model(X=X, y=Y, 
+                                      Xcolnames=Xcolnames, 
                                       fit_full=False,
                                       TTsession=TT,
-                                      trial_size=sess.trial_size, 
-                                      stimulus_window=sess.stimulus_window,
+                                      trial_size=trial_size, 
+                                      stimulus_window=stimulus_window,
                                       EV_analysis=EV)
 
         for col, dataFULL in modelFULL_results.items():
@@ -1053,8 +1151,8 @@ def neuron_worker(sess:SessionData,
                 results_dict[f'{col}_eval'] += [*dataEVAL]
         print(f'Group {ig}, Session {isess}, Neuron {ineuron} done!', flush=True)
         return results_dict
-        
 
+# ===============================================================        
 def run_model(X:np.ndarray, y:np.ndarray, 
               fit_full:bool,
               Xcolnames:list[str], TTsession:np.ndarray, 
@@ -1217,22 +1315,19 @@ def explained_variance(target_trial_locked:np.ndarray,
 
 # ----------- Running as a script ---------------
 if __name__ == '__main__':
-    # res = clean_group_signal(group_name='g1pre', yTYPE='population', exportDrives=False)
     # get cleaned signals
-    # res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=False)
-    # res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=False)
-    # breakpoint()
+    res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=False, redo=True)
+    res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=False, redo=True)
     
-    gXY = design_matrix(pre_post='pre', group='both')
+    gXY = design_matrix(pre_post='pre', group='both', show=False)
     EV_res = quantify_encoding_models(
         gXY=gXY, yTYPE='neuron', 
-        plot=True, EV=False,
-        rerun=False
+        plot=True, EV=True,
+        rerun=True
         )
     
     # if time
     # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=False)
     # res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=False)
-    
     
     
