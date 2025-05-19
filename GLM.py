@@ -926,7 +926,7 @@ def clean_group_signal(group_name:str,
     for isess in range(len(yall)):
         # get session data
         X = Xall[:,:,isess]
-        ysession = yall[isess][:,:,:]
+        ysession = yall[isess]#[:,:,:2] #debugging quickly just a 2 neurons per session
         TTsession = TTall[:,isess]
 
         print(f'Cleaning group {group_name} session {isess} ...')
@@ -971,11 +971,12 @@ def clean_group_signal(group_name:str,
             # session_results = [batch_worker(*args) for args in worker_args]
             
             for batch_res in session_results:
-                CLEAN_sessions += batch_res
-                if exportDrives:
-                    CLEAN_sessions += [batch_res[0]]
-                    for dname, dSig in batch_res[1].items():
-                        session_DRIVES[dname].append(dSig)
+                for r in batch_res:
+                    CLEAN_sessions.append(r[0])
+                    if exportDrives:
+                        raise NotImplementedError
+                    # for dname, dSig in r[1].items():
+                    #     session_DRIVES[dname].append(dSig)
             
             shmX.close(); shmY.close(); shmTT.close()
             shmX.unlink(); shmY.unlink(); shmTT.unlink()
@@ -1003,12 +1004,13 @@ def clean_group_signal(group_name:str,
     SIG_CLEAN = np.dstack(CLEAN_sessions)
     np.save(sigpath, SIG_CLEAN)
     if exportDrives:
-        for drive, drive_list in session_DRIVES.items():
-            session_DRIVES[drive] = np.dstack(drive_list)
-            np.save(os.path.join(storage_folder, f'{group_name}_GLM{drive}_{yTYPE}.npy'), 
-                    session_DRIVES[drive])
+        raise NotImplementedError
+        # for drive, drive_list in session_DRIVES.items():
+        #     session_DRIVES[drive] = np.dstack(drive_list)
+        #     np.save(os.path.join(storage_folder, f'{group_name}_GLM{drive}_{yTYPE}.npy'), 
+        #             session_DRIVES[drive])
         
-        return SIG_CLEAN, session_DRIVES
+        # return SIG_CLEAN, session_DRIVES
     else:
         return SIG_CLEAN
 
@@ -1319,12 +1321,12 @@ if __name__ == '__main__':
     res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=False, redo=True)
     res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=False, redo=True)
     
-    gXY = design_matrix(pre_post='pre', group='both', show=False)
-    EV_res = quantify_encoding_models(
-        gXY=gXY, yTYPE='neuron', 
-        plot=True, EV=True,
-        rerun=True
-        )
+    # gXY = design_matrix(pre_post='pre', group='both', show=False)
+    # EV_res = quantify_encoding_models(
+    #     gXY=gXY, yTYPE='neuron', 
+    #     plot=True, EV=False,
+    #     rerun=True
+    #     )
     
     # if time
     # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=False)

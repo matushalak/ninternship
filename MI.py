@@ -10,9 +10,6 @@ from analysis_utils import calc_avrg_trace, build_snake_grid, snake_plot, plot_a
 from typing import Literal
 
 # TODO: traces of enhanced neurons vs inhibited neurons / area, with RCI > threshold
-# TODO: add inhibited neurons
-# TODO: add offset neurons
-# TODO: add preferred response against Congruent vs Incongruent response Scatterplot (point color by region)
 # ---------------------- MULTISENSORY ENHANCEMENT ANALYSIS -----------------------------
 def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
        byAreas: bool = False,

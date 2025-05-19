@@ -67,7 +67,7 @@ class Movements:
 
         # TODO: Correlation Behavior (choose Whisker) and signal throughout trial (47 bins)
         # In each time bin, take correlation between 90 values from signal and 90 values from behavior [or 180 if combining LR]
-        # (calculate seperately for each neuron, then show average over all neurons of a given brain area (4 columns)
+        # **(calculate seperately for each neuron** and **each trial type**, then show average over all neurons of a given brain area (4 columns)
         # across 3 types of stimuli) (V / A / AV) - 3 lines
         # for DR and NR separately (2 rows)
 
