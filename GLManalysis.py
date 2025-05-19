@@ -184,6 +184,30 @@ class EvAnalysis:
             plt.close()
 
     
+    def motor_comparison(self,
+                         tt:Literal['A', 'V', 'AV'] = 'A',
+                         calc:Literal['averaged', 'trial'] = 'averaged', 
+                         dataset:Literal['in_sample', 'held_out'] = 'in_sample'):
+        data = self.df.loc[((self.df['Calculation'] == calc) & 
+                            (self.df['Dataset'] == dataset) &
+                            (self.df['trial_type'] == tt) & 
+                            (self.df['Predictors'] == 'Motor')
+                            )].copy()
+        
+        bp = sns.catplot(data=data, x = 'Region', y = 'EV', 
+                            hue = 'group_id', 
+                            estimator='mean', # median maybe more faithful but in LM then no AUD EV
+                            kind='box', 
+                            # edgecolor = 'k',
+                            # palette=color_scheme,
+                            # alpha = 0.7
+                            )
+            
+        bp.legend.set_visible(False)
+        bp.figure.legend()
+        plt.tight_layout()
+        plt.show()
+    
     # NOTE: implement LABEL selection based on shuffle test!!!
     def order_neurons(self,
                       calc:Literal['averaged', 'trial'] = 'averaged', 
@@ -262,7 +286,11 @@ if __name__ == '__main__':
     #                )
     # EVa.comparison(calc='trial', dataset='held_out')
 
-    # Analysis 2) Distribution of neurons based on explained variance
+    # Analysis 2) Compare only motor
+    EVa.motor_comparison(calc='averaged')
+    EVa.motor_comparison(calc='trial')
+
+    # Analysis 3) Distribution of neurons based on explained variance
     EVa.order_neurons(calc='averaged', dataset='held_out')
     
     

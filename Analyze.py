@@ -171,6 +171,10 @@ class Analyze:
                 INH_thresh = self.FLUORO_RESP[:,2,trial_ID] < -amp_criterion
                 return where((WCOX.pvalue < p_criterion) & (EXC_thresh | INH_thresh))[0], WCOX
             
+            # 1000 shuffles
+            case ('shuffle', (p_criterion, amp_criterion), (n_trials, n_times, n_nrns)):
+                raise NotImplementedError
+
             # already have zeta significances and Zeta values (n_nrns, 2[zeta_p, zeta_score])
             # NOTE: does not account for offset
             case ('zeta', (p_criterion, amp_criterion), (n_nrns, stats)):
