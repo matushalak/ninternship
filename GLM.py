@@ -1013,7 +1013,7 @@ def clean_group_signal(group_name:str,
     else:
         return SIG_CLEAN
 
-# POTENTIAL for Parallelization (not working right now)
+# Parallelization
 # =======================================================
 # Holds data
 @dataclass
@@ -1026,18 +1026,6 @@ class SessionData:
     stimulus_window:tuple[int,int]
     sess_i:int
     group_i:int
-
-# @dataclass
-# class SessionData:
-#     X:np.ndarray
-#     y:np.ndarray
-#     TT:np.ndarray
-#     Xcolnames:list[str]
-#     trial_size:int
-#     stimulus_window:tuple[int,int]
-#     sess_i:int
-#     group_i:int
-
 
 def safeMPexit(sharedMems:list[shared_memory.SharedMemory]):
     for sm in sharedMems:

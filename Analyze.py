@@ -40,6 +40,9 @@ class Analyze:
         # trial is between these frames
         self.TRIAL_FRAMES = av.TRIAL
 
+        # All trials (all sessions) (ntrials x nsessions)
+        self.allTrials = np.transpose(av.trials, (1, 0))
+
         # SAMPLING FREQUENCY
         self.SF : float = av.SF
 
@@ -88,15 +91,18 @@ class Analyze:
             case 'spike_prob', _:
                 signal = av.CASCADE_CORR * self.SF # to convert to est. IFR
 
-        SIG = self.SIG#signal 
-        get_shuffle_dist(av.zsig, func=fluorescence_response, 
+        shuf = get_shuffle_dist(av.zsig, func=tt_fluoro_func, 
                          sig_window_to_shuffle=(0,16),
-                         kwargs={
-                        # 'window':self.TRIAL_FRAMES, 
-                         'window':(0,16),
-                            # 'offsetFrames':5,
-                        'method':'peak', 'retMEAN_only':True})
+                         kwargs = {
+                            'fluoro_kwargs':{'window':(0,16),
+                                            'method':'peak', 
+                                            'retMEAN_only':True},
+                            'sigseparate_kwargs':{'trial_types':self.allTrials}
+                            },
+                        name=av.NAME
+                        )
         
+        SIG = self.SIG#signal 
         # 1. Baseline correct z-scored signal; residual signal without running speed OR whisker movement
         BLC_SIG = av.baseline_correct_signal(signal=SIG)
 

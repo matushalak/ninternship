@@ -25,7 +25,7 @@ def get_shuffle_dist(signal:np.ndarray,
                      args:list | None = None,
                      kwargs:dict[str:Any] | None = None,
                      nshuffles:int = 1000,
-                     redo:bool = True,
+                     redo:bool = False,
                      name:str = ''
                      ) -> np.ndarray:
     ''' 
@@ -62,7 +62,6 @@ def get_shuffle_dist(signal:np.ndarray,
         for s in range(shuffles.size))
     
     results = np.array(results)
-    breakpoint()
     # plt.hist(results.flatten(), bins = 100); plt.axvline(np.percentile(results.flatten(), 99)); plt.show()
     np.save(path, arr=results)
     return results

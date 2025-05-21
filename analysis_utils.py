@@ -9,12 +9,13 @@ from typing import Literal
 
 
 ###-------------------------------- GENERAL Helper functions --------------------------------
+# for baseline - distribution not necessary
 def tt_fluoro_func(sig:np.ndarray,
                    fluoro_kwargs:dict,
                    sigseparate_kwargs:dict
                    )->np.ndarray:
     ttdict = general_separate_signal(sig, **sigseparate_kwargs)
-    return fluorescence_response(sig, **fluoro_kwargs)
+    return fluorescence_response(ttdict, **fluoro_kwargs)
 
 
 def fluorescence_response (signal: np.ndarray | dict[int:np.ndarray],
