@@ -85,7 +85,7 @@ class EncodingModel:
             # NOTE: Finetune / justify this range of alphas ?
             # DOES regularize heavily on its own
             return skLin.RidgeCV(alphas = np.logspace(-.2,4,30), 
-                                fit_intercept=True)
+                                fit_intercept=False)
         else:
             # Tried Ellastic net, didn't work better 
             # + many papers argue against and use pure ridge
@@ -339,11 +339,12 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
         
         # Save output
         # 3D - ts, predictor, session
-        X = np.column_stack((trial_ramp,
+        X = np.column_stack((np.ones_like(trial_ramp),
+                             trial_ramp,
                              stim_kernels,
                              behav_kernels,
                              ))
-        Xcolnames = ['trial'] + stim_col_names + beh_col_names
+        Xcolnames = ['Global_Intercept'] + ['trial'] + stim_col_names + beh_col_names
         assert len(Xcolnames) == X.shape[1], f'Mismatch between number of column names:{len(Xcolnames)} and X columns:{X.shape[1]}'
         
         # Full design matrix
@@ -437,9 +438,10 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
 
             stimStart, stimEnd = trial_frames + trial_idx
             trialStart, trialEnd = np.array([0, nts]) + trial_idx
+            
             # Add trial-type specific gain
             gaincol = tt_to_gain_col[tname]
-            Xstim[trialStart:trialEnd, gaincol] = 1
+            Xstim[stimStart:trialEnd, gaincol] = 1 # keep baselines 0-centered with global intercept
 
             # Visual stimulus characteristics
             if 'V' in tname:
@@ -473,7 +475,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
             trial_idx += nts
         
         # All trials done, convolve with bases to account for lags
-        xbases = [getBases(Xcol=Xstim[:,ic], Bases=CosineBases, lags=frame_lags)
+        xbases = [getBases(Xcol=Xstim[:,ic], Bases=CosineBases, lags=frame_lags, trial_size=nts)
                   for ic in range(Xstim.shape[1] - 8 # not include trial-type intercepts (gain)
                                   )]
         
@@ -550,9 +552,6 @@ def behavior_kernels(sessions:dict,
                 onst[max_row_mask, max_col_mask[max_row_mask]] = 1
                 Xbeh[:,ib+8] = onst.flatten() 
 
-
-
-        
         # square terms
         Xbeh[:,3] = Xbeh[:,1]**2 # whisker nonlinear term (onset would be better)
         Xbeh[:,4] = Xbeh[:,0]**2 # running nonlinear term (onset would be better)
@@ -1318,15 +1317,16 @@ def explained_variance(target_trial_locked:np.ndarray,
 # ----------- Running as a script ---------------
 if __name__ == '__main__':
     # get cleaned signals
-    res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=False, redo=True)
-    res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=False, redo=True)
+    # TODO: incorporate exporting and loading drives
+    # res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=False, redo=True)
+    # res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=False, redo=True)
     
-    # gXY = design_matrix(pre_post='pre', group='both', show=False)
-    # EV_res = quantify_encoding_models(
-    #     gXY=gXY, yTYPE='neuron', 
-    #     plot=True, EV=False,
-    #     rerun=True
-    #     )
+    gXY = design_matrix(pre_post='pre', group='both', show=False)
+    EV_res = quantify_encoding_models(
+        gXY=gXY, yTYPE='population', 
+        plot=True, EV=False,
+        rerun=True
+        )
     
     # if time
     # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=False)

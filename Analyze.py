@@ -3,8 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from AUDVIS import AUDVIS, Behavior, load_in_data
-from analysis_utils import calc_avrg_trace, build_snake_grid, snake_plot, plot_avrg_trace, plot_1neuron
-from Responsive import responsive_zeta
+from analysis_utils import (calc_avrg_trace, build_snake_grid, 
+                            snake_plot, plot_avrg_trace, 
+                            plot_1neuron, fluorescence_response,
+                            tt_fluoro_func)
+
+from Responsive import responsive_zeta, get_shuffle_dist
 
 from matplotlib_venn import venn3
 from numpy import ndarray, arange, where, unique
@@ -53,7 +57,7 @@ class Analyze:
         # get GLM cleaned signal
         self.SIG = clean_group_signal(group_name=av.NAME)
         # Get Fluorescence response statistics
-        self.FLUORO_RESP: np.ndarray = self.fluorescence_response(
+        self.FLUORO_RESP: np.ndarray = fluorescence_response(
             signal = av.separate_signal_by_trial_types(
                 av.baseline_correct_signal(self.SIG,#av.zsig_CORR,
                                            baseline_frames=self.TRIAL_FRAMES[0])
@@ -85,6 +89,14 @@ class Analyze:
                 signal = av.CASCADE_CORR * self.SF # to convert to est. IFR
 
         SIG = self.SIG#signal 
+        get_shuffle_dist(av.zsig, func=fluorescence_response, 
+                         sig_window_to_shuffle=(0,16),
+                         kwargs={
+                        # 'window':self.TRIAL_FRAMES, 
+                         'window':(0,16),
+                            # 'offsetFrames':5,
+                        'method':'peak', 'retMEAN_only':True})
+        
         # 1. Baseline correct z-scored signal; residual signal without running speed OR whisker movement
         BLC_SIG = av.baseline_correct_signal(signal=SIG)
 
@@ -151,7 +163,7 @@ class Analyze:
             # NOTE: Cohen's d = DiffF := (F_trial - F_baseline) / SD(DiffF)
             case ('ttest', (p_criterion, amp_criterion), (n_trials, n_times, n_nrns)): 
                 bls = np.nanmean(neurons[:,:window[0],:], axis = 1) 
-                trls = self.fluorescence_response(signal = neurons, window=window, offsetFrames=5, returnF=True)[0]
+                trls = fluorescence_response(signal = neurons, window=window, offsetFrames=5, returnF=True)[0]
                 TTEST = ttest_rel(trls, bls, alternative = 'two-sided', nan_policy='omit')
                 # Amplitude theshold using Cohen's d effect size of fluorescence responses
                 EXC_thresh = self.FLUORO_RESP[:,2,trial_ID] > amp_criterion
@@ -163,7 +175,7 @@ class Analyze:
             # wilcoxon signed-rank test
             case ('wilcoxon', (p_criterion, amp_criterion), (n_trials, n_times, n_nrns),):
                 bls = np.nanmean(neurons[:,:window[0],:], axis = 1) 
-                trls = self.fluorescence_response(signal = neurons, window=window, offsetFrames=5, returnF=True)[0]
+                trls = fluorescence_response(signal = neurons, window=window, offsetFrames=5, returnF=True)[0]
                 WCOX = wilcoxon(trls, bls, alternative='two-sided', nan_policy = 'omit')
                 # Amplitude theshold
                 EXC_thresh = self.FLUORO_RESP[:,2,trial_ID] > amp_criterion
@@ -312,80 +324,6 @@ class Analyze:
                     [ttStat.pvalue[indices] for ttStat in self.TT_STATS], # stats of neuron per region
                     FRs) # fluorescence responses of neuron per region
 
-    @staticmethod
-    def fluorescence_response (signal: np.ndarray | dict[int:np.ndarray],
-                               window: tuple[int, int],
-                               offsetFrames: int | None = None,
-                               returnF: bool = False,
-                               method: Literal['mean', 'peak'] = 'peak') -> np.ndarray:
-        '''
-        Takes
-        ---------
-            1) (trial, times, neurons) array and 
-            
-            2) {trial_type : (trial, times, neurons) array} dictionary
-        
-        Returns
-        ---------
-            1) (neurons, stats) array with mean and std (dim 1) 
-            of fluorescence response (F) to a given trial-type for each neuron (dim 0)
-
-            2) returns a (neurons, stats, trial_types) array with mean and std and Cohen's d (dim 1) 
-            of fluorescence response (F) to each trial-type (dim 2) for each neuron (dim 0)
-        '''
-        assert isinstance(signal, dict
-                          ) or isinstance(signal, np.ndarray
-                                          ), 'Signal must either be a dictionary with signal arrays for each trial type OR just a signal array for one trial type'
-        if isinstance(signal, dict):
-            res = np.empty((signal[0].shape[-1], 3, len(signal)))
-            tt_sigs = [signal[tt] for tt in sorted(signal.keys())]
-        elif isinstance(signal, np.ndarray):
-            res = np.empty((signal.shape[-1], 3, 1))
-            tt_sigs = [signal]
-
-        assert all(len(sig.shape) == 3 for sig in tt_sigs), 'Signal arrays must be 3D - (ntrials, ntimes, nneurons)!'
-        if returnF:
-            Fs = []
-        for itt, sig_array in enumerate(tt_sigs):
-            # Fluorescence response adapted from (Meijer et al., 2017)
-            # mean fluorescence during stimulus presentation for all trials
-            Fmean = np.nanmean(sig_array[:,window[0]:window[1],:], axis = 1)
-            Fstd = np.nanstd(sig_array[:,window[0]:window[1],:], axis = 1)
-            if offsetFrames is not None:
-                Fmean_offset = np.nanmean(sig_array[:,window[1]:window[1]+offsetFrames,:], axis = 1)
-            F = Fmean.copy()
-            if method == 'peak':
-                Fmax  = np.nanmax(sig_array[:,window[0]:window[1],:], axis = 1)
-                max_mask = where((Fmax > Fmean + 3*Fstd) & (Fmean > 0))
-                if offsetFrames is not None:
-                    Fmax_offset  = np.nanmax(sig_array[:,window[1]:window[1]+offsetFrames,:], axis = 1)
-                    offset_mask = where((Fmax_offset > Fmean + 3*Fstd) & 
-                                        (Fmax_offset > Fmax + Fstd) & 
-                                        (Fmean > 0) & (Fmean_offset > 0))
-                
-                # nan trials are left as NaNs
-                F[max_mask] = Fmax[max_mask]
-                if offsetFrames is not None:
-                    F[offset_mask] = Fmax_offset[offset_mask]
-            if returnF:
-                Fs.append(F) # add trial-level
-            # signal being fed in is already baseline corrected, so all these
-            # are about ∆FR
-            # this should get rid of the nans
-            meanF = np.nanmean(F, axis = 0) # mean fluorescence response over trials
-            stdF = np.nanstd(F, axis = 0) # std of fluorescence response over trials
-            cohdF = meanF / stdF # Cohen's d of fluorescence response over trials
-
-            res[:, 0, itt] = meanF
-            res[:, 1, itt] = stdF
-            res[:, 2, itt] = cohdF
-
-        # assert not np.isnan(res).any(), '[BUG]: NaNs were NOT removed during FR aggregation per neuron!!!'
-        if not returnF:
-            return np.squeeze(res) # removes trailing dimension in case want output only for 1 trial type
-        else:
-            return Fs
-        
     def pref_dir(self, 
                  sig1:ndarray, tt1:int, 
                  sig2:ndarray, tt2:int) -> ndarray:

@@ -9,6 +9,93 @@ from typing import Literal
 
 
 ###-------------------------------- GENERAL Helper functions --------------------------------
+def tt_fluoro_func(sig:np.ndarray,
+                   fluoro_kwargs:dict,
+                   sigseparate_kwargs:dict
+                   )->np.ndarray:
+    ttdict = general_separate_signal(sig, **sigseparate_kwargs)
+    return fluorescence_response(sig, **fluoro_kwargs)
+
+
+def fluorescence_response (signal: np.ndarray | dict[int:np.ndarray],
+                        window: tuple[int, int],
+                        offsetFrames: int | None = None,
+                        returnF: bool = False,
+                        method: Literal['mean', 'peak'] = 'peak',
+                        retMEAN_only:bool = False) -> np.ndarray:
+    '''
+    Takes
+    ---------
+        1) (trial, times, neurons) array and 
+        
+        2) {trial_type : (trial, times, neurons) array} dictionary
+    
+    Returns
+    ---------
+        1) (neurons, stats) array with mean and std (dim 1) 
+        of fluorescence response (F) to a given trial-type for each neuron (dim 0)
+
+        2) returns a (neurons, stats, trial_types) array with mean and std and Cohen's d (dim 1) 
+        of fluorescence response (F) to each trial-type (dim 2) for each neuron (dim 0)
+    '''
+    assert isinstance(signal, dict
+                        ) or isinstance(signal, np.ndarray
+                                        ), 'Signal must either be a dictionary with signal arrays for each trial type OR just a signal array for one trial type'
+    ncols = 1 if retMEAN_only else 3
+
+    if isinstance(signal, dict):
+        res = np.zeros((signal[0].shape[-1], ncols, len(signal)))
+        tt_sigs = [signal[tt] for tt in sorted(signal.keys())]
+    elif isinstance(signal, np.ndarray):
+        res = np.zeros((signal.shape[-1], ncols, 1))
+        tt_sigs = [signal]
+
+    assert all(len(sig.shape) == 3 for sig in tt_sigs), 'Signal arrays must be 3D - (ntrials, ntimes, nneurons)!'
+    if returnF:
+        Fs = []
+    for itt, sig_array in enumerate(tt_sigs):
+        # Fluorescence response adapted from (Meijer et al., 2017)
+        # mean fluorescence during stimulus presentation for all trials
+        Fmean = np.nanmean(sig_array[:,window[0]:window[1],:], axis = 1)
+        Fstd = np.nanstd(sig_array[:,window[0]:window[1],:], axis = 1)
+        if offsetFrames is not None:
+            Fmean_offset = np.nanmean(sig_array[:,window[1]:window[1]+offsetFrames,:], axis = 1)
+        F = Fmean.copy()
+        if method == 'peak':
+            Fmax  = np.nanmax(sig_array[:,window[0]:window[1],:], axis = 1)
+            max_mask = np.where((Fmax > Fmean + 3*Fstd) & (Fmean > 0))
+            if offsetFrames is not None:
+                Fmax_offset  = np.nanmax(sig_array[:,window[1]:window[1]+offsetFrames,:], axis = 1)
+                offset_mask = np.where((Fmax_offset > Fmean + 3*Fstd) & 
+                                    (Fmax_offset > Fmax + Fstd) & 
+                                    (Fmean > 0) & (Fmean_offset > 0))
+            
+            # nan trials are left as NaNs
+            F[max_mask] = Fmax[max_mask]
+            if offsetFrames is not None:
+                F[offset_mask] = Fmax_offset[offset_mask]
+        if returnF:
+            Fs.append(F) # add trial-level
+        # signal being fed in is already baseline corrected, so all these
+        # are about ∆FR
+        # this should get rid of the nans
+        meanF = np.nanmean(F, axis = 0) # mean fluorescence response over trials
+        res[:, 0, itt] = meanF
+        
+        if not retMEAN_only:
+            stdF = np.nanstd(F, axis = 0) # std of fluorescence response over trials
+            cohdF = meanF / stdF # Cohen's d of fluorescence response over trials
+
+            res[:, 1, itt] = stdF
+            res[:, 2, itt] = cohdF
+
+    # assert not np.isnan(res).any(), '[BUG]: NaNs were NOT removed during FR aggregation per neuron!!!'
+    if not returnF:
+        return np.squeeze(res) # removes trailing dimension in case want output only for 1 trial type
+    else:
+        return np.array(Fs)
+
+
 def general_separate_signal(sig:np.ndarray,
                             trial_types:np.ndarray,
                             trial_type_combinations:list[tuple]|None = None,

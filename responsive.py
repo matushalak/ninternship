@@ -3,17 +3,85 @@
 from SPSIG import SPSIG, Dict_to_Class
 from AUDVIS import Behavior
 from utils import group_condition_key, progress_bar
-from matplotlib_venn import venn3
+from analysis_utils import general_separate_signal
+
+from matplotlib import pyplot as plt
 from collections import defaultdict
 from pandas import DataFrame
 from zetapy import zetatstest, zetatstest2 # test for neuronal responsiveness by Montijn et al.
-from typing import Literal
+from typing import Literal, Callable, Any
 import numpy as np
 import multiprocessing as mp
+from joblib import Parallel, delayed
 import os
 import pickle
 import argparse
 
+# --------------------- SHUFFLING (test) procedure ---------------------
+# TODO: build up distribution from baseline only!
+def get_shuffle_dist(signal:np.ndarray, 
+                     func:Callable,
+                     sig_window_to_shuffle:tuple[int, int] | None = None,
+                     args:list | None = None,
+                     kwargs:dict[str:Any] | None = None,
+                     nshuffles:int = 1000,
+                     redo:bool = True,
+                     name:str = ''
+                     ) -> np.ndarray:
+    ''' 
+    signal: (ntrials, nts, nneurons)
+    func: Callable, func(signal, ...) function that takes in signal in form (ntrials, nts, nneurons) and produces some output with one dimension = nneurons
+
+    Returns shuffled distributions for each neuron in form:
+    rand_dist: (nshuffles, ..., nneurons)
+    '''
+    path = os.path.join('pydata', f'{func.__name__}_{name}_shuffleDIST.npy')
+    if not redo and os.path.exists(path):
+        print(f'Loading shuffled distribution from {path}')
+        return np.load(path)
+    
+    if sig_window_to_shuffle is not None:
+        signal = signal[:,
+                        sig_window_to_shuffle[0]:sig_window_to_shuffle[1],
+                        :]
+        
+    flat = signal.reshape(-1, signal.shape[2])
+    # assert (signal == flat.reshape(signal.shape)).all() # validated, comp. expensive check
+    
+    # This is true, but unnecessary to reshape back every time to check
+    # random number generator with a reproducible seed
+    RNG : np.random.Generator = np.random.default_rng(seed = 2025)
+
+    # Get the random circular shuffles
+    shuffles = RNG.choice(a = flat.shape[0], size=nshuffles)
+
+    # Apply shuffles
+    print('Creating shuffle distributions!')
+    results = Parallel(n_jobs=mp.cpu_count())(
+        delayed(shuffle_worker)(shuffles[s], flat, signal.shape, func, args, kwargs) 
+        for s in range(shuffles.size))
+    
+    results = np.array(results)
+    breakpoint()
+    # plt.hist(results.flatten(), bins = 100); plt.axvline(np.percentile(results.flatten(), 99)); plt.show()
+    np.save(path, arr=results)
+    return results
+
+def shuffle_worker(shift:int, flat:np.ndarray, 
+                   signal_shape:tuple, 
+                   func:Callable, 
+                   args=None, kwargs=None):
+    print(shift, flush=True)
+    sflat = np.roll(flat, shift=shift, axis=0)
+    ssignal = sflat.reshape(signal_shape)
+    if args is not None:
+        return func(ssignal, *args)
+    elif kwargs is not None:
+        return func(ssignal, **kwargs)
+    else:
+        return func(ssignal)
+
+# --------------------- ZETA test --------------------------
 def run_ZETA(signals:np.ndarray,
              frame_times_corrected:np.ndarray,
              event_IDs:np.ndarray,

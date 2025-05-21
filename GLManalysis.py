@@ -287,6 +287,7 @@ if __name__ == '__main__':
     # EVa.comparison(calc='trial', dataset='held_out')
 
     # Analysis 2) Compare only motor
+    # TODO: separately for running / whisker / pupil
     EVa.motor_comparison(calc='averaged')
     EVa.motor_comparison(calc='trial')
 
