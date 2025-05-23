@@ -416,7 +416,8 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
         QuantDF: pd.DataFrame = pd.DataFrame(QuantDict)
         return QuantDF
 
-
+# TODO: Two-way ANOVA / Kruskal-Wallis
+# Main effect of GROUP & Main effect of TT + Post-hoc (Tukey)
 def Quantification(df: pd.DataFrame,
                    pre_post: Literal['pre', 'post', 'both'] = 'pre',
                    svg:bool = False):
@@ -437,6 +438,10 @@ def Quantification(df: pd.DataFrame,
             'AM/PM':{'g1pre':'darkred', 'g2pre':'coral'},
             'A/RL/AL':{'g1pre':'saddlebrown', 'g2pre':'rosybrown'},
             'LM':{'g1pre':'darkmagenta', 'g2pre':'orchid'}}
+    
+    # TODO:
+    import statsmodels.formula.api as smf
+    # smf.ols()
     
     for ar, arDF in df_long.groupby('BRAIN_AREA'):
         bp = sns.catplot(arDF, x = 'TT', y='F', hue = 'Group', 
@@ -476,7 +481,8 @@ def Quantification(df: pd.DataFrame,
             comparisons_correction='Bonferroni',
             text_format='star',
             loc='outside',
-            # hide_non_significant = True
+            hide_non_significant = False,
+            correction_format="replace"
         )
         annot_bw.apply_and_annotate()
 
@@ -490,7 +496,8 @@ def Quantification(df: pd.DataFrame,
             comparisons_correction='Bonferroni',
             text_format='star',
             loc='outside',
-            # hide_non_significant = True
+            hide_non_significant = False,
+            correction_format="replace"
         )
         annot_wi.apply_and_annotate()
         fg.tight_layout()

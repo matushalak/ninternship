@@ -5,6 +5,7 @@ from AUDVIS import Behavior
 from utils import group_condition_key, progress_bar
 from analysis_utils import general_separate_signal
 
+from tqdm import tqdm
 from matplotlib import pyplot as plt
 from collections import defaultdict
 from pandas import DataFrame
@@ -18,7 +19,6 @@ import pickle
 import argparse
 
 # --------------------- SHUFFLING (test) procedure ---------------------
-# TODO: build up distribution from baseline only!
 def get_shuffle_dist(signal:np.ndarray, 
                      func:Callable,
                      sig_window_to_shuffle:tuple[int, int] | None = None,
@@ -26,7 +26,9 @@ def get_shuffle_dist(signal:np.ndarray,
                      kwargs:dict[str:Any] | None = None,
                      nshuffles:int = 1000,
                      redo:bool = False,
-                     name:str = ''
+                     name:str = '',
+                     save:bool = True,
+                     parallel:bool = True
                      ) -> np.ndarray:
     ''' 
     signal: (ntrials, nts, nneurons)
@@ -35,10 +37,11 @@ def get_shuffle_dist(signal:np.ndarray,
     Returns shuffled distributions for each neuron in form:
     rand_dist: (nshuffles, ..., nneurons)
     '''
-    path = os.path.join('pydata', f'{func.__name__}_{name}_shuffleDIST.npy')
-    if not redo and os.path.exists(path):
-        print(f'Loading shuffled distribution from {path}')
-        return np.load(path)
+    if save:
+        path = os.path.join('pydata', f'{func.__name__}_{name}_shuffleDIST.npy')
+        if not redo and os.path.exists(path):
+            print(f'Loading shuffled distribution from {path}')
+            return np.load(path)
     
     if sig_window_to_shuffle is not None:
         signal = signal[:,
@@ -46,9 +49,9 @@ def get_shuffle_dist(signal:np.ndarray,
                         :]
         
     flat = signal.reshape(-1, signal.shape[2])
+    # This is true, but unnecessary to reshape back every time to check
     # assert (signal == flat.reshape(signal.shape)).all() # validated, comp. expensive check
     
-    # This is true, but unnecessary to reshape back every time to check
     # random number generator with a reproducible seed
     RNG : np.random.Generator = np.random.default_rng(seed = 2025)
 
@@ -57,20 +60,26 @@ def get_shuffle_dist(signal:np.ndarray,
 
     # Apply shuffles
     print('Creating shuffle distributions!')
-    results = Parallel(n_jobs=mp.cpu_count())(
-        delayed(shuffle_worker)(shuffles[s], flat, signal.shape, func, args, kwargs) 
-        for s in range(shuffles.size))
-    
+    if parallel:
+        results = Parallel(n_jobs=mp.cpu_count())(
+            delayed(shuffle_worker)(shuffles[s], flat, signal.shape, func, args, kwargs) 
+            for s in tqdm(range(shuffles.size)))
+    else:
+        results = []
+        for s in range(shuffles.size):
+            results.append(shuffle_worker(shuffles[s], flat, signal.shape, func, args, kwargs))
+
     results = np.array(results)
     # plt.hist(results.flatten(), bins = 100); plt.axvline(np.percentile(results.flatten(), 99)); plt.show()
-    np.save(path, arr=results)
+    if save:
+        np.save(path, arr=results)
     return results
 
 def shuffle_worker(shift:int, flat:np.ndarray, 
                    signal_shape:tuple, 
                    func:Callable, 
                    args=None, kwargs=None):
-    print(shift, flush=True)
+    # print(shift, flush=True)
     sflat = np.roll(flat, shift=shift, axis=0)
     ssignal = sflat.reshape(signal_shape)
     if args is not None:

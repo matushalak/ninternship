@@ -58,25 +58,25 @@ class Analyze:
             self.TT_zeta = responsive_zeta(SPECIFIEDcond = av.NAME, signal_to_use = 'dF/F0',
                                            RegressOUT_behavior=False)
         # get GLM cleaned signal
-        self.SIG = clean_group_signal(group_name=av.NAME)
+        self.SIG = clean_group_signal(group_name=av.NAME) #av.zsig_CORR
         # Get Fluorescence response statistics
         self.FLUORO_RESP: np.ndarray = fluorescence_response(
             signal = av.separate_signal_by_trial_types(
-                av.baseline_correct_signal(self.SIG,#av.zsig_CORR,
+                av.baseline_correct_signal(self.SIG,
                                            baseline_frames=self.TRIAL_FRAMES[0])
                                            ),
             window = self.TRIAL_FRAMES, 
-            offsetFrames=5,
-            method='mean')
+            method='peak')
         
         # Analyze by trial type
         self.TT_RES, self.TT_STATS, self.byTTS_blc, self.byTTS, self.NEURON_groups = self.tt_average(av, signal_to_use = self.signal_type)
+        # _, _, _, _, self.NEURON_groups2 = self.tt_average(av, signal_to_use = self.signal_type, method='shuffle')
         # _, _, self.CASCADE, _, _ = self.tt_average(av, signal_to_use = 'spike_prob') # for debugging
 
 
     # Analyze average response to trial type
     def tt_average(self, av:AUDVIS,
-                   method:str = 'ttest',
+                   method:str = 'shuffle',
                    criterion:float = 0.05, # p-value threshold .05 or .01 (bonferroni corrected - consider different correction)
                    signal_to_use: Literal['dF/F0', 'spike_prob'] = 'dF/F0',
                    zsignal: bool = True
@@ -91,16 +91,17 @@ class Analyze:
             case 'spike_prob', _:
                 signal = av.CASCADE_CORR * self.SF # to convert to est. IFR
 
-        shuf = get_shuffle_dist(av.zsig, func=tt_fluoro_func, 
-                         sig_window_to_shuffle=(0,16),
-                         kwargs = {
-                            'fluoro_kwargs':{'window':(0,16),
-                                            'method':'peak', 
-                                            'retMEAN_only':True},
-                            'sigseparate_kwargs':{'trial_types':self.allTrials}
-                            },
-                        name=av.NAME
-                        )
+        if method == 'shuffle':
+            shuf_dist = get_shuffle_dist(av.zsig, func=fluorescence_response, 
+                            sig_window_to_shuffle=(0,self.TRIAL_FRAMES[0]),
+                            kwargs = {'window':(0,self.TRIAL_FRAMES[0]),
+                                    'method':'mean', 
+                                    'retMEAN_only':True},
+                            name=av.NAME,
+                            redo=False
+                            )
+        else:
+            shuf_dist = None
         
         SIG = self.SIG#signal 
         # 1. Baseline correct z-scored signal; residual signal without running speed OR whisker movement
@@ -129,7 +130,8 @@ class Analyze:
                                                                         window = self.TRIAL_FRAMES, 
                                                                         trial_ID=tt,
                                                                         criterion = stat_crit if method != 'zscore' else criterion, 
-                                                                        method = method)
+                                                                        method = method,
+                                                                        shuffle_dist=shuf_dist)
             if method != 'zscore':
                 TEST_RESULTS.append(test_res)
             # print(by_tts[tt].shape, len(self.TT_zeta[tt])) # good debugging check
@@ -149,7 +151,8 @@ class Analyze:
 
     def responsive_trial_locked(self, neurons:ndarray | list, window:tuple[int, int], 
                                 trial_ID: int,
-                                criterion:float|tuple[float,float], method:str
+                                criterion:float|tuple[float,float], method:str,
+                                shuffle_dist:np.ndarray | None = None
                                 )-> tuple[ndarray, ndarray | None]:
         '''
         accepts (trials, times, neurons) type data structure for neurons within session or across sessions
@@ -169,7 +172,7 @@ class Analyze:
             # NOTE: Cohen's d = DiffF := (F_trial - F_baseline) / SD(DiffF)
             case ('ttest', (p_criterion, amp_criterion), (n_trials, n_times, n_nrns)): 
                 bls = np.nanmean(neurons[:,:window[0],:], axis = 1) 
-                trls = fluorescence_response(signal = neurons, window=window, offsetFrames=5, returnF=True)[0]
+                trls = fluorescence_response(signal = neurons, window=window, returnF=True)[0]
                 TTEST = ttest_rel(trls, bls, alternative = 'two-sided', nan_policy='omit')
                 # Amplitude theshold using Cohen's d effect size of fluorescence responses
                 EXC_thresh = self.FLUORO_RESP[:,2,trial_ID] > amp_criterion
@@ -181,7 +184,7 @@ class Analyze:
             # wilcoxon signed-rank test
             case ('wilcoxon', (p_criterion, amp_criterion), (n_trials, n_times, n_nrns),):
                 bls = np.nanmean(neurons[:,:window[0],:], axis = 1) 
-                trls = fluorescence_response(signal = neurons, window=window, offsetFrames=5, returnF=True)[0]
+                trls = fluorescence_response(signal = neurons, window=window, returnF=True)[0]
                 WCOX = wilcoxon(trls, bls, alternative='two-sided', nan_policy = 'omit')
                 # Amplitude theshold
                 EXC_thresh = self.FLUORO_RESP[:,2,trial_ID] > amp_criterion
@@ -191,7 +194,12 @@ class Analyze:
             
             # 1000 shuffles
             case ('shuffle', (p_criterion, amp_criterion), (n_trials, n_times, n_nrns)):
-                raise NotImplementedError
+                all_shuffled_noise = shuffle_dist.flatten()
+                low_thresh, high_thresh = np.percentile(all_shuffled_noise, q = 1), np.percentile(all_shuffled_noise, q = 99)
+                EXC = self.FLUORO_RESP[:,0,trial_ID] > high_thresh
+                INH = self.FLUORO_RESP[:,0,trial_ID] < low_thresh
+                
+                return np.where((EXC | INH))[0], np.abs(self.FLUORO_RESP[:,0,trial_ID] - np.median(all_shuffled_noise))
 
             # already have zeta significances and Zeta values (n_nrns, 2[zeta_p, zeta_score])
             # NOTE: does not account for offset
@@ -327,7 +335,8 @@ class Analyze:
                     for trace in neurons_to_study)], 
                     len(indices), 
                     neurons_to_study, # traces of neurons per region
-                    [ttStat.pvalue[indices] for ttStat in self.TT_STATS], # stats of neuron per region
+                    [ttStat.pvalue[indices] if hasattr(ttStat, 'pvalue') else ttStat[indices]
+                     for ttStat in self.TT_STATS], # stats of neuron per region
                     FRs) # fluorescence responses of neuron per region
 
     def pref_dir(self, 
@@ -376,6 +385,12 @@ class Analyze:
                     4:('goldenrod', ':')}
         
         nG = self.NEURON_groups[neuron_group]
+        nGshuffle = self.NEURON_groups2[neuron_group]
+        print(np.setdiff1d(nG, nGshuffle).size, 'neurons not captures by shuffle!')
+        print(np.setdiff1d(nGshuffle, nG).size, 'neurons not captured by T-test!')
+
+        nG = np.setdiff1d(nG, nGshuffle)#np.setdiff1d(nGshuffle, nG)
+
         if indices is not None:
             nG = np.intersect1d(indices, nG)
         
@@ -584,7 +599,7 @@ def Examples(pre_post: Literal['pre', 'post', 'both'] = 'pre', NONRESPONSIVE:boo
     for ig, (AV, AN) in enumerate(zip(AVs, ANs)):
         AN.example_neurons(gNAME=AV.NAME, 
                            trange= AV.TRIAL,
-                           indices=examples[ig],
+                        #    indices=examples[ig],
                            plotNONresponsive=NONRESPONSIVE,
                            save=False)
 
@@ -594,10 +609,11 @@ if __name__ == '__main__':
     tt_grid = {0:(0,2),1:(0,0),2:(0,1),3:(1,2),
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     # Example neurons
-    # Examples()
+    # NOTE: check inside AN.example_neurons which neurons are being plotted!
+    Examples()
 
     # Neuron types analysis (venn diagrams)
-    neuron_typesVENN_analysis()
+    # neuron_typesVENN_analysis()
     # NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=False, pre_post='pre')

@@ -20,7 +20,6 @@ def tt_fluoro_func(sig:np.ndarray,
 
 def fluorescence_response (signal: np.ndarray | dict[int:np.ndarray],
                         window: tuple[int, int],
-                        offsetFrames: int | None = None,
                         returnF: bool = False,
                         method: Literal['mean', 'peak'] = 'peak',
                         retMEAN_only:bool = False) -> np.ndarray:
@@ -45,36 +44,47 @@ def fluorescence_response (signal: np.ndarray | dict[int:np.ndarray],
     ncols = 1 if retMEAN_only else 3
 
     if isinstance(signal, dict):
+        nts = signal[0].shape[1]
         res = np.zeros((signal[0].shape[-1], ncols, len(signal)))
         tt_sigs = [signal[tt] for tt in sorted(signal.keys())]
     elif isinstance(signal, np.ndarray):
+        nts = signal.shape[1]
         res = np.zeros((signal.shape[-1], ncols, 1))
         tt_sigs = [signal]
 
     assert all(len(sig.shape) == 3 for sig in tt_sigs), 'Signal arrays must be 3D - (ntrials, ntimes, nneurons)!'
+
+    # TODO: add customizability for sub-windows
+    if method == 'peak':
+        # Setup logic for detecting responses at different latencies
+        window_dur = window[1] - window[0]
+        half_window = window_dur // 2
+        windows_offsets = np.arange(3) * half_window
+        assert window[1] + windows_offsets[-1] <= nts, 'Proposed response window falls outside trial'
+        response_windows = [slice(window[0]+wo, window[1]+wo) 
+                            for wo in windows_offsets]
+
     if returnF:
         Fs = []
     for itt, sig_array in enumerate(tt_sigs):
         # Fluorescence response adapted from (Meijer et al., 2017)
         # mean fluorescence during stimulus presentation for all trials
         Fmean = np.nanmean(sig_array[:,window[0]:window[1],:], axis = 1)
-        Fstd = np.nanstd(sig_array[:,window[0]:window[1],:], axis = 1)
-        if offsetFrames is not None:
-            Fmean_offset = np.nanmean(sig_array[:,window[1]:window[1]+offsetFrames,:], axis = 1)
         F = Fmean.copy()
         if method == 'peak':
-            Fmax  = np.nanmax(sig_array[:,window[0]:window[1],:], axis = 1)
-            max_mask = np.where((Fmax > Fmean + 3*Fstd) & (Fmean > 0))
-            if offsetFrames is not None:
-                Fmax_offset  = np.nanmax(sig_array[:,window[1]:window[1]+offsetFrames,:], axis = 1)
-                offset_mask = np.where((Fmax_offset > Fmean + 3*Fstd) & 
-                                    (Fmax_offset > Fmax + Fstd) & 
-                                    (Fmean > 0) & (Fmean_offset > 0))
+            # mean for each of the three response windows
+            Fmeans_all_rw = np.dstack([np.nanmean(sig_array[:, rw, :], axis=1) 
+                                       for rw in response_windows])
+            # tries to estimate if after stimulus onset excitatory or inhibitory response
+            Fmedian = np.nanmedian(sig_array[:,window[0]:,:], axis = 1)
+            exc, inh = Fmedian >= 0, Fmedian < 0
+
+            Fmax = np.nanmax(Fmeans_all_rw, axis=2)
+            Fmin = np.nanmin(Fmeans_all_rw, axis=2)
             
-            # nan trials are left as NaNs
-            F[max_mask] = Fmax[max_mask]
-            if offsetFrames is not None:
-                F[offset_mask] = Fmax_offset[offset_mask]
+            F[exc] = Fmax[exc]
+            F[inh] = Fmin[inh]
+            
         if returnF:
             Fs.append(F) # add trial-level
         # signal being fed in is already baseline corrected, so all these

@@ -1,16 +1,13 @@
 import pandas as pd
 import numpy as np
-import scipy as sp
-import scipy.signal as sig
-import seaborn as sns
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as pltGrid
 import os
 import atexit
 
 import multiprocessing as MP
 from multiprocessing import shared_memory
 from joblib import Parallel, delayed
+import pickle
 
 import sklearn.linear_model as skLin
 
@@ -41,15 +38,16 @@ class EncodingModel:
         ...
     '''
     def __init__(self,
-                 X:np.ndarray,
-                 y:np.ndarray,
+                 X:np.ndarray = None,
+                 y:np.ndarray = None,
                 
-                 trial_size:int, 
-                 stimulus_window:tuple[int, int], 
-                 trial_types:np.ndarray,
+                 trial_size:int = None, 
+                 stimulus_window:tuple[int, int] = None, 
+                 trial_types:np.ndarray = None,
 
-                 Xcolumn_names:list[str,],
+                 Xcolumn_names:list[str,] = None,
 
+                 smart:bool = True,
                  params:dict | None = None):
         
         # default parameters
@@ -60,22 +58,25 @@ class EncodingModel:
         else:
             raise NotImplementedError
 
-        # basic params from input arguments
-        self.trial_size = trial_size
-        self.stimulus_window = stimulus_window
-        self.trial_types = trial_types
+        # This becomes computationally inefficient if the model has to 
+        # be refit thousands of times / neuron
+        if smart:
+            # basic params from input arguments
+            self.trial_size = trial_size
+            self.stimulus_window = stimulus_window
+            self.trial_types = trial_types
 
-        # Full design matrix and neural activity vector
-        self.X, self.y, self.yTRIAL = X, y, y.reshape((len(y)//trial_size, trial_size))
-        self.colnames = Xcolumn_names
+            # Full design matrix and neural activity vector
+            self.X, self.y, self.yTRIAL = X, y, y.reshape((len(y)//trial_size, trial_size))
+            self.colnames = Xcolumn_names
 
-        # Train / Test split for quantifications
-        TRAIN, TEST = self.train_test_split(X=self.X, y=self.y, 
-                                            split_proportion=train_test_prop, 
-                                            trial_size=trial_size, trial_types=trial_types)
-        
-        self.Xtrain, self.ytrain, self.TRAINtrials = TRAIN
-        self.Xtest, self.ytest, self.TESTtrials = TEST
+            # Train / Test split for quantifications
+            TRAIN, TEST = self.train_test_split(X=self.X, y=self.y, 
+                                                split_proportion=train_test_prop, 
+                                                trial_size=trial_size, trial_types=trial_types)
+            
+            self.Xtrain, self.ytrain, self.TRAINtrials = TRAIN
+            self.Xtest, self.ytest, self.TESTtrials = TEST
         
         self.model = self.define_model(params=params)
 
@@ -88,7 +89,7 @@ class EncodingModel:
                                 fit_intercept=False)
         else:
             # Tried Ellastic net, didn't work better 
-            # + many papers argue against and use pure ridge
+            # + many papers argue against Ellastic net and use pure ridge
             raise NotImplementedError
 
 
@@ -339,12 +340,15 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
         
         # Save output
         # 3D - ts, predictor, session
-        X = np.column_stack((np.ones_like(trial_ramp),
+        # Include global intercept to center everything around 0 (account for overall mean)
+        # and let Stimulus or Motor blocks compete for trial-evoked variance across trials
+        X = np.column_stack((np.ones_like(trial_ramp), # intercept
                              trial_ramp,
                              stim_kernels,
                              behav_kernels,
                              ))
-        Xcolnames = ['Global_Intercept'] + ['trial'] + stim_col_names + beh_col_names
+        Xcolnames = (['Global_Intercept'] + 
+                     ['trial'] + stim_col_names + beh_col_names)
         assert len(Xcolnames) == X.shape[1], f'Mismatch between number of column names:{len(Xcolnames)} and X columns:{X.shape[1]}'
         
         # Full design matrix
@@ -410,8 +414,9 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
     all_session_Xs = []
 
     # prepare trial-type specific intercepts
-    tt_to_gain_col = {'Vl':10, 'Vr':11, 'Al':12, 'Ar':13, 
-                    'AlVl':14, 'ArVr': 15, 'AlVr':16, 'ArVl':17}
+    # NOTE: removed because can't attribute to STIM or MOVEMENT block
+    # tt_to_gain_col = {'Vl':10, 'Vr':11, 'Al':12, 'Ar':13, 
+    #                 'AlVl':14, 'ArVr': 15, 'AlVr':16, 'ArVl':17}
     
     for isess in range(nsessions):
         # Column names
@@ -422,14 +427,16 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                 # Auditory stimulus columns 5-9
                 'Apresent', 'Adirection', 'Aposition', 'Aonset', 'Aoffset',
                 # Trial-type specific gain / intercept 9-18
-                'Vlgain', 'Vrgain', 'Algain', 'Argain', 'AlVlgain', 'ArVrgain', 'AlVrgain', 'ArVlgain',
+                # NOTE: removed because can't attribute to STIM or MOVEMENT block
+                # 'Vlgain', 'Vrgain', 'Algain', 'Argain', 'AlVlgain', 'ArVrgain', 'AlVrgain', 'ArVlgain',
+                # '0gain', '1gain', '2gain', '3gain', '4gain', '5gain', '6gain', '7gain',
                 ]
 
         trials = trs[:,isess]
         # diff features as columns of bigger matrix
         Xstim = np.zeros(shape=(ntrials*nts, 
                                 (5 * 2 # 2 modalities of stimuli
-                                 ) +8 # 8 gain terms
+                                 ) #+8 # 8 gain terms
                                 ))
         
         trial_idx = 0
@@ -440,8 +447,10 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
             trialStart, trialEnd = np.array([0, nts]) + trial_idx
             
             # Add trial-type specific gain
-            gaincol = tt_to_gain_col[tname]
-            Xstim[stimStart:trialEnd, gaincol] = 1 # keep baselines 0-centered with global intercept
+            # NOTE: removed because can't attribute to STIM or MOVEMENT block,
+            #   better to let STIM & MOVEMENT blocks compete for existing variance (even if slightly worse performance)
+            # gaincol = tt_to_gain_col[tname]
+            # Xstim[stimStart:trialEnd, gaincol] = 1 # keep baselines 0-centered with global intercept
 
             # Visual stimulus characteristics
             if 'V' in tname:
@@ -476,7 +485,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
         
         # All trials done, convolve with bases to account for lags
         xbases = [getBases(Xcol=Xstim[:,ic], Bases=CosineBases, lags=frame_lags, trial_size=nts)
-                  for ic in range(Xstim.shape[1] - 8 # not include trial-type intercepts (gain)
+                  for ic in range(Xstim.shape[1] #- 8 # not include trial-type intercepts (gain)
                                   )]
         
         # Get column names for predictor convolved with each basis
@@ -672,13 +681,17 @@ def getBases(Xcol:np.ndarray,
 # -------------- running Models -------------------
 # These functions need to be adapted to different experimental regimes
 # full model, Stimulus predictors (V, A, AV), Behavioral predictors (Whisk, Run, Pupil)
-def decompose(Model:EncodingModel, motor_together:bool = True
+def decompose(Model:EncodingModel, motor_together:bool = True,
+              colnames:list[str] | None = None
               )->dict[str:np.ndarray]:
     '''
     This function needs to be modified based on the 
     desired decomposition of design matrix in Model
     NOTE: assumes linear model which can be decomposed easily!
     '''
+    if colnames is not None:
+        Model.colnames = colnames
+
     decomposed_drives = dict()
     # AV first so V and A drawn over it in unimodal plots
     if motor_together:
@@ -719,11 +732,12 @@ def decompose(Model:EncodingModel, motor_together:bool = True
     
     return decomposed_drives
 
-#TODO: parallelize
-# NOTE: unparallelized version would take 20 hours to run for all neurons!
+#TODO: significant EV (build up random distribution (1000 x EV_vals) 
+#       for each neuron - refit 1000 times)
+#       only need to save weights, can rebuild predicted signal from saved weights with same design matrix
 @time_loops
 def quantify_encoding_models(gXY, 
-                             yTYPE:Literal['neuron', 'population'] = 'population',
+                             yTYPE:Literal['neuron', 'population'] = 'neuron',
                              plot:bool = True,
                              EV:bool = False, 
                              rerun:bool = False):
@@ -898,12 +912,21 @@ def clean_group_signal(group_name:str,
     if os.path.exists(sigpath := os.path.join(storage_folder, 
                                 f'{group_name}_{yTYPE}_signal_GLMclean.npy')
                     ) and not redo:
-        SIG_CLEAN = np.load(sigpath)
-        print(f'Loaded signal from {sigpath}')
         if not exportDrives:    
-           return SIG_CLEAN
+            SIG_CLEAN = np.load(sigpath)
+            print(f'Loaded signal from {sigpath}')
+            return SIG_CLEAN
         else:
-            raise NotImplementedError
+            drive_files = [f for f in os.listdir(storage_folder) 
+                           if 'drive_GLMclean.npy' in f]
+            # assume naming convention here (that I implement when saving files below)
+            driveDict = dict()
+            for drive_file in drive_files:
+                allnameparts = drive_file.split('_')
+                component_name = allnameparts[2]
+                driveDict[component_name] = np.load(drive_file)
+
+            return driveDict
     
     # design matrix (containing signal) for chosen group
     gXY = design_matrix(pre_post=pre_post, group=group_name)
@@ -914,7 +937,8 @@ def clean_group_signal(group_name:str,
                                         groupDict['trial_size'], 
                                         groupDict['stimulus_window'])
     Xcolnames = groupDict['Xcolnames']
-    assert isinstance(yall, list) and len(yall) == Xall.shape[-1], 'y should be a list of (trials x ts x neurons) arrays for each session'
+    assert (isinstance(yall, list) and 
+            len(yall) == Xall.shape[-1]), 'y should be a list of (trials x ts x neurons) arrays for each session'
     assert all(Xall.shape[0] == yall[i].shape[0] * yall[i].shape[1] for i in range(len(yall))
                    ), 'Entries of y should still be in shape (all_trials, n_ts, neurons)'
     
@@ -959,10 +983,6 @@ def clean_group_signal(group_name:str,
             worker_args = [(SD, nbi, False, True, exportDrives) for nbi in neuron_batches]
             
             # Multicore
-            # Python multiprocessing - doesn't work great
-            # with MP.Pool(processes=MP.cpu_count()) as worker_pool:
-            #     session_results = worker_pool.starmap(batch_worker, worker_args)
-            
             # Joblib parallel
             session_results = Parallel(n_jobs=MP.cpu_count())(delayed(batch_worker)(*args) for args in worker_args)
             
@@ -970,12 +990,11 @@ def clean_group_signal(group_name:str,
             # session_results = [batch_worker(*args) for args in worker_args]
             
             for batch_res in session_results:
-                for r in batch_res:
-                    CLEAN_sessions.append(r[0])
+                for res in batch_res:
+                    CLEAN_sessions.append(res[0])
                     if exportDrives:
-                        raise NotImplementedError
-                    # for dname, dSig in r[1].items():
-                    #     session_DRIVES[dname].append(dSig)
+                        for dname, dSig in res[1].items():
+                            session_DRIVES[dname].append(dSig)
             
             shmX.close(); shmY.close(); shmTT.close()
             shmX.unlink(); shmY.unlink(); shmTT.unlink()
@@ -1003,13 +1022,13 @@ def clean_group_signal(group_name:str,
     SIG_CLEAN = np.dstack(CLEAN_sessions)
     np.save(sigpath, SIG_CLEAN)
     if exportDrives:
-        raise NotImplementedError
-        # for drive, drive_list in session_DRIVES.items():
-        #     session_DRIVES[drive] = np.dstack(drive_list)
-        #     np.save(os.path.join(storage_folder, f'{group_name}_GLM{drive}_{yTYPE}.npy'), 
-        #             session_DRIVES[drive])
+        for drive, drive_list in session_DRIVES.items():
+            driveRES = np.dstack(drive_list)
+            np.save(os.path.join(storage_folder, f'{group_name}_{yTYPE}_{drive}drive_GLMclean.npy'), 
+                    driveRES)
+            session_DRIVES[drive] = np.dstack(drive_list)
         
-        # return SIG_CLEAN, session_DRIVES
+        return SIG_CLEAN, session_DRIVES
     else:
         return SIG_CLEAN
 
@@ -1196,6 +1215,7 @@ def run_model(X:np.ndarray, y:np.ndarray,
         if not return_drives:
             return (cleaned_signal,)
         else:
+            pred_components['Model'] = predicted
             return cleaned_signal, pred_components
     
     # Plotting the predictions and raw signal
@@ -1241,19 +1261,31 @@ def run_model(X:np.ndarray, y:np.ndarray,
 # TODO: docstring to explain inputs        
 def explained_variance(target_trial_locked:np.ndarray, 
                        pred_components:dict[int:np.ndarray], 
-                       predicted:np.ndarray,
                        TTsession:np.ndarray, 
                        trial_size:int,
+                       predicted:np.ndarray | None = None,
                        test_trial_indices:np.ndarray|None = None,
+                       exportAS:type = dict,
+                       trial_groups:list[tuple[int]] = [(6,7), (0,3), (1,5), (2,4)],
+                       trial_group_labels:list[str] = ['V', 'A', 'AV+', 'AV-']
                        )->dict[str:list[float]]:
-    # collect results here
-    model_results = defaultdict(list)
-
+    '''
+    targe_trial_locked is (ntrials, nts, optional[nshuffles]) 2D / 3D array 
+    pred_components are flattened 1D arrays (ntrials * nts)
+    '''
     # Explained variance metric
-    EV : function = lambda ypred, truth: 1 - (np.var(truth - ypred)/np.var(truth))
-    trial_groups = [(6,7), (0,3), (1,5), (2,4)]
-    trial_group_labels = ['V', 'A', 'AV+', 'AV-']
-
+    EV1 : callable = lambda ypred, truth: 1 - (np.var(truth - ypred)/np.var(truth))
+    EV2 : callable = lambda ypred, truth: 1 - (np.var(truth.T - ypred, axis = 1)/np.var(truth, axis = 0))
+    
+    if len(target_trial_locked.shape) == 2:
+        EV = EV1
+    elif len(target_trial_locked.shape) == 3:
+        EV = EV2
+    else:
+        raise ValueError(
+    'target_trial_locked needs to be either signal for 1 neuron (ntrials, nts) ' \
+    'OR distribution of shuffled signals for one neuron (ntrials, nts, nshuffles)')
+    
     if test_trial_indices is not None:
         # Index only into TEST trials
         TTsession = TTsession[test_trial_indices]
@@ -1263,19 +1295,32 @@ def explained_variance(target_trial_locked:np.ndarray,
                                                             trial_types=TTsession,
                                                             trial_type_combinations=trial_groups,
                                                             separation_labels=trial_group_labels)
-
+    if 'Model' not in pred_components and predicted is not None:
+        pred_components['Model'] = predicted
     
-    pred_components2 = pred_components.copy()
-    pred_components2['Model'] = predicted
+    # collect results here
+    if exportAS == dict:
+        model_results = defaultdict(list)
+    elif exportAS == np.ndarray and len(target_trial_locked.shape) == 3:
+        model_results = [np.zeros(shape=(len(pred_components) * 2, # once averaged, once trial-level for each predictor block
+                                         target_trial_locked.shape[-1] # number of shuffles
+                                         )) 
+                        for _ in trial_group_labels] 
+        model_results = np.array(model_results) # (ntrial_groups x (2*ncomponens) x nshuffles)
+
+        results_explanation = {'rows': trial_group_labels, 
+                               'columns':['_' for _ in range(len(pred_components) * 2)], 
+                               'depth':f'{target_trial_locked.shape[-1]} times shuffle distribution'}
+
     # Go through trial types for individual predictors + full model
-    for ip, (predictor_name, predictor_drive) in enumerate(pred_components2.items()):
+    for ip, (predictor_name, predictor_drive) in enumerate(pred_components.items()):
         predictor_drive = predictor_drive.reshape((len(predictor_drive)//trial_size, trial_size))
 
         if test_trial_indices is not None:
         # Index only into TEST trials
             predictor_drive = predictor_drive[test_trial_indices,:]
 
-        predictor_TT:dict[int:np.ndarray] = general_separate_signal(sig=predictor_drive,
+        predictor_TT:dict[str:np.ndarray] = general_separate_signal(sig=predictor_drive,
                                                                     trial_types=TTsession,
                                                                     trial_type_combinations=trial_groups,
                                                                     separation_labels=trial_group_labels)
@@ -1284,40 +1329,58 @@ def explained_variance(target_trial_locked:np.ndarray,
             pred_tt_average = np.mean(pred_ttsignal, axis=0)
             target_tt_average = np.mean(target_TT[ttname], axis = 0)
             EV_average= EV(pred_tt_average, target_tt_average)
-            if ip == 0:
+            if ip == 0 and isinstance(model_results, dict):
                 model_results['trial_type'].append(ttname)
                 # if i == 0: # degbugging check
                 #     print(f'TT Average predictor_shape:{pred_tt_average.shape}, TT Average target_shape:{target_tt_average.shape}')
-            model_results[f'EV_{predictor_name}_a'].append(EV_average)
+            if isinstance(model_results, dict):
+                model_results[f'EV_{predictor_name}_a'].append(EV_average)
+            else:
+                model_results[i, ip, :] = EV_average
+                results_explanation['columns'][ip] = f'EV_{predictor_name}_a'
 
             # Explained variance for trial-trial signal within trial-type
             pred_tt_flat = pred_ttsignal.flatten()
-            target_tt_flat = target_TT[ttname].flatten()
+
+            if EV == EV2:
+                target_tt_flat = target_TT[ttname].reshape(-1, target_TT[ttname].shape[2])
+            else:
+                target_tt_flat = target_TT[ttname].flatten()
+
             EV_trial= EV(pred_tt_flat, target_tt_flat)
-            model_results[f'EV_{predictor_name}_t'].append(EV_trial)
+            if isinstance(model_results, dict):
+                model_results[f'EV_{predictor_name}_t'].append(EV_trial)
+            else:
+                model_results[i, ip+len(pred_components), :] = EV_trial
+                results_explanation['columns'][ip+len(pred_components)] = f'EV_{predictor_name}_t'
             # if ip == 0 and i ==0: debugging check
             #     print(f'Trial_level predictor_shape:{pred_tt_flat.shape}, Trial_level target_shape:{target_tt_flat.shape}')
     
+    if isinstance(model_results, np.ndarray):
+        if os.path.exists(explpath := os.path.join('pydata', 'EV3Dexplanation.pkl')):
+            pass
+        else:
+            with open(explpath, 'wb') as expl_file:
+                pickle.dump(results_explanation, expl_file)
+
     return model_results
-
-
 
 # ----------- Running as a script ---------------
 if __name__ == '__main__':
     # get cleaned signals
     # TODO: incorporate exporting and loading drives
-    # res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=False, redo=True)
-    # res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=False, redo=True)
+    res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=True, redo=True)
+    res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=True, redo=True)
     
     gXY = design_matrix(pre_post='pre', group='both', show=False)
     EV_res = quantify_encoding_models(
-        gXY=gXY, yTYPE='population', 
-        plot=True, EV=False,
+        gXY=gXY, yTYPE='neuron', 
+        plot=False, EV=True,
         rerun=True
         )
     
     # if time
-    # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=False)
-    # res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=False)
+    # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=True, redo = True)
+    # res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=True, redo = True)
     
     

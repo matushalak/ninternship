@@ -1,6 +1,7 @@
 from GLM import design_matrix, quantify_encoding_models
 from AUDVIS import Behavior, AUDVIS
 from VisualAreas import Areas
+import pickle
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,38 +12,154 @@ import sklearn.cluster as skClust
 from typing import Literal
 
 # ------------ Class that analyzes explained variance calculated above -----------
-# TODO: add brain area column
 class EvAnalysis:
     def __init__(self,
                  resultsDF: str | pd.DataFrame,
                  ARs:list[Areas],
                  filterOUT_AV:bool = True,
-                 combine_TT_AV:bool = True):
+                 combine_TT_AV:bool = True,
+                 savedir:str = 'pydata'):
+        
+        EVshuffles = [f for f in os.listdir(savedir) 
+                        if 'EVshuffle_distribution' in f]
+
+        assert (len(EVshuffles) > 0 and 
+                isinstance(EVshuffles, list) and 
+                isinstance(EVshuffles[0], str)
+                ), 'Error in provided list of shuffle paths. EVshuffles expects list[path, ...]'
+        # null distributions for each neuron, predictor, trial type,...
+        self.EVnull = dict()
+        assert os.path.exists(explain_file := os.path.join(savedir, 
+                                                           'EV3Dexplanation.pkl')
+                            ), 'Explanation file for the shuffled distributions is missing, try rerunning glm_utils.py for a few neurons, '\
+                            'it will be recreated immediately'
+        with open(explain_file, 'rb') as expl_f:
+            self.shuffle_explain = pickle.load(expl_f)
+
+        for shuffle_path in EVshuffles:
+            group_name = shuffle_path.split('_')[0]
+            self.EVnull[group_name] = np.load(os.path.join(savedir, shuffle_path))
+
+        self.signif_df = self.nullXpercentile(percentile=99)
+
         if isinstance(resultsDF, str):
+            if savedir not in resultsDF:
+                resultsDF = os.path.join(savedir, resultsDF)
             resultsDF = pd.read_csv(resultsDF)
         
         # load DF with results
         self.df = resultsDF
         
-        if filterOUT_AV:
-            self.df = self.df.loc[:,[c for c in self.df.columns if 'AV' not in c]]
-
         # load in areas into a dictionary
         self.Areas =  {ar.NAME:ar for ar in ARs}
         # absolute neuron IDs
         self.n_per_group = self.add_absolute_neuron_ids()
         # transform to long format for easier plotting
         self.df = self.long_format_df()
+        # add shuffled distribution percentile into main dataframe
+        self.df = self.add_nullXpercentile()
+        # add boolean significance
+        self.df = self.add_signif()
 
         if combine_TT_AV:
             self.df.loc[(self.df['trial_type'] == 'AV+') | 
                         (self.df['trial_type'] == 'AV-'), 
                         'trial_type'] = 'AV'
+            group_cols = [col for col in self.df.columns if col != 'EV']
+            self.df = self.df.groupby(group_cols, as_index=False)['EV'].mean()
+            self.df.sort_values(by=['group_id', 'session_id', 'neuron_id_overall', 'Predictors'], inplace=True)
 
         # add brain areas to each neuron
         self.df = self.add_brain_areas()
+        if filterOUT_AV:
+            self.df = self.df.loc[:,[c for c in self.df.columns if 'AV' not in c]]
 
-    
+    def add_signif(self):
+        '''
+        Assign significance based on held-out performance
+        '''
+        # significance based on held-out performance
+        df = self.df.copy()
+        df['Significant'] = ((df['Dataset'] == 'held_out') & 
+                            (df['EV'] > df[f'EV{self.PERCENTILE}']))
+        key_cols = [
+        "neuron_id_overall",
+        'session_id',
+        "group_id",
+        "trial_type",
+        "Predictors",
+        "Calculation",
+        ]
+
+        # Propagate the significant flag to every in-sample row 
+        df["Significant"] = df.groupby(key_cols)["Significant"].transform("any")
+        
+        return df
+
+    def add_nullXpercentile(self):
+        """
+        Merge `sig_df` (held-out significance results) into `base_df`
+        and create/column `EV{self.PERCENTILE}`.
+
+        Returns
+        -------
+        pd.DataFrame
+            Same rows as `base_df`, but with an `EV{self.PERCENTILE}` column filled-in.
+        """
+        key_cols = [
+            "neuron_id_overall",
+            "group_id",
+            "trial_type",
+            "Predictors",
+            "Calculation",
+        ]
+        sig_df = self.signif_df.copy()
+        sig_series = sig_df.set_index(key_cols)[f"EV{self.PERCENTILE}"]
+
+        base_df = self.df.copy()
+        base_df["EV99"] = (
+            base_df.set_index(key_cols)                 # build the same index
+                    .index.map(sig_series)              # lookup
+                    .to_numpy()                         # back to ndarray
+        )
+        return base_df
+
+
+    def nullXpercentile(self, percentile:float = 99
+                         )->pd.DataFrame:
+        self.PERCENTILE = percentile
+        self.raw_percentiles = {g: np.percentile(gEVarr, q = percentile, 
+                                             axis = 2) # gEVarr is a 4D array
+                            for g, gEVarr in self.EVnull.items()}
+        
+        n_per_group = [evarr.shape[-1] for evarr in self.raw_percentiles.values()]
+        # first build up a wide dataframe
+        sigDF = {'neuron_id_overall':np.concatenate(
+            [np.repeat(np.arange(npg), repeats=len(self.shuffle_explain['rows']))
+             for npg in n_per_group]),
+             'group_id':np.concatenate(
+            [[gname] * len(self.shuffle_explain['rows']) * npg
+             for npg, gname in zip(n_per_group, self.raw_percentiles.keys())]
+             )}
+        
+        sigDF['trial_type'] = self.shuffle_explain['rows'] * (sigDF['group_id'].size // 
+                                                              len(self.shuffle_explain['rows']))
+
+        dfPercentiles = [np.vstack(np.unstack(EVperc, axis = 2)) # here EVperc is a 3D array
+                         for g, EVperc in self.raw_percentiles.items()]
+        dfPercentiles = np.concatenate(dfPercentiles, axis=0)
+        
+        for icol, colname in enumerate(self.shuffle_explain['columns']):
+            sigDF[colname] = dfPercentiles[:,icol]
+
+        wide_significanceDF = pd.DataFrame(sigDF)
+        long_significanceDF = self.long_format_df(df = wide_significanceDF,
+                                                  valname=f'EV{self.PERCENTILE}',
+                                                  include_in_sample=False)
+        
+        return long_significanceDF
+
+
     def add_absolute_neuron_ids(self):
         n_per_group = self.df.groupby("group_id").size().values // self.df["trial_type"].nunique()
         neuron_ids = np.concatenate([np.repeat(np.arange(npg), repeats=self.df["trial_type"].nunique())
@@ -51,18 +168,30 @@ class EvAnalysis:
         return n_per_group
     
 
-    def long_format_df(self):
+    def long_format_df(self, 
+                       df:pd.DataFrame | None = None,
+                       valname:str = 'EV',
+                       include_in_sample:bool = True):
+        if df is None:
+            df = self.df 
+        else:
+            assert isinstance(df, pd.DataFrame), f'Supplied df is not a dataframe but {type(df)}!'
         # 1) melt into long form
-        df_long = self.df.melt(
-            id_vars=[c for c in self.df.columns if 'EV' not in c],  # whatever other columns you have
-            value_vars=[c for c in self.df.columns if 'EV' in c],
+        df_long = df.melt(
+            id_vars=[c for c in df.columns if 'EV' not in c],  # whatever other columns you have
+            value_vars=[c for c in df.columns if 'EV' in c],
             var_name='metric',
-            value_name='EV'
+            value_name=valname
         )
 
         # 1) split that 'metric' into the three pieces
         #    the pattern is EV_<Predictors>_<Calculation>_<Dataset>
-        df_long[['drop','Predictors','Calculation','Dataset']] = (
+        if include_in_sample:
+            split_cols = ['drop','Predictors','Calculation','Dataset']
+        else:
+            split_cols = ['drop','Predictors','Calculation']
+        
+        df_long[split_cols] = (
             df_long['metric']
             .str.split('_', expand=True)
         )
@@ -79,22 +208,28 @@ class EvAnalysis:
 
         # 3) More descriptive names:
         df_long['Calculation']    = df_long['Calculation'].map({'a':'averaged','t':'trial'})
-        df_long['Dataset'] = df_long['Dataset'].map({'full':'in_sample', 'eval':'held_out'})
+        if include_in_sample:
+            df_long['Dataset'] = df_long['Dataset'].map({'full':'in_sample', 'eval':'held_out'})
         
         # 4) Sort in the right order
-        df_long.sort_values(by=['group_id', 'session_id', 'neuron_id_overall'], inplace=True)
-        df_long['EV'] = df_long['EV'].clip(lower=0)
+        if 'session_id' in df_long.columns:
+            df_long.sort_values(by=['group_id', 'session_id', 'neuron_id_overall'], inplace=True)
+            df_long['EV'] = df_long['EV'].clip(lower=0)
+        else:
+            df_long.sort_values(by=['group_id', 'neuron_id_overall'], inplace=True)
 
         return df_long
     
 
     def wide_format_df(self, 
                        calc:Literal['averaged', 'trial'] = 'averaged', 
-                       dataset:Literal['in_sample', 'held_out'] = 'in_sample'
+                       dataset:Literal['in_sample', 'held_out'] = 'in_sample',
+                       signif_only:bool = True
                        )->pd.DataFrame:
         selection = ((self.df['Dataset']==dataset) & 
                      (self.df['Calculation']==calc) & 
-                     (self.df['Predictors'].isin(['V', 'A', 'Motor'])))
+                     (self.df['Predictors'].isin(['V', 'A', 'Motor'])) &
+                     ((self.df['Significant'] == True) if signif_only else True))
         wide_slice = self.df.loc[selection]
 
         wide = wide_slice.pivot_table(index=['group_id', 'Region', 'neuron_id_overall'],
@@ -108,7 +243,7 @@ class EvAnalysis:
         for g, gAreas in self.Areas.items():
             for region_name, where_region in gAreas.area_indices.items():
                 mask = (
-                (self.df['group_id']     == g) &
+                (self.df['group_id'] == g) &
                 (np.isin(self.df['neuron_id_overall'], where_region))
                 )
                 # 3) Assign *into* the 'Region' column (note the *string* 'Region', not self.df['Region'])
@@ -191,7 +326,8 @@ class EvAnalysis:
         data = self.df.loc[((self.df['Calculation'] == calc) & 
                             (self.df['Dataset'] == dataset) &
                             (self.df['trial_type'] == tt) & 
-                            (self.df['Predictors'] == 'Motor')
+                            (self.df['Predictors'] == 'Motor') &
+                            (self.df['Significant'] == True)
                             )].copy()
         
         bp = sns.catplot(data=data, x = 'Region', y = 'EV', 
@@ -208,6 +344,7 @@ class EvAnalysis:
         plt.tight_layout()
         plt.show()
     
+
     # NOTE: implement LABEL selection based on shuffle test!!!
     def order_neurons(self,
                       calc:Literal['averaged', 'trial'] = 'averaged', 
@@ -264,7 +401,8 @@ if __name__ == '__main__':
     #     )
     
     # Initialize class
-    EVa = EvAnalysis(resultsDF=os.path.join('pydata', 'GLM_ev_results_neuron.csv'), 
+    EVa = EvAnalysis(resultsDF=os.path.join('pydata', 
+                                            'GLM_ev_results_neuron.csv'), 
                      ARs=[Areas(av, get_indices=True) for av in AVs])
 
     # Analysis 1) Compare across :
@@ -276,14 +414,14 @@ if __name__ == '__main__':
     # averaged vs trial - 2 figures
     # in sample vs held out, 2 figures
     # EVa.comparison(calc='averaged')
-    # EVa.comparison(calc='averaged', dataset='held_out', 
-    #             #    hist_only=True,
-    #             # show=True
-    #                )
-    # EVa.comparison(calc='trial', dataset='held_out',
-    #             #    hist_only=True,
-    #             # show = True
-    #                )
+    EVa.comparison(calc='averaged', dataset='held_out', 
+                #    hist_only=True,
+                # show=True
+                   )
+    EVa.comparison(calc='trial', dataset='held_out',
+                #    hist_only=True,
+                # show = True
+                   )
     # EVa.comparison(calc='trial', dataset='held_out')
 
     # Analysis 2) Compare only motor
