@@ -1,7 +1,11 @@
-from GLM import design_matrix, quantify_encoding_models
+from GLM import design_matrix, clean_group_signal
 from AUDVIS import Behavior, AUDVIS
 from VisualAreas import Areas
+from analysis_utils import plot_avrg_trace
+from glm_utils import drives_loader
+
 import pickle
+import scipy.stats as stats
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,6 +13,7 @@ import seaborn as sns
 import os
 import sklearn.cluster as skClust
 
+from collections import defaultdict
 from typing import Literal
 
 # ------------ Class that analyzes explained variance calculated above -----------
@@ -16,7 +21,6 @@ class EvAnalysis:
     def __init__(self,
                  resultsDF: str | pd.DataFrame,
                  ARs:list[Areas],
-                 filterOUT_AV:bool = True,
                  combine_TT_AV:bool = True,
                  savedir:str = 'pydata'):
         
@@ -58,21 +62,21 @@ class EvAnalysis:
         self.df = self.long_format_df()
         # add shuffled distribution percentile into main dataframe
         self.df = self.add_nullXpercentile()
-        # add boolean significance
-        self.df = self.add_signif()
 
         if combine_TT_AV:
             self.df.loc[(self.df['trial_type'] == 'AV+') | 
                         (self.df['trial_type'] == 'AV-'), 
                         'trial_type'] = 'AV'
-            group_cols = [col for col in self.df.columns if col != 'EV']
-            self.df = self.df.groupby(group_cols, as_index=False)['EV'].mean()
+            group_cols = [col for col in self.df.columns if 'EV' not in col]
+            self.df = self.df.groupby(group_cols, as_index=False)[['EV', f'EV{self.PERCENTILE}']].max()
             self.df.sort_values(by=['group_id', 'session_id', 'neuron_id_overall', 'Predictors'], inplace=True)
 
+        # add boolean significance
+        self.df = self.add_signif()
+        
         # add brain areas to each neuron
         self.df = self.add_brain_areas()
-        if filterOUT_AV:
-            self.df = self.df.loc[:,[c for c in self.df.columns if 'AV' not in c]]
+        
 
     def add_signif(self):
         '''
@@ -93,6 +97,17 @@ class EvAnalysis:
 
         # Propagate the significant flag to every in-sample row 
         df["Significant"] = df.groupby(key_cols)["Significant"].transform("any")
+        
+        # Overall model significant for that trial type
+        model_sig_cols = [
+        "neuron_id_overall",
+        'session_id',
+        "group_id",
+        "trial_type",
+        "Calculation",
+        ]
+        df['ModelSignificant'] = (df['Predictors'] == 'Model') & (df['Significant'] == True)
+        df['ModelSignificant'] = df.groupby(model_sig_cols)['ModelSignificant'].transform('any')
         
         return df
 
@@ -222,19 +237,25 @@ class EvAnalysis:
     
 
     def wide_format_df(self, 
+                       tt:Literal['A', 'V', 'AV', 'all'] = 'AV',
                        calc:Literal['averaged', 'trial'] = 'averaged', 
-                       dataset:Literal['in_sample', 'held_out'] = 'in_sample',
-                       signif_only:bool = True
+                       dataset:Literal['in_sample', 'held_out'] = 'held_out',
+                       sig:bool = True
                        )->pd.DataFrame:
         selection = ((self.df['Dataset']==dataset) & 
                      (self.df['Calculation']==calc) & 
-                     (self.df['Predictors'].isin(['V', 'A', 'Motor'])) &
-                     ((self.df['Significant'] == True) if signif_only else True))
-        wide_slice = self.df.loc[selection]
+                     (self.df['Predictors'].isin(['V', 'A', 'Motor'])) 
+                     )
+        if tt != 'all':
+            selection = ((selection) & (self.df['trial_type'] == tt))
+        
+        if sig:
+            selection = selection & self.df['ModelSignificant'] == True
 
+        wide_slice = self.df.loc[selection]
         wide = wide_slice.pivot_table(index=['group_id', 'Region', 'neuron_id_overall'],
                                       columns='Predictors',
-                                      values='EV')
+                                      values=['EV', 'Significant'])
         return wide
         
 
@@ -252,88 +273,23 @@ class EvAnalysis:
         return self.df.loc[self.df['Region']!='']
 
 
-    # TODO: Should quantify EV only during stimulus presentation (and shortly after)
-    def comparison(self, calc:Literal['averaged', 'trial'] = 'averaged', 
-                   dataset:Literal['in_sample', 'held_out'] = 'in_sample',
-                   hist_only:bool = False,
-                   show:bool = False):
-        
-        color_scheme = {'g1pre':'grey', 'g2pre':'darkorange'}
-
-        if hist_only:
-            hist_data = self.df.loc[((self.df['Calculation'] == calc) & 
-                                    (self.df['Dataset'] == dataset) &
-                                    (self.df['Predictors'] == 'Model') &
-                                    (self.df['trial_type'] == 'AV'))].copy()
-            dp= sns.displot(data = hist_data, x = 'EV', hue = 'group_id', col = 'Region',
-                            palette=color_scheme,
-                            kind='hist')
-            plt.legend(loc = 3)
-            plt.tight_layout()
-            plt.show()
-            plt.close()
-            return 'Done'
-        
-        for reg in self.df['Region'].unique():
-            data = self.df.loc[((self.df['Calculation'] == calc) & 
-                                (self.df['Dataset'] == dataset) &
-                                (self.df['Region'] == reg)
-                                & (self.df['EV'] > 0)
-                                )].copy()
-            
-            # Barplot layer
-            bp = sns.catplot(data=data, x = 'Predictors', y = 'EV', 
-                            order = ['V', 'A', 'Motor', 'Model'],
-                            hue = 'group_id', 
-                            col = 'trial_type',
-                            estimator='mean', # median maybe more faithful but in LM then no AUD EV
-                            kind='box', 
-                            # edgecolor = 'k',
-                            col_order=['V', 'A', 'AV'], 
-                            palette=color_scheme,
-                            # alpha = 0.7
-                            )
-            
-            bp.legend.set_visible(False)
-            plt.suptitle(reg)
-            
-            if calc != 'trial':
-                # strip plot layer (data points)
-                for ax, this_tt in zip(bp.axes.flat, bp.col_names):
-                    sns.stripplot(data=data.query("trial_type == @this_tt"),
-                                x='Predictors', y='EV',
-                                hue='group_id', dodge=True,          # align with bars
-                                # linewidth=0.1, edgecolor='k',
-                                palette=color_scheme,
-                                jitter=0.3, size=4,
-                                alpha = 0.2, 
-                                ax=ax,              # draw on the same subplot
-                                legend=False)       # avoid duplicate legends
-            
-            bp.figure.legend()
-            plt.tight_layout()
-            if show:
-                plt.show()
-            else:
-                plt.savefig(f'{reg.replace('/', '|')}_EV_{calc}_{dataset}.png', dpi = 300)
-            plt.close()
-
-    
-    def motor_comparison(self,
-                         tt:Literal['A', 'V', 'AV'] = 'A',
-                         calc:Literal['averaged', 'trial'] = 'averaged', 
-                         dataset:Literal['in_sample', 'held_out'] = 'in_sample'):
+    def preditor_comparison(self,
+                            tt:Literal['A', 'V', 'AV'] = 'AV',
+                            calc:Literal['averaged', 'trial'] = 'averaged', 
+                            dataset:Literal['in_sample', 'held_out'] = 'held_out'):
         data = self.df.loc[((self.df['Calculation'] == calc) & 
                             (self.df['Dataset'] == dataset) &
                             (self.df['trial_type'] == tt) & 
-                            (self.df['Predictors'] == 'Motor') &
-                            (self.df['Significant'] == True)
+                            (self.df['Predictors'] != 'Model') &
+                            (self.df['EV'] > 0) &
+                            (self.df['ModelSignificant'] == True)
                             )].copy()
         
         bp = sns.catplot(data=data, x = 'Region', y = 'EV', 
                             hue = 'group_id', 
-                            estimator='mean', # median maybe more faithful but in LM then no AUD EV
-                            kind='box', 
+                            estimator='median',
+                            kind='bar', 
+                            col = 'Predictors', col_order=['V', 'A', 'Motor'],  
                             # edgecolor = 'k',
                             # palette=color_scheme,
                             # alpha = 0.7
@@ -341,15 +297,18 @@ class EvAnalysis:
             
         bp.legend.set_visible(False)
         bp.figure.legend()
+        bp.figure.suptitle(f'EV comparison [EV on {dataset} {calc} data for {tt} trials]')
         plt.tight_layout()
+        plt.savefig(f'EV_region_group_comparison_{calc}_{dataset}_TT({tt}).png', dpi = 300)
         plt.show()
     
 
-    # NOTE: implement LABEL selection based on shuffle test!!!
     def order_neurons(self,
+                      tt:Literal['A', 'V', 'AV'] = 'AV',
                       calc:Literal['averaged', 'trial'] = 'averaged', 
-                      dataset:Literal['in_sample', 'held_out'] = 'in_sample'):
-        wide = self.wide_format_df(calc=calc, dataset=dataset)
+                      dataset:Literal['in_sample', 'held_out'] = 'held_out'):
+        wide = self.wide_format_df(calc=calc, dataset=dataset, 
+                                   tt = tt, sig=True)
         group_ids = wide.index.get_level_values('group_id').unique()
         regions = wide.index.get_level_values('Region').unique()
         # mapping predictor → row
@@ -357,25 +316,27 @@ class EvAnalysis:
         # colours for exclusive neurons
         col_map = {'V':'dodgerblue', 'A':'red', 'Motor':'green'}
 
-        # TODO: which neuron is which category (based on shuffle)
-        # now naive MAX
-        wide['Label'] = wide.apply(lambda r: r.idxmax(), axis = 1)
-        
+        # Label which neuron is which category (based on shuffle)
+        wide['Label'] = wide.apply(lambda r: r['Significant'].idxmax() if 
+                                   (r['Significant'].max() != 0 and r['Significant'].sum() != 2)
+                                   else r['EV'].idxmax(), 
+                                   axis = 1)
+        # breakpoint()
         for region in regions:
             for group in group_ids:
                 mask = (wide.index.get_level_values('Region') == region) & \
                    (wide.index.get_level_values('group_id') == group)
                 sub_wide = wide.loc[mask]
                 # Order for plot
-                v_minus_m = sub_wide['V'] - sub_wide['Motor']
+                v_minus_m = sub_wide['EV']['V'] - sub_wide['EV']['Motor']
                 order = sub_wide.assign(v_m = v_minus_m).sort_values('v_m', ascending=False)
 
                 fig, axes = plt.subplots(3, 1, figsize=(14, 4), sharex=True)
                 for n, row_data in order.iterrows():
                     x = np.where(order.index==n)[0][0]                # bar position
-                    for pred, ev_value in row_data[['V','A','Motor']].items():
+                    for pred, ev_value in row_data['EV'][['V','A','Motor']].items():
                         ax = axes[row[pred]]
-                        color = (col_map[pred] if row_data['Label']==pred else 'gray')
+                        color = (col_map[pred] if (row_data['Label']==pred).bool() else 'gray')
                         ax.bar(x, ev_value, color=color, width=1.0)
 
                 for ax in axes:
@@ -389,48 +350,108 @@ class EvAnalysis:
 
     def cluster_neurons(self):
         skClust.KMeans()
+
     
+    def well_modelled(self, 
+                      calc:Literal['averaged', 'trial'] = 'averaged'):
+        sub_df = self.df.loc[(self.df['Calculation'] == calc) & (self.df['Dataset'] == 'held_out')]
+        anygood = sub_df.groupby(['group_id', 'neuron_id_overall']
+                                  )['ModelSignificant'].any()
+        anygood = pd.DataFrame(anygood.reset_index())
+        anygood = anygood.loc[anygood['ModelSignificant'] == True, 
+                              ['group_id', 'neuron_id_overall']]
+        good_dict = {g:s.to_numpy() for g, s in anygood.groupby('group_id')['neuron_id_overall']}
+        return good_dict
+
+
+def average_clean_plot(AVs:list[AUDVIS], 
+                       well_modelled_neurons:dict[str:np.ndarray],
+                       pre_post: Literal['pre', 'post', 'both'] = 'pre'):
+    component_colors = {'Vdrive':'dodgerblue', 'Adrive':'red', 'AVdrive':'goldenrod', 
+                        'Motordrive':'green',
+                        'Modeldrive':'magenta', 
+                        'Cleaned dF/F':'grey',
+                        'Raw dF/F':'black'
+                        }
+    # prepare time for plotting
+    pre = round(-1/AVs[0].SF * AVs[0].trial_frames[0])
+    post = (1/AVs[0].SF * AVs[0].trial_frames[1])
+    time = np.arange(pre, post, 1/AVs[0].SF)
+    trial_groups:list[tuple[int]] = [(6,7), (0,3), (1,5,2,4)]
+    trial_group_labels:list[str] = ['V', 'A', 'AV']
+
+    for AV in AVs:
+        # collect drives for plotting
+        drives: dict[str:np.ndarray] = drives_loader(group_name=AV.NAME)
+        drives['Cleaned dF/F'] = clean_group_signal(group_name=AV.NAME, pre_post=pre_post)
+        drives['Raw dF/F'] = AV.baseline_correct_signal(AV.zsig, AV.TRIAL[0])
+        # well modelled neurons (significantly at least for one trial type)
+        selection = well_modelled_neurons[AV.NAME]
+
+        # get brain area indices
+        AR = Areas(AV, get_indices=True)
+
+        # set-up figure
+        f, ax  = plt.subplots(nrows=4, ncols=3, sharey='all', sharex='col',
+                              figsize = (12, 9))
+
+        for iarea, (area_name, area_indices) in enumerate(AR.area_indices.items()):
+            for iname, (name, sig) in enumerate(drives.items()):
+                # split into trials
+                sig_dict = AV.separate_signal_by_trial_types(signal=sig)
+                # get well-modeled neurons for each trial-type group
+                sig2 = defaultdict(list)
+                for tt, sigtt in sig_dict.items():
+                    ttname = None
+                    for itg, tg in enumerate(trial_groups):
+                        if tt in tg:
+                            ttname = trial_group_labels[itg]
+                    sig2[ttname].append(sigtt[:,:,np.intersect1d(selection, area_indices)])
+                
+                del sig_dict # free up memory
+                
+                for itg, tn in enumerate(trial_group_labels):
+                    if tn in ('V', 'A') and 'AV' in name:
+                        continue
+                    sig2[tn] = np.mean(np.vstack(sig2[tn]), axis = 0)
+                    plot_avrg_trace(time=time, avrg=np.mean(sig2[tn], axis=1), #SEM = stats.sem(sig2[tn], axis = 1),
+                                    Axis=ax[iarea, itg], label=name, title=f'{tn}trials_{area_name}', 
+                                    col=component_colors[name],
+                                    tt = itg)
+                    if iarea == len(AR.area_indices)-1:
+                        ax[iarea, itg].set_xlabel('Time (s)')
+                    if itg == 0:
+                        ax[iarea, itg].set_ylabel('z(dF/F0)')
+        
+        plt.tight_layout()
+        plt.show()
+            
+
+
+
 if __name__ == '__main__':
     gXY, AVs = design_matrix(pre_post='pre', group='both', returnAVs=True, 
                             #  show=True
                              )
-    # EV_res = quantify_encoding_models(
-    #     gXY=gXY, yTYPE='neuron', 
-    #     plot=False, EV=True,
-    #     rerun=False
-    #     )
     
     # Initialize class
     EVa = EvAnalysis(resultsDF=os.path.join('pydata', 
                                             'GLM_ev_results_neuron.csv'), 
                      ARs=[Areas(av, get_indices=True) for av in AVs])
-
-    # Analysis 1) Compare across :
-    #   brain regions (separate subfigures, col = ), 
-    #   the different Predictor sets (x)
-    #   the different groups (hue)
-
-    #   the different trial_types (x =),
-    # averaged vs trial - 2 figures
-    # in sample vs held out, 2 figures
-    # EVa.comparison(calc='averaged')
-    EVa.comparison(calc='averaged', dataset='held_out', 
-                #    hist_only=True,
-                # show=True
-                   )
-    EVa.comparison(calc='trial', dataset='held_out',
-                #    hist_only=True,
-                # show = True
-                   )
-    # EVa.comparison(calc='trial', dataset='held_out')
-
-    # Analysis 2) Compare only motor
-    # TODO: separately for running / whisker / pupil
-    EVa.motor_comparison(calc='averaged')
-    EVa.motor_comparison(calc='trial')
-
-    # Analysis 3) Distribution of neurons based on explained variance
-    EVa.order_neurons(calc='averaged', dataset='held_out')
     
+    # Analysis 1) Compare V, A, motor predictors in neurons significantly explained by model
+    # for AV trials (that's where all 3 components can come through)
+    # TODO: separately for running / whisker / pupil
+    EVa.preditor_comparison(tt='AV', calc='averaged', dataset='held_out')
+    EVa.preditor_comparison(tt='V', calc='averaged', dataset='held_out')
+    EVa.preditor_comparison(tt='A', calc='averaged', dataset='held_out')
+    # EVa.preditor_comparison(tt = 'AV', calc='trial', dataset='held_out')
+
+    # Analysis 2) Distribution of neurons based on explained variance
+    # EVa.order_neurons(tt = 'AV', calc='averaged', dataset='held_out')
+    EVa.order_neurons(tt = 'AV', calc='trial', dataset='held_out')
+    
+    # Analysis 3-4) Average drives plot over well-modelled neurons + examples of well-modelled neurons
+    # average_clean_plot(AVs=AVs, well_modelled_neurons=EVa.well_modelled(calc='averaged'))
     
     

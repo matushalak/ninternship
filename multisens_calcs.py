@@ -518,7 +518,7 @@ def RCI_proportions(RCIs:pd.DataFrame, area:str, savedir:str):
         # ── dual-row x-labels -------------------------------------------
         # bottom row = groups (minor ticks)
         ax.set_xticks(np.concatenate(list(x_pos.values())), minor=True)
-        ax.set_xticklabels(np.tile(groups, len(congruencies)),
+        ax.set_xticklabels(np.repeat(groups, len(congruencies)),
                         minor=True, rotation=0, ha='center')
 
         # upper row = congruency, centred across the pair of bars

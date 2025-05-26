@@ -507,8 +507,9 @@ def Quantification(df: pd.DataFrame,
             fg.savefig(f'{ar.replace('/', '|')}_traces_QUANT.svg')
         plt.close()
 
-def recordedNeurons(svg:bool = False):
-    AVs : list[AUDVIS] = load_in_data()
+def recordedNeurons(pre_post: Literal['pre', 'post', 'both'] = 'pre',
+                    svg:bool = False):
+    AVs : list[AUDVIS] = load_in_data(pre_post=pre_post)
     # ANs : list[Analyze] = [Analyze(av) for av in AVs]
     ARs: list[Areas] = [Areas(av) for av in AVs]
 
@@ -530,13 +531,13 @@ if __name__ == '__main__':
     by_areas_VENN(svg=False, pre_post='pre')
 
     ### Timeseries plots for neurons from different regions
-    # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=True)
-    # by_areas_TSPLOT(GROUP_type = 'modality_specific', add_CASCADE=True)
-    # by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=True)
+    by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=False)
+    # by_areas_TSPLOT(GROUP_type = 'modality_specific', add_CASCADE=False)
+    by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=False)
 
     ### TOTAL timeseries plot and quantification
     QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
     Quantification(QuantDF, svg=False)
 
     # Recorded neurons plot
-    # recordedNeurons(svg=True)
+    recordedNeurons(svg=True)

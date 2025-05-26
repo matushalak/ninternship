@@ -112,7 +112,7 @@ def plot_MI_data(MIdata:pd.DataFrame, savedir: str, name:str = 'all', kde: bool 
     # 1) Main plot!
     MScalc.RCI_dist_plots_all(MIdata, area = name, savedir = savedir)
     print(f'RCI {name} distribution plots done')
-    # return 0
+
     # 2) Preferred against MST
     # VIS
     # i] Pref VIS against MST congruent

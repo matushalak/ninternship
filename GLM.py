@@ -484,7 +484,8 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
             trial_idx += nts
         
         # All trials done, convolve with bases to account for lags
-        xbases = [getBases(Xcol=Xstim[:,ic], Bases=CosineBases, lags=frame_lags, trial_size=nts)
+        xbases = [getBases(Xcol=Xstim[:,ic], Bases=CosineBases, lags=frame_lags, 
+                           trial_size=nts, trial_level=True)
                   for ic in range(Xstim.shape[1] #- 8 # not include trial-type intercepts (gain)
                                   )]
         
@@ -702,10 +703,10 @@ def decompose(Model:EncodingModel, motor_together:bool = True,
     for component in components:
         match component:
             case 'V':
-                components_i = [True if 'V' in colName 
+                components_i = [True if 'V' in colName and 'A' not in colName
                                 else False for colName in Model.colnames]
             case 'A':
-                components_i = [True if 'A' in colName 
+                components_i = [True if 'A' in colName and 'V' not in colName
                                 else False for colName in Model.colnames]
             case 'AV':
                 components_i = [True if ('V' in colName or 
@@ -918,13 +919,13 @@ def clean_group_signal(group_name:str,
             return SIG_CLEAN
         else:
             drive_files = [f for f in os.listdir(storage_folder) 
-                           if 'drive_GLMclean.npy' in f]
+                           if 'drive_GLMclean.npy' in f and group_name in f]
             # assume naming convention here (that I implement when saving files below)
             driveDict = dict()
             for drive_file in drive_files:
                 allnameparts = drive_file.split('_')
                 component_name = allnameparts[2]
-                driveDict[component_name] = np.load(drive_file)
+                driveDict[component_name] = np.load(os.path.join(storage_folder, drive_file))
 
             return driveDict
     
@@ -1368,9 +1369,12 @@ def explained_variance(target_trial_locked:np.ndarray,
 # ----------- Running as a script ---------------
 if __name__ == '__main__':
     # get cleaned signals
-    # TODO: incorporate exporting and loading drives
-    res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=True, redo=True)
-    res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=True, redo=True)
+    res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=True, 
+                              redo=True
+                              )
+    res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=True, 
+                              redo=True
+                              )
     
     gXY = design_matrix(pre_post='pre', group='both', show=False)
     EV_res = quantify_encoding_models(

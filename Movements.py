@@ -6,6 +6,7 @@ import os
 
 from collections import defaultdict
 from AUDVIS import AUDVIS, Behavior, load_in_data
+from analysis_utils import general_separate_signal
 from typing import Literal
 
 # TODO: correlation with signal across time bins all neurons (between groups)
@@ -51,11 +52,11 @@ class Movements:
         
         # 1) first plot average behavior (over trials) per session per trial type (overlaid)
         self.aggregated_behavior, self.pltdir = self.aggregate_trial_type_behavior_by_session(
-            plot=False)
+            plot=True)
         print('1) Behavior by Group, Trial-type and Session DONE')
         
         # 2) second plot comparing average behavior (over trials and sessions) per trial type between DR and NR (overlaid)
-        # self.behaviors_DR_vs_NR(show=True)
+        self.behaviors_DR_vs_NR(show=True)
         # print('2) Averaged comparison between DR and NR DONE')
 
         # 3) third series of plots is per session raw signal during each trial type and corresponding behaviors
@@ -63,7 +64,7 @@ class Movements:
         self.raw_signals()
 
         # 4) separate plot per session (random chunk from session of consecutive trials of all trial types)
-        # self.raw_signals(all_TT_together=True, N_example_trials=100)
+        self.raw_signals(all_TT_together=True, N_example_trials=100)
 
         # TODO: Correlation Behavior (choose Whisker) and signal throughout trial (47 bins)
         # In each time bin, take correlation between 90 values from signal and 90 values from behavior [or 180 if combining LR]
@@ -96,7 +97,8 @@ class Movements:
                     if hasattr(beh, attr):
                         beh_sig = getattr(beh, attr)
                         if addTT:
-                            behavior_by_session[attr][f'sess{isess}'] = AV.separate_signal_by_trial_types(beh_sig)
+                            behavior_by_session[attr][f'sess{isess}'] = general_separate_signal(
+                                sig=beh_sig, trial_types=AV.sessions[isess]['trialIDs'])
                         else:
                             behavior_by_session[attr][f'sess{isess}'] = beh_sig
                     else:
@@ -283,7 +285,8 @@ class Movements:
                 # separate plot per TT and session
                 else:
                     averaged_neurons_TT:dict[
-                        int:np.ndarray] = AV.separate_signal_by_trial_types(averaged_neurons)
+                        int:np.ndarray] = general_separate_signal(
+                            sig=averaged_neurons, trial_types=AV.sessions[isess]['trialIDs'])
                     
                     for itt in range(len(self.tnames)):
                         f3, a3 = plt.subplots(nrows=4, figsize = (20, 9), sharex='col')    

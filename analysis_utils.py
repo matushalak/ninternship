@@ -108,7 +108,7 @@ def fluorescence_response (signal: np.ndarray | dict[int:np.ndarray],
 
 
 def general_separate_signal(sig:np.ndarray,
-                            trial_types:np.ndarray,
+                            trial_types:np.ndarray|list,
                             trial_type_combinations:list[tuple]|None = None,
                             separation_labels:list[str]|None = None
                             )-> dict[str | int : np.ndarray]:
@@ -130,6 +130,8 @@ def general_separate_signal(sig:np.ndarray,
     ------------
     separated_signal: dict[str | int : np.ndarray(nTT_trials, nts, (optional: nneurons))]
     '''
+    if isinstance(trial_types, list):
+        trial_types = np.array(trial_types)
     assert sig.shape[0] == trial_types.shape[0], (
         f'First dimension of signal {sig.shape[0]} must match first dimension of trial_types {trial_types.shape[0]}'
         )

@@ -314,6 +314,19 @@ def use_encoding_model(group_name:str = 'both',
                                  storage_folder, 
                                  n_shuffles=n_shuffles)
 
-       
+
+def drives_loader(group_name:str, storage_folder:str = 'pydata',):
+    drive_files = [f for f in os.listdir(storage_folder) 
+                    if 'drive_GLMclean.npy' in f and group_name in f]
+    # assume naming convention here (that I implement when saving files in GLM.py)
+    driveDict = dict()
+    for drive_file in drive_files:
+        allnameparts = drive_file.split('_')
+        component_name = allnameparts[2]
+        driveDict[component_name] = np.load(os.path.join(storage_folder, drive_file))
+
+    return driveDict
+
+
 if __name__ == '__main__':
     use_encoding_model(EV = True, redo=True)

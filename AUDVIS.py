@@ -203,19 +203,22 @@ class AUDVIS:
 
         for tt in sorted(list(ttypes)): # 0-n_trial types
             _, trials = ttypes[tt]
-            trials = trials[tt*trials_per_TT : (tt+1)*trials_per_TT]
-            
+            # trials = trials[tt*trials_per_TT : (tt+1)*trials_per_TT]
             # if (trials, time, neurons)
             if len(signal.shape) == 3:
                 signal_tt = []
-                for (n_first, n_last) in self.session_neurons:
-                    signal_tt.append(signal[trials,:,n_first:n_last])
+                for isess, (n_first, n_last) in enumerate(self.session_neurons):
+                    sess_trials = trials[(isess * trials_per_TT) : (isess * trials_per_TT) + trials_per_TT]
+                    signal_tt.append(signal[sess_trials,:,n_first:n_last])
                 
                 signal_by_trials[tt] = np.concatenate(signal_tt,
                                                     axis = 2)
             # one neuron / behavior (trials, time)
             elif len(signal.shape) == 2:
-                signal_by_trials[tt] = signal[trials, :]
+                raise NotImplementedError('This code was incorrect and needs to be fixed! \
+                                          Use general_separate_signal instead!')
+                # breakpoint()
+                # signal_by_trials[tt] = signal[trials, :]
 
         return signal_by_trials
     
