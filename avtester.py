@@ -6,6 +6,7 @@ from VisualAreas import Areas
 #%% general tester
 avs:list[AUDVIS] = load_in_data('pre')
 for av in avs:
+    breakpoint()
     AR = Areas(av)
     # Quick distance - signal correlation analysis
     A = AR.adjacencyMATRIX(signal=av.zsig)

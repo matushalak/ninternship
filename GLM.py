@@ -323,8 +323,8 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                                                         nts=AV.signal.shape[1],
                                                         SF = AV.SF,
                                                         trial_frames=AV.TRIAL,
-                                                        n_basis=9,
-                                                        basis_window=(-0.2,0.4),
+                                                        n_basis=10,
+                                                        basis_window=(-0.3,0.5),
                                                         basis_width=0.2,
                                                         plot_bases=show)
         # Behavioral design matrix
@@ -404,8 +404,13 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
     trial_frames = np.array(trial_frames)
     direction_dict = {'l':1, 'r':-1}
     nstim_ts = trial_frames[1] - trial_frames[0]
-    # linearly move from side to side
-    stimuli = np.linspace(0,1, nstim_ts)
+    
+    # linearly move from side to side (bar)
+    bar = np.linspace(0,1, nstim_ts)
+    sound = np.exp(-5*bar)
+    # for rightwards trials (0 left -> right 1)
+    barstim = np.eye(nstim_ts)
+    soundstim = (sound + sound[::-1]) * np.eye(nstim_ts)
     
     # Raised cosine bases 
     # NOTE: (for now, same used for all variables, can VARY for each column)
@@ -413,44 +418,40 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                                   dt = 1/SF, plot=plot_bases)
     all_session_Xs = []
 
-    # prepare trial-type specific intercepts
-    # NOTE: removed because can't attribute to STIM or MOVEMENT block
-    # tt_to_gain_col = {'Vl':10, 'Vr':11, 'Al':12, 'Ar':13, 
-    #                 'AlVl':14, 'ArVr': 15, 'AlVr':16, 'ArVl':17}
-    
+    # Column names
+    VcolNames= [
+        # Visual stimulus column 0-1
+        'Vpresent', 'Vdirection'
+        ] + [
+        # Visual stimulus columns 2-17
+        f'Vloc{l}' for l in range(nstim_ts)
+        ]
+    AcolNames= [
+        # Auditory stimulus columns 18-19
+        'Apresent', 'Adirection'
+        ] + [
+        # Auditory stimulus columns 20-36
+        f'Aloc{l}' for l in range(nstim_ts)
+        ]
+    XcolNames = VcolNames + AcolNames 
+
     for isess in range(nsessions):
-        # Column names
-        if isess == nsessions -1:
-            XcolNames = [
-                # Visual stimulus columns 0-4
-                'Vpresent', 'Vdirection', 'Vposition', 'Vonset', 'Voffset',
-                # Auditory stimulus columns 5-9
-                'Apresent', 'Adirection', 'Aposition', 'Aonset', 'Aoffset',
-                # Trial-type specific gain / intercept 9-18
-                # NOTE: removed because can't attribute to STIM or MOVEMENT block
-                # 'Vlgain', 'Vrgain', 'Algain', 'Argain', 'AlVlgain', 'ArVrgain', 'AlVrgain', 'ArVlgain',
-                # '0gain', '1gain', '2gain', '3gain', '4gain', '5gain', '6gain', '7gain',
-                ]
 
         trials = trs[:,isess]
         # diff features as columns of bigger matrix
         Xstim = np.zeros(shape=(ntrials*nts, 
-                                (5 * 2 # 2 modalities of stimuli
-                                 ) #+8 # 8 gain terms
-                                ))
-        
+                                len(XcolNames)
+                                    ))
+        # good for debugging
+        # print(Xstim.shape)
+        # print(len(XcolNames))
+
         trial_idx = 0
         for it in range(ntrials):
             tname = trials[it]
 
             stimStart, stimEnd = trial_frames + trial_idx
             trialStart, trialEnd = np.array([0, nts]) + trial_idx
-            
-            # Add trial-type specific gain
-            # NOTE: removed because can't attribute to STIM or MOVEMENT block,
-            #   better to let STIM & MOVEMENT blocks compete for existing variance (even if slightly worse performance)
-            # gaincol = tt_to_gain_col[tname]
-            # Xstim[stimStart:trialEnd, gaincol] = 1 # keep baselines 0-centered with global intercept
 
             # Visual stimulus characteristics
             if 'V' in tname:
@@ -458,43 +459,39 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                 Xstim[stimStart:stimEnd, 0] = 1
                 # column 1: Vdirection
                 Xstim[stimStart:stimEnd, 1] = (Vdirection := direction_dict[tname[tname.index('V')+1]])
-                # column 2: Vposition 
-                # (0,...1) if bar is moving from left to right 
-                # (1,...,0) if bar is moving right to left
-                Xstim[stimStart:stimEnd, 2] = stimuli[::Vdirection]
-                # column 3: Onset kernel to capture sudden bar onset
-                Xstim[stimStart, 3] = 1
-                # column 4: Offset kernel to capture sudden bar offset
-                Xstim[stimEnd, 4] = 1
+                # columns 2:18 Vloc... bar location
+                # (0,...1) if sound is moving from left to right 
+                # (1,...,0) if sound is moving right to left
+                Xstim[stimStart:stimEnd, 2:18] = barstim[::Vdirection, :]
             
             if 'A' in tname:
                 # column 0: Apresent
-                Xstim[stimStart:stimEnd, 5] = 1
-                # column 1: Adirection
-                Xstim[stimStart:stimEnd, 6] = (Adirection := direction_dict[tname[tname.index('A')+1]])
-                # column 2: Aposition 
+                Xstim[stimStart:stimEnd, 18] = 1
+                # column 18: Adirection
+                Xstim[stimStart:stimEnd, 19] = (Adirection := direction_dict[tname[tname.index('A')+1]])
+                # columns 20:36 Aloc... sound location
                 # (0,...1) if sound is moving from left to right 
                 # (1,...,0) if sound is moving right to left
-                Xstim[stimStart:stimEnd, 7] = stimuli[::Adirection]
-                # column 3: Onset kernel to capture sudden sound onset
-                Xstim[stimStart, 8] = 1
-                # column 4: Offset kernel to capture sudden sound offset
-                Xstim[stimEnd, 9] = 1
+                Xstim[stimStart:stimEnd, 20:36] = soundstim[::Adirection, :]
             
             trial_idx += nts
         
         # All trials done, convolve with bases to account for lags
         xbases = [getBases(Xcol=Xstim[:,ic], Bases=CosineBases, lags=frame_lags, 
                            trial_size=nts, trial_level=True)
-                  for ic in range(Xstim.shape[1] #- 8 # not include trial-type intercepts (gain)
+                  for ic in range(Xstim.shape[1]
                                   )]
+        
+        # good for debugging
+        # print(len(xbases))
+        # print(XcolNames)
         
         # Get column names for predictor convolved with each basis
         if isess == nsessions - 1:
             for icol, xcol_bases in enumerate(xbases):
                 for ibase in range(xcol_bases.shape[1]):
                     XcolNames.append(f'{XcolNames[icol]}_basis{ibase}')
-
+        # print(XcolNames)
         Xbases = np.column_stack(xbases)
         Xbases = Xbases / np.std(Xbases, axis=0) # scale continuous columns so that on equal footing for regularization
         X_sess = np.column_stack([Xstim, Xbases])
