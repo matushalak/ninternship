@@ -452,6 +452,6 @@ if __name__ == '__main__':
     EVa.order_neurons(tt = 'AV', calc='trial', dataset='held_out')
     
     # Analysis 3-4) Average drives plot over well-modelled neurons + examples of well-modelled neurons
-    # average_clean_plot(AVs=AVs, well_modelled_neurons=EVa.well_modelled(calc='averaged'))
+    average_clean_plot(AVs=AVs, well_modelled_neurons=EVa.well_modelled(calc='averaged'))
     
     
