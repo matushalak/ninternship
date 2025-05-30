@@ -1,0 +1,38 @@
+In this project you will work on project 4.10.3 (page 100-1) and relate to results presented in the following journal article: 
+
+Adaptive Exponential Integrate-and-Fire Model as an Effective Description of Neuronal Activity, by
+Romain Brette, and Wulfram Gerstner
+https://doi.org/10.1152/jn.00686.2005
+
+Which can also be downloaded from the link we sent you.
+
+A first task is to present concisely (at most 2 pages) the main subject of the
+article, what are the techniques used, and the neuroscience applications discussed
+and the main results obtained in the paper. 
+
+A second task is to use dynamical system theory to make precise statements about the
+model in your project. This varies slightly from project to project but it will
+entail analysis, computations, simulations, or a combination thereof. These are
+advanced research articles, and it is possible that some arguments may be
+challenging. Do your best to understand and to present the subject (you are not
+requested to fill all the gaps in the articles). 
+
+You will be requested to reproduce some results, and for this task you should present
+your own calculations or computations. You are welcome to use other sources to
+complete your project and to understand better the topic. Please acknowledge them in
+your report. Use Zulip to your and others’ advantage.
+
+In particular we ask you to focus on the following points: 
+
+* Derive a bifurcation diagram showing the local bifurcations in two parameters, i.e.,
+  vary two parameters choose the applied current I, and one more yourself. Motivate why
+  that parameter is interesting to study. Next, derive Saddle-Node and Hopf bifurcation
+  curves and the bifurcation value of I depends on the other parameter.
+* An important question is what model to choose for a particular neuron model, and next
+  which parameter values to choose. How would you choose parameters for this neuron model given data?
+* If you can go further: Spiking orbits in models with a reset cannot be studied using MatCont. If you want
+  to study such orbits, consider either simulations of stable periodic orbits, or use the matlab command bvp4c
+  to compute solutions of a boundary value problem, i.e. x'(t)=f(x,p) for given parameter value p, with
+  initial condition x(0) and boundary condition x(T)=x(0) with T the period as an unknown quantity to solve for.
+
+You should submit a report and, optionally, your code in a .zip file. You should also prepare a 10-minute presentation of your report. You don’t need to submit the presentation, which should be ready on the day of your exam, as we shall communicate separately. The deadline for submitting the project is Monday the 3th of June at 12:00 noon. 
