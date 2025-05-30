@@ -1,28 +1,81 @@
-from SPSIG import SPSIG
+from AUDVIS import AUDVIS, Behavior, load_in_data
+from VisualAreas import Areas
 import utils as utl
+
 import numpy as np
-from joblib import Parallel, delayed
+import matplotlib.pyplot as plt
 
-def load_SPSIGvars(spsgpath:str, vars:list[str]|None = None
-                   )->SPSIG:
-    SPSG = SPSIG(spsgpath)
-    print(spsgpath)
-    print(f'MLspike: {hasattr(SPSG, 'deconCorrected')}, {np.unique(SPSG.deconCorrected)}')
-    print(f'FaceMap: {hasattr(SPSG, 'facemapTraces')}, {dir(SPSG.facemapTraces) 
-                                                        if hasattr(SPSG, 'facemapTraces') else ''}')
+from typing import Literal
+from collections import defaultdict
 
 
-g1spsig_files, g2spsig_files = utl.group_condition_key(root = '/Volumes/my_SSD/NiNdata/data',
-                                                        raw=True)
-g1pre, g1post = g1spsig_files['pre'], g1spsig_files['post']
-g2pre, g2post = g2spsig_files['pre'], g2spsig_files['post']
-sessions = [g1pre, g1post, g2pre, g2post]
-session_ranges = []
-indx = 0
-for session in sessions:
-    session_ranges.append((indx, indx := indx + len(session)))
+def rawsession_loader(AV:AUDVIS, session_number:int|None = None,
+                      region:Literal['V1', 'AM/PM', 'A/RL/AL', 'LM'] | None = None
+                      )->dict:
+    '''
+    Loads data for a session. Decides based on (trial-locked) AUDVIS object, but actually
+    returns RAW dF/F data, as well as, RAW MLspike data with deconvolved spikes
+    
+    Returns everything together with other important information in a dictionary that can
+    be used to instatiate the Model
+    '''
+    AR = Areas(AV, get_indices=True)
+    sess_overview:dict[int:str] = dict()
+    region_overview:dict[str:list[int]] = defaultdict(list)
+    # annotate sessions with appropriate brain regions
+    for isess, (sessneurstart, sessneurstop) in enumerate(AV.session_neurons):
+        regions_in_session = AR.dfROI.iloc[sessneurstart : sessneurstop
+                                           ]['Region'].value_counts()
+        percentage_regions_in_session = regions_in_session / regions_in_session.sum()
+        if percentage_regions_in_session.max() > 0.9:
+            sess_region = percentage_regions_in_session.idxmax()
+        else:
+            sess_region = '_'.join(percentage_regions_in_session.index.tolist())
+        
+        sess_overview[isess] = sess_region
+        region_overview[sess_region].append(isess)
+    
+    # session overview
+    print(f'{AV.NAME} sessions overview:', sess_overview)
 
-all_sessions = g1pre + g1post + g2pre + g2post
+    if region is not None and session_number is None:
+        # return first session with that value
+        session_number = region_overview[region][0] # return first session for that region
+    
+    # by now session number is established
+    firstneur, lastneur = AV.session_neurons[session_number]
 
-res = Parallel(n_jobs=-1)(delayed(load_SPSIGvars)(ses) 
-                          for ses in all_sessions)
+    g = f'{AV.NAME[:2]}'
+    animal, date, _ = AV.sessions[session_number]['session'].split('_')
+    nneur = AV.sessions[session_number]['n_neurons']
+    chosen_sess =  f'{g}_{'_'.join([animal, date])}_{nneur}'
+    RAW_SESS_OVERVIEW = utl.get_sessions_overview()
+    CHOSEN_RAW_FILE = RAW_SESS_OVERVIEW[g][chosen_sess]
+
+    print(f'Using raw file for session {session_number} from {sess_overview[session_number]}! ({CHOSEN_RAW_FILE})')
+    
+    spikes:np.ndarray = utl.get_SPSIGvars(spsgpath=CHOSEN_RAW_FILE, vars=['deconCorrected'], npsave=True)
+    calcium:np.ndarray = utl.get_SPSIGvars(spsgpath=CHOSEN_RAW_FILE, vars=['sigCorrected'], npsave=True)
+
+    # Model input
+    MODEL_PARAMS = {
+        'spikes' : spikes,
+        'calcium' : calcium,
+        'SFreal' : AV.SF,
+        'session_name': chosen_sess,
+        'session_number' : session_number, 
+        # If at some point want to do rasterplot and PSTH afterwards, 
+        # need to write trial-locking msDelays in Cython using:
+        'frametimes' : AV.sessions[session_number]['frame_times'],
+        'event_times' : AV.sessions[session_number]['event_times'],
+        'msdelays' : np.array(AV.rois.msdelay.iloc[firstneur:lastneur].to_numpy(), dtype=float)
+    }
+    return MODEL_PARAMS
+    
+
+if __name__ == '__main__':
+    # exemplary sessions for G1pre: Epsilon (2), Eta(3), Zeta2(8)
+    # exemplary sessions for G2pre: Dieciceis (0), Diez(2), Nueve(3)
+    avs = load_in_data(pre_post='pre')
+    # for av in avs:
+    MP:dict = rawsession_loader(avs[1], region='V1')

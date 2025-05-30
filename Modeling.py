@@ -4,38 +4,39 @@ import scipy.integrate as integr
 import scipy.optimize as optim
 import scipy as sp
 
-# NOTE: first without synapses
-# later add synaptic activity
-# Excitatory Ee, AMPA
-# Ee = 0
+import timeit
+from tqdm import tqdm
 
-# Inhibitory Ei, GABA_A
-# Ei = -75
+class CadEx:
+    ''''
+    Adaptive exponential integrate and fire model for
+    in-vivo 2-photon calcium imaging data
 
-# NOTE: need to interrupt integration
-# NOTE: scale is incredibly important!
-def adEX(t:float, vars:list[float, float],
-         I:callable
-        # params:dict
-        ):
-    V, w = vars
+    Input
+    '''
+    def __init__(self,
+                 SFmodel:float,
+                 model_runtime_sec:float,
+                 spikes:np.ndarray,
+                 calcium:np.ndarray,
+                 SFreal:float,
+                 session_name:str,
+                 session_number:int | None = None,
+                 frametimes:np.ndarray | None = None,
+                 event_times:np.ndarray | None = None,
+                 msdelays:np.ndarray | None = None,
+                 fixed_params: dict[str:float] | None = None
+                 ):
+        pass
     
-    C = 281
-    gl = 30
-    El = -70
-    Vt = -50.4
-    slope = 2
-    tauw = 144
-    a = 4
-    b = 80.5
-    Vpeak = -20
 
-    dvdt = (-gl * (V-El) + gl*slope*np.exp((V-Vt)/slope) - w + I(t)) / C
-    dwdt = (a*(V-El) - w) / tauw
-
-    return np.array([dvdt, dwdt])
+    def train_test(self, split:float
+                   )->tuple[np.ndarray, np.ndarray]:
+        pass
 
 
-vstart, wstart = -70, 0
-ini = [vstart, wstart]
-t_interval = [0,1000]
+    def upsample(self
+                 )->tuple[np.ndarray, np.ndarray]:
+        pass
+
+

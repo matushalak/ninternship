@@ -6,25 +6,24 @@ from VisualAreas import Areas
 #%% general tester
 avs:list[AUDVIS] = load_in_data('pre')
 for av in avs:
-    breakpoint()
     AR = Areas(av)
     # Quick distance - signal correlation analysis
     A = AR.adjacencyMATRIX(signal=av.zsig)
     # flat
-    f, ax = plt.subplots(figsize = (8,6))
-    for start, stop in av.session_neurons:
+    f, ax = plt.subplots(nrows=len(av.session_neurons), figsize = (6,3*len(av.session_neurons)))
+    for si, (start, stop) in enumerate(av.session_neurons):
         session = slice(start, stop)
         Asess = A[session, session, :]
         Asess = np.tril(Asess) # get rid of reduntant upped triangle
 
         Aflat = Asess.reshape(-1, 2)
         dists, corrs = Aflat[:,0], Aflat[:, 1]
-        ax.scatter(dists, corrs,
-                   alpha = 0.1,
+        ax[si].scatter(dists, corrs,
+                #    alpha = 0.1,
                    label = f'r(d, abs(r)) = {round(np.corrcoef(dists, corrs.__abs__())[0,1], 3)}')
-        ax.set_xlabel('Distance (a.u.)')
-        ax.set_ylabel('Correlation')
-    ax.legend(loc = 1)
+        ax[si].set_xlabel('Distance (a.u.)')
+        ax[si].set_ylabel('Correlation')
+        ax[si].legend(loc = 1)
     plt.tight_layout()
     plt.show()
 

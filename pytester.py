@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-screen = ears = time = 16
 
+# For GLM figure  / GLM supplementary figure, demonstration of experiment
+screen = ears = time = 16
 for linear in [np.linspace(0, 1, screen), np.linspace(1, 0, screen)]:
     exponential = np.exp(-5*linear)
     time = np.linspace(1, 0, screen)

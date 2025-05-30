@@ -1366,23 +1366,22 @@ def explained_variance(target_trial_locked:np.ndarray,
 # ----------- Running as a script ---------------
 if __name__ == '__main__':
     # get cleaned signals
-    # res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=True, 
-    #                           redo=True
-    #                           )
-    # res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=True, 
-    #                           redo=True
-    #                           )
+    res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=True, 
+                              redo=True
+                              )
+    res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=True, 
+                              redo=True
+                              )
+    # if time
+    res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=True, redo = True)
+    res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=True, redo = True)
     
     gXY = design_matrix(pre_post='pre', group='both', show=False)
     EV_res = quantify_encoding_models(
         gXY=gXY, yTYPE='neuron', 
-        plot=True, 
-        # EV=True,
-        # rerun=True
+        plot=False, 
+        EV=True,
+        rerun=True
         )
-    
-    # if time
-    # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=True, redo = True)
-    # res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=True, redo = True)
     
     

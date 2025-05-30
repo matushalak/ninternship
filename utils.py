@@ -4,14 +4,18 @@ import os
 import re
 import pickle
 import matplotlib.pyplot as plt
+from SPSIG import SPSIG
 from glob import glob
 from pandas import read_csv
-from numpy import array, ndarray, load, unique
+from numpy import array, ndarray, load, unique, save
 from tkinter import filedialog
 from collections import defaultdict
+from joblib import Parallel, delayed
 from pandas import DataFrame, read_pickle
 from time import time
 
+
+# ------- Random -----------
 def time_loops(func, per_loop:bool = False):
     def wrapper(*args, **kwargs):
         t1 = time()
@@ -71,6 +75,102 @@ def progress_bar(current_iteration: int,
     progress = round((current_iteration / total_iterations) * 100)
     print(bar + no_bar, f'{progress} %', end='\r')
     
+
+### ----------- Working with files ------------
+def get_sessions_overview()->dict[tuple:dict]:
+    if os.path.exists(overview_file := os.path.join('pydata', 'SessionsOverview.pkl')):
+        with open(overview_file, 'rb') as overview:
+            GROUPS_SESSIONS_DICT :dict = pickle.load(overview)
+        return GROUPS_SESSIONS_DICT
+    
+    # otherwise make it
+    g1spsig_files, g2spsig_files = group_condition_key(root = '/Volumes/my_SSD/NiNdata/data',
+                                                       raw=True)
+    g1pre, g1post = g1spsig_files['pre'], g1spsig_files['post']
+    g2pre, g2post = g2spsig_files['pre'], g2spsig_files['post']
+    sessions = [g1pre, g1post, g2pre, g2post]
+    session_ranges = []
+    indx = 0
+    for session in sessions:
+        session_ranges.append((indx, indx := indx + len(session)))
+
+    all_sessions = g1pre + g1post + g2pre + g2post
+    res = Parallel(n_jobs=-1)(delayed(_overview)(ses) 
+                              for ses in all_sessions)
+    GROUPS_SESSIONS_DICT = {'g1':dict(),
+                            'g2':dict()}
+    for k, v in res:
+        group, name, date, nneurons = k.split('_')
+        GROUPS_SESSIONS_DICT[group][k] = v
+
+    with open(overview_file, 'wb') as groupsessfile:
+            pickle.dump(GROUPS_SESSIONS_DICT, groupsessfile)
+    
+    return get_sessions_overview()
+
+
+def _overview(sess)->tuple[str, str]:
+    # Regex breakdown:
+    # .*/                => match any characters ending with a slash
+    # (g[12])            => capture group: "g1" or "g2"
+    # /                  => literal slash
+    # ([^/]+)            => capture "Name" (any characters except slash)
+    # /                  => literal slash
+    # (\d{8})            => capture "date" in the format YYYYMMDD (8 digits)
+    # /                  => literal slash
+    # (Bar_Tone_LR(?:2)?) => capture "Bar_Tone_LR" optionally followed by a 2
+    # /.*                => followed by a slash and the rest of the path
+    group_name_date = r'.*/(g[12])/([^/]+)/(\d{8})/(Bar_Tone_LR(?:2)?)/.*'
+    re_match = re.match(group_name_date, sess)
+    assert re_match is not None, f'something wrong with: {sess}'
+    group, name, date, bartone = re_match.groups()
+    
+    sig: ndarray = get_SPSIGvars(spsgpath=sess, vars=['deconCorrected'])['deconCorrected']
+    nneurons = min(sig.shape)
+
+    print((f'{group}_{name}_{date}_{nneurons}', sess), flush=True)
+    return (f'{group}_{name}_{date}_{nneurons}', sess)
+
+
+def get_SPSIGvars(spsgpath:str | None, vars:list[str]|None = None,
+                  npsave:bool = True, check:bool = False
+                  )->dict[str:object]:
+    '''
+    Loads desired variables from SPSIG file
+    '''
+    # allows quick loading of the numpy file once it's saved without SPSIG
+    if npsave and len(vars) == 1:
+        var = vars[0]
+        if not os.path.exists('pydata'):
+            os.makedirs('pydata')
+        if not os.path.exists(savefolder := os.path.join('pydata', 'raw')):
+            os.makedirs(savefolder)
+        sessname = spsgpath.split('/')[-1] #this might be '\' on windows
+        sessvar = sessname.replace('.mat', f'_{var}.npy')
+        savefilename = os.path.join(savefolder, sessvar)
+        if os.path.exists(savefilename):
+            print(f'Loading {savefilename}!')
+            return load(savefilename)
+        else:
+            SPSG = SPSIG(spsgpath)
+            assert hasattr(SPSG, var), 'Cannot run get_SPSIGvars in npsave mode if vars is not contained in the SPSIG file'
+            varARR = getattr(SPSG, var)
+            assert isinstance(varARR, ndarray), 'When npsave is True, SPSIG.vars must be a numpy array!'
+            save(savefilename, varARR)
+            return get_SPSIGvars(spsgpath, vars, npsave, check)
+    
+    # if not npsave load the SPSIG file
+    SPSG = SPSIG(spsgpath)
+    if check:
+        print(spsgpath)
+        for v in vars:
+            print(f'{v}: {hasattr(SPSG, v)}, {unique(getattr(SPSG, v))}')
+    
+    # if not npsave, returns dictionary (can contain multiple variables 
+    # but is slower because npsave will save the variables locally and load them quickly afterwards)
+    out = {var:getattr(SPSG, var) for var in vars if hasattr(SPSG, var)}
+    return out
+
 
 def load_audvis_files(group_condition_name:str)->tuple[
                     tuple[dict, dict, DataFrame, ndarray, ndarray, ndarray], 
