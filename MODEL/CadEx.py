@@ -1,23 +1,28 @@
 #@matushalak
 import numpy as np
+import os
 import scipy.integrate as integr
 import scipy.optimize as optim
 import scipy as sp
 import matplotlib.pyplot as plt
+from joblib import delayed, Parallel, cpu_count
 
-import timeit
 from tqdm import tqdm
+from time import time
 
 from src.AUDVIS import load_in_data, Behavior, AUDVIS
 from src.Raw import rawsession_loader
 import MODEL.adEx_utils as adEx_utils
 import MODEL.adEx_models as adEx
+import MODEL.modeling_utils as modutl
+import MODEL.debug as dbg
 from MODEL import PYDATA
+import pickle
 
 class CadEx:
     ''''
     Adaptive exponential integrate and fire model for
-    in-vivo 2-photon calcium imaging data
+    in-vivo 2-photon calcium imaging data (CadEx)
 
     Input
     -----
@@ -61,6 +66,7 @@ class CadEx:
                  spikes:np.ndarray,
                  calcium:np.ndarray,
                  SFreal:float,
+                 adjM:np.ndarray, 
                  session_name:str,
                  session_number:int | None = None,
                  frametimes:np.ndarray | None = None,
@@ -72,47 +78,162 @@ class CadEx:
         self.DTmodel = 1000 / SFmodel
         self.SFmodel, self.SFreal = SFmodel, SFreal
         self.Tmaxmodel = model_runtime_sec * 1000
-        _, _, model_params, _, _ = adEx_utils.define_experiment(dt = self.DTmodel, 
-                                                                Tmax = self.Tmaxmodel)
-        adEx_utils.run_experiment(adExModel=adEx.euler_nosynapse_cython,
+        self.msdelays = msdelays
+        # how many more samples we need based on how much higher sampling freq. is
+        self.MODELsize = round(max(calcium.shape) * (self.SFmodel // self.SFreal))
+        self.MODELts = np.linspace(0, self.Tmaxmodel, num = self.MODELsize, dtype=float)
+        self.SIGsize = max(calcium.shape)
+        self.N_neurons = msdelays.size
+        self.ITERneuron = np.arange(self.N_neurons, dtype=int)
+
+        # signals
+        self.calcium = calcium
+
+        _, _, self.model_params, _, _ = adEx_utils.define_experiment(
+            dt = self.DTmodel, Tmax = self.Tmaxmodel)
+
+    def upsample(NEURON):
+        return dbg.upsample_memory_optimized(
+                    sig=NEURON.calcium,
+                    MODELts=NEURON.MODELts,
+                    MODELsize=NEURON.MODELsize,
+                    SIGsize=NEURON.SIGsize,
+                    ITERneuron=NEURON.ITERneuron,
+                    msdelays=NEURON.msdelays,
+                    gaussSD=20,
+                    additionalMSoffset=5)
+
+
+    def run(self, INPUT_highHZ:np.ndarray,
+            model:adEx = adEx.euler_nosynapse_cython,):
+        start = time()
+        adEx_utils.run_experiment(adExModel= model,
                                   Tmax=self.Tmaxmodel, dt = self.DTmodel,
-                                  model_params=model_params,
-                                  # correction for dF/F amplitude relative to current
-                                  Iapp=self.upsample(calcium[:,0]) * 125, 
+                                  model_params=self.model_params,
+                                  # *100 correction for dF/F amplitude relative to current
+                                  Iapp=INPUT_highHZ * 100, 
                                   plot=True)
-    
+        print(f'{time()-start} s')
 
     def train_test(self, split:float
                    )->tuple[np.ndarray, np.ndarray]:
         pass
 
+def upsample(sig:np.ndarray,
+             MODELts:np.ndarray,
+             MODELsize:int,
+             SIGsize:int,
+             ITERneuron:np.ndarray,
+             msdelays:np.ndarray,
+             gaussSD:float = 20,
+             additionalMSoffset: float = 5,
+            )->tuple[np.ndarray, np.ndarray]:
+    os.environ['OPENBLAS_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
+    os.environ['OMP_NUM_THREADS'] = '1'
+    # collection array
+    # Account for msdelays based on location within imaging frame
+    bindelays = np.round(msdelays)
 
-    def upsample(self, sig
-                 )->tuple[np.ndarray, np.ndarray]:
-        FULLsize = round(sig.size * (self.SFmodel // self.SFreal))
-        FULLts = np.arange(FULLsize)
-        DIM = np.zeros(round(sig.size * (self.SFmodel // self.SFreal)), dtype=float)
-        # technically should use frametimes
+    SPACING = MODELsize // SIGsize
+    batches = np.array_split(ITERneuron, 5)
+    worker_args= [
+        [sig[:,batch].copy(), MODELts.copy(), 
+        batch.size, 
+        SPACING, MODELsize,
+        gaussSD, 
+        bindelays[batch].copy(), additionalMSoffset
+        ]
+        for batch in batches]
+    
+    outList = Parallel(njobs = 5, verbose=14, backend='loky')(
+        delayed(modutl.upsampling_worker)(*wa) for wa in worker_args
+        )
+    
+    # not parallelized version (just as fast with 1 worker)
+    # outList = [modutl.upsampling_worker(*wa) for wa in worker_args]
+    
+    return np.column_stack(outList)
 
-        sigdim = sig.size
-        SPACING = DIM.size // sigdim
-        DIM[::SPACING] = sig
+def upsamp(SFmodel:float,
+        model_runtime_sec:float,
+        spikes:np.ndarray,
+        calcium:np.ndarray,
+        SFreal:float,
+        adjM:np.ndarray, 
+        session_name:str,
+        session_number:int | None = None,
+        frametimes:np.ndarray | None = None,
+        event_times:np.ndarray | None = None,
+        msdelays:np.ndarray | None = None,
+        fixed_params: dict[str:float] | None = None):
+    # convert to milliseconds
+    DTmodel = 1000 / SFmodel
+    SFmodel, SFreal = SFmodel, SFreal
+    Tmaxmodel = model_runtime_sec * 1000
+    msdelays = msdelays
+    # how many more samples we need based on how much higher sampling freq. is
+    MODELsize = round(max(calcium.shape) * (SFmodel // SFreal))
+    MODELts = np.linspace(0, Tmaxmodel, num = MODELsize, dtype=float)
+    SIGsize = max(calcium.shape)
+    N_neurons = msdelays.size
+    ITERneuron = np.arange(N_neurons, dtype=int)
 
-        out = np.interp(x=FULLts, xp = FULLts[::SPACING], fp = sig)
-        symmgaussrange = np.linspace(-FULLsize//2, FULLsize//2, FULLts.size)
-        gaussSD = 20
-        gaussian = np.exp(-(symmgaussrange/gaussSD)**2/2)
-        gaussian = gaussian[gaussian > 0]
-
-        return np.convolve(out, gaussian, mode='same')
-
+    _, _, model_params, _, _ = adEx_utils.define_experiment(
+        dt = DTmodel, Tmax = Tmaxmodel)
+    return calcium, MODELts, MODELsize, SIGsize, ITERneuron, msdelays
+          
+def rundum():
+    arr = list(range(20))
+    start = time()
+    results = Parallel(n_jobs=cpu_count(), verbose=10)(
+        delayed(modutl.slow_square)(i) for i in arr
+    )
+    print("Results (slice):", results[:5], "… total time:", time() - start)
 
 if __name__ == '__main__':
+    # Dummy test (WORKS)
+    # arr = list(range(20))
+    # start = time()
+    # results = Parallel(n_jobs=cpu_count(), verbose=10)(
+    #     delayed(modutl.slow_square)(i) for i in arr
+    # )
+    # print("Results (slice):", results[:5], "… total time:", time() - start)
+    
+    # rundum()
+    
     # exemplary sessions for G1pre: Epsilon (2), Eta(3), Zeta2(8)
     # exemplary sessions for G2pre: Dieciceis (0), Diez(2), Nueve(3)
     avs = load_in_data(pre_post='pre')
     # for av in avs:
     MP:dict = rawsession_loader(avs[1], region='V1')
 
-    NEURON = CadEx(SFmodel=1000, model_runtime_sec=60, 
+    # model class
+    NEURON = CadEx(SFmodel=1000, model_runtime_sec=2500, 
                    **MP)
+    
+    start = time()
+    # sig, MODELts, MODELsize, SIGsize, ITERneuron, msdelays = upsamp(SFmodel=1000, model_runtime_sec=2500, 
+    #                                                               **MP)
+    # HIGHHz = upsample(sig=sig, 
+    #                 MODELts=MODELts,
+    #                 MODELsize=MODELsize,
+    #                 SIGsize=SIGsize,
+    #                 ITERneuron=ITERneuron,
+    #                 msdelays=msdelays,
+    #                 gaussSD=20,
+    #                 additionalMSoffset=5
+    # )
+    # REAL DATA, DOESNT WORK!
+    HIGHHz = NEURON.upsample()
+    # HIGHHz = dbg.upsample_memory_optimized(sig=sig, 
+    #                 MODELts=MODELts,
+    #                 MODELsize=MODELsize,
+    #                 SIGsize=SIGsize,
+    #                 ITERneuron=ITERneuron,
+    #                 msdelays=msdelays,
+    #                 gaussSD=20,
+    #                 additionalMSoffset=5)
+    print(f'{time()-start} s')
+
+    NEURON.run(INPUT_highHZ=HIGHHz[:,0])
