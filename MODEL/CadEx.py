@@ -15,7 +15,6 @@ from src.Raw import rawsession_loader
 import MODEL.adEx_utils as adEx_utils
 import MODEL.adEx_models as adEx
 import MODEL.modeling_utils as modutl
-import MODEL.debug as dbg
 from MODEL import PYDATA
 import pickle
 
@@ -72,28 +71,38 @@ class CadEx:
                  frametimes:np.ndarray | None = None,
                  event_times:np.ndarray | None = None,
                  msdelays:np.ndarray | None = None,
-                 fixed_params: dict[str:float] | None = None
+                 fixed_params: dict[str:float] = {'':None}
                  ):
         # convert to milliseconds
-        self.DTmodel = 1000 / SFmodel
+        self.DTmodel = 1000 / SFmodel # in milliseconds
         self.SFmodel, self.SFreal = SFmodel, SFreal
-        self.Tmaxmodel = model_runtime_sec * 1000
-        self.msdelays = msdelays
+        self.Tmaxmodel = model_runtime_sec * 1000 # in milliseconds
+        self.recordingFRAMES = max(calcium.shape)
+        self.msdelays = msdelays # in milliseconds
+        # only take model_runtime_sec slice of the data
+        self.SIGsize = round(model_runtime_sec * self.SFreal) # frames from original signal
         # how many more samples we need based on how much higher sampling freq. is
-        self.MODELsize = round(max(calcium.shape) * (self.SFmodel // self.SFreal))
+        self.MODELsize = round(self.SIGsize * (self.SFmodel / self.SFreal))
         self.MODELts = np.linspace(0, self.Tmaxmodel, num = self.MODELsize, dtype=float)
-        self.SIGsize = max(calcium.shape)
         self.N_neurons = msdelays.size
         self.ITERneuron = np.arange(self.N_neurons, dtype=int)
 
         # signals
-        self.calcium = calcium
+        self.calcium = calcium[:self.SIGsize, :]
+        self.spikes = spikes[:self.SIGsize, :]
+        self.frametimes = frametimes[:self.SIGsize]
+        self.calciumMODEL = self.upsample()
+
+        # adjacency matrix (neurons x neurons x 2) 
+        # first layer = physical distances, second layer = dF/F correlation
+        # use correlations as hot start for connectivity
+        self.adjM = adjM
 
         _, _, self.model_params, _, _ = adEx_utils.define_experiment(
-            dt = self.DTmodel, Tmax = self.Tmaxmodel)
+            dt = self.DTmodel, Tmax = self.Tmaxmodel, **fixed_params)
 
     def upsample(NEURON):
-        return dbg.upsample_memory_optimized(
+        return modutl.upsample_memory_optimized(
                     sig=NEURON.calcium,
                     MODELts=NEURON.MODELts,
                     MODELsize=NEURON.MODELsize,
@@ -105,103 +114,42 @@ class CadEx:
 
 
     def run(self, INPUT_highHZ:np.ndarray,
-            model:adEx = adEx.euler_nosynapse_cython,):
+            ineuron:int = 0,
+            model:adEx = adEx.nosynapse_euler_cython,
+            # *100 correction for dF/F amplitude relative to current
+            dFSCALER:float = 100,
+            plot:bool = True):
         start = time()
-        adEx_utils.run_experiment(adExModel= model,
-                                  Tmax=self.Tmaxmodel, dt = self.DTmodel,
-                                  model_params=self.model_params,
-                                  # *100 correction for dF/F amplitude relative to current
-                                  Iapp=INPUT_highHZ * 100, 
-                                  plot=True)
-        print(f'{time()-start} s')
+        # For synaptic model include adjMatrix and evaluation array
+        if model in (adEx.synapse_euler, adEx.synapse_euler_cython):
+            # second depth slice is cross-correlations of signals
+            adjROW = self.adjM[ineuron, :, 1]
+            adjROW = np.ascontiguousarray(adjROW)
+            modutl.__runWRAP__(ineuron = ineuron, 
+                            model = model, 
+                            INPUT_highHZ = INPUT_highHZ * dFSCALER,
+                            adjROW = adjROW,
+                            model_params = self.model_params,
+                            MODELts = self.MODELts,
+                            Tmaxmodel = self.Tmaxmodel, DTmodel = self.DTmodel, 
+                            plot = plot)
+            
+        else:
+            adEx_utils.run_experiment(adExModel= model,
+                                    Tmax=self.Tmaxmodel, dt = self.DTmodel,
+                                    model_params=self.model_params,
+                                    Iapp=INPUT_highHZ * dFSCALER,
+                                    ineuron=ineuron, 
+                                    plot=plot,
+                                    ts = self.MODELts)
+        print(f'{time()-start} s', flush=True)
 
     def train_test(self, split:float
                    )->tuple[np.ndarray, np.ndarray]:
         pass
 
-def upsample(sig:np.ndarray,
-             MODELts:np.ndarray,
-             MODELsize:int,
-             SIGsize:int,
-             ITERneuron:np.ndarray,
-             msdelays:np.ndarray,
-             gaussSD:float = 20,
-             additionalMSoffset: float = 5,
-            )->tuple[np.ndarray, np.ndarray]:
-    os.environ['OPENBLAS_NUM_THREADS'] = '1'
-    os.environ['MKL_NUM_THREADS'] = '1'
-    os.environ['OMP_NUM_THREADS'] = '1'
-    # collection array
-    # Account for msdelays based on location within imaging frame
-    bindelays = np.round(msdelays)
-
-    SPACING = MODELsize // SIGsize
-    batches = np.array_split(ITERneuron, 5)
-    worker_args= [
-        [sig[:,batch].copy(), MODELts.copy(), 
-        batch.size, 
-        SPACING, MODELsize,
-        gaussSD, 
-        bindelays[batch].copy(), additionalMSoffset
-        ]
-        for batch in batches]
-    
-    outList = Parallel(njobs = 5, verbose=14, backend='loky')(
-        delayed(modutl.upsampling_worker)(*wa) for wa in worker_args
-        )
-    
-    # not parallelized version (just as fast with 1 worker)
-    # outList = [modutl.upsampling_worker(*wa) for wa in worker_args]
-    
-    return np.column_stack(outList)
-
-def upsamp(SFmodel:float,
-        model_runtime_sec:float,
-        spikes:np.ndarray,
-        calcium:np.ndarray,
-        SFreal:float,
-        adjM:np.ndarray, 
-        session_name:str,
-        session_number:int | None = None,
-        frametimes:np.ndarray | None = None,
-        event_times:np.ndarray | None = None,
-        msdelays:np.ndarray | None = None,
-        fixed_params: dict[str:float] | None = None):
-    # convert to milliseconds
-    DTmodel = 1000 / SFmodel
-    SFmodel, SFreal = SFmodel, SFreal
-    Tmaxmodel = model_runtime_sec * 1000
-    msdelays = msdelays
-    # how many more samples we need based on how much higher sampling freq. is
-    MODELsize = round(max(calcium.shape) * (SFmodel // SFreal))
-    MODELts = np.linspace(0, Tmaxmodel, num = MODELsize, dtype=float)
-    SIGsize = max(calcium.shape)
-    N_neurons = msdelays.size
-    ITERneuron = np.arange(N_neurons, dtype=int)
-
-    _, _, model_params, _, _ = adEx_utils.define_experiment(
-        dt = DTmodel, Tmax = Tmaxmodel)
-    return calcium, MODELts, MODELsize, SIGsize, ITERneuron, msdelays
-          
-def rundum():
-    arr = list(range(20))
-    start = time()
-    results = Parallel(n_jobs=cpu_count(), verbose=10)(
-        delayed(modutl.slow_square)(i) for i in arr
-    )
-    print("Results (slice):", results[:5], "… total time:", time() - start)
 
 if __name__ == '__main__':
-    # Dummy test (WORKS)
-    # arr = list(range(20))
-    # start = time()
-    # results = Parallel(n_jobs=cpu_count(), verbose=10)(
-    #     delayed(modutl.slow_square)(i) for i in arr
-    # )
-    # print("Results (slice):", results[:5], "… total time:", time() - start)
-    
-    # rundum()
-    
     # exemplary sessions for G1pre: Epsilon (2), Eta(3), Zeta2(8)
     # exemplary sessions for G2pre: Dieciceis (0), Diez(2), Nueve(3)
     avs = load_in_data(pre_post='pre')
@@ -209,31 +157,15 @@ if __name__ == '__main__':
     MP:dict = rawsession_loader(avs[1], region='V1')
 
     # model class
-    NEURON = CadEx(SFmodel=1000, model_runtime_sec=2500, 
-                   **MP)
-    
     start = time()
-    # sig, MODELts, MODELsize, SIGsize, ITERneuron, msdelays = upsamp(SFmodel=1000, model_runtime_sec=2500, 
-    #                                                               **MP)
-    # HIGHHz = upsample(sig=sig, 
-    #                 MODELts=MODELts,
-    #                 MODELsize=MODELsize,
-    #                 SIGsize=SIGsize,
-    #                 ITERneuron=ITERneuron,
-    #                 msdelays=msdelays,
-    #                 gaussSD=20,
-    #                 additionalMSoffset=5
-    # )
-    # REAL DATA, DOESNT WORK!
-    HIGHHz = NEURON.upsample()
-    # HIGHHz = dbg.upsample_memory_optimized(sig=sig, 
-    #                 MODELts=MODELts,
-    #                 MODELsize=MODELsize,
-    #                 SIGsize=SIGsize,
-    #                 ITERneuron=ITERneuron,
-    #                 msdelays=msdelays,
-    #                 gaussSD=20,
-    #                 additionalMSoffset=5)
+    NEURON = CadEx(SFmodel=1000, 
+                   # 3600 1h, 1800 30 min, 900 15 min, 600 10 min, 300 5 min,
+                   model_runtime_sec=300, 
+                   **MP)
     print(f'{time()-start} s')
 
-    NEURON.run(INPUT_highHZ=HIGHHz[:,0])
+    NEURON.run(INPUT_highHZ=NEURON.calciumMODEL,
+               ineuron=0,
+               model=adEx.synapse_euler_cython,
+               dFSCALER=10,
+               plot=False)

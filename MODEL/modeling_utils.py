@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+from joblib import cpu_count, delayed, Parallel
+import MODEL.adEx_models as adEx
+from MODEL.adEx_utils import run_experiment
 from typing import Literal
 from collections import defaultdict
 
@@ -49,19 +51,40 @@ def parameter_ranges():
     # a) Tonic spiking
     tonic_params = (200,10,)
 
+
+def __runWRAP__(ineuron:int, 
+                model:adEx, 
+                INPUT_highHZ:np.ndarray,
+                adjROW:np.ndarray,
+                model_params:dict,
+                MODELts:np.ndarray,
+                Tmaxmodel:float, DTmodel:float, 
+                plot:bool):
+    adjROW[ineuron] = 0
+    eval_score = run_experiment(adExModel= model,
+                                Tmax=Tmaxmodel, dt = DTmodel,
+                                model_params=model_params,
+                                Iapp=INPUT_highHZ, 
+                                adjM=adjROW,
+                                ineuron=ineuron,
+                                plot=plot,
+                                ts = MODELts)
+
 ### --- Other model utils ---
 def upsampling_worker(sigBATCH:np.ndarray, MODELts:np.ndarray,
                       batchSize:int,
-                      SPACING:float, MODELsize:int,
+                      SIGsize:float, MODELsize:int,
                       gaussSD:float, 
                       bindelaysBATCH:np.ndarray, additionalMSoffset:float,
+                      ibatch:int,
                       ):
     pid = os.getpid()
-    print(f"[upsampling_worker STARTED, PID={pid}, batchSize={batchSize}, SPACING={SPACING}]", flush=True)
-    BATCH = np.zeros((MODELsize, batchSize), dtype=float)
-    for ni in range(batchSize):
+    print(f"[upsampling_worker STARTED, PID={pid}, batchSize={batchSize}]", flush=True)
+    BATCH = np.zeros((MODELsize, batchSize), dtype=float, order = 'C')
+    MODELdownsampledTS = np.linspace(MODELts[0], MODELts[-1], SIGsize)
+    for ni in tqdm(range(batchSize), position=ibatch):
         # Linear interpolation to get higher sampling rate
-        out = np.interp(x=MODELts, xp = MODELts[::SPACING], fp = sigBATCH[:,ni])
+        out = np.interp(x=MODELts, xp = MODELdownsampledTS, fp = sigBATCH[:,ni])
         # Convolve with gaussian to smooth over linear interpolation artifacts
         symmgaussrange = np.linspace(-MODELsize//2, MODELsize//2, MODELsize)
         gaussian = np.exp(-(symmgaussrange/gaussSD)**2/2)
@@ -73,23 +96,59 @@ def upsampling_worker(sigBATCH:np.ndarray, MODELts:np.ndarray,
         out = np.roll(out, shift = lag)
         out[:lag] = 0
         BATCH[:,ni] = out
-        print(lag, 'done', flush=True)
+        # print('Neuron w lag: ',lag, 'done', flush=True)
     return BATCH
 
-
-def dummy_worker(sigBATCH, MODELts, batchSize, SPACING, MODELsize, gaussSD, bindelaysBATCH, additionalMSoffset):
-    import os, time
-    pid = os.getpid()
-    print(f"[dummy_worker PID={pid} batchSize={batchSize}, SPACING={SPACING}]", flush=True)
-    time.sleep(0.5)
-    return np.zeros((MODELsize, batchSize), dtype=float)
-
-
-def slow_square(x):
-    pid = os.getpid()
-    y = x
-    for i in range(100000000):
-        x = x**2
-        x = y
-    print(f"[Worker {pid}] squared {x}")
-    return x * x
+def upsample_memory_optimized(sig: np.ndarray,
+                             MODELts: np.ndarray,
+                             MODELsize: int,
+                             SIGsize: int,
+                             ITERneuron: np.ndarray,
+                             msdelays: np.ndarray,
+                             gaussSD: float = 20,
+                             additionalMSoffset: float = 5,
+                             ) -> tuple[np.ndarray, np.ndarray]:
+    
+    # Force single-threaded NumPy to avoid conflicts
+    os.environ['OPENBLAS_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
+    os.environ['OMP_NUM_THREADS'] = '1'
+    
+    bindelays = np.round(msdelays)
+    
+    # Use fewer workers for memory-intensive tasks
+    n_workers = min(cpu_count() // 2, 8)
+    batches = np.array_split(ITERneuron, n_workers)
+    
+    print(f"Memory-optimized version using {n_workers} workers")
+    
+    worker_args = [
+        [sig[:, batch].copy(),  # Make explicit copies to avoid sharing issues
+         MODELts.copy(),
+         batch.size,
+         SIGsize, MODELsize,
+         gaussSD,
+         bindelays[batch].copy(), additionalMSoffset,
+         ibatch
+        ]
+        for ibatch, batch in enumerate(batches)
+    ]
+    
+    # Try different multiprocessing backends
+    for backend in ['loky', 'threading', 'multiprocessing']:
+        try:
+            print(f"Trying backend: {backend}")
+            outList = Parallel(n_jobs=n_workers, verbose=10, backend=backend)(
+                delayed(upsampling_worker)(*wa) for wa in worker_args
+            )
+            print(f"Success with {backend} backend!")
+            break
+        except Exception as e:
+            print(f"Failed with {backend}: {e}")
+            continue
+    else:
+        print("All backends failed, falling back to sequential processing")
+        # single core also good for debugging
+        outList = [upsampling_worker(*wa) for wa in worker_args]
+    
+    return np.column_stack(outList)

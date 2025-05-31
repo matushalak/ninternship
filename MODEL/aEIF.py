@@ -35,43 +35,39 @@ np.random.seed(1)
 MODEL = adEx.euler_nosynapse_cython
 
 # Choose plotting
-PLOT = False
-
-# Choose whether A forward euler method model is being used OR scipy method with adaptive step sizes
-# (forward Euler is fastest)
-SIMPLE = True
+PLOT = True
 
 # Experiments
 Tmax, dt, model_params, _, Iapp =  adEx_utils.define_experiment(tauw = 50, a= 6, dt = 1, Vreset = -47,
                                                                 # 40: 5 trials per stimulus, 80: 10 trials per stimulus, ... 720: 90 trials per stimulus
                                                                 Tmax = 40 * 47 * (1000/15.45), # ms
-                                                                custom = lambda t: np.random.normal(loc = 775, scale = 500) 
-                                                                if t % 47 < 15 and t > 15 else np.random.normal(loc = 550, scale = 500))
+                                                                custom = lambda t: np.random.normal(loc = 400, scale = 500) 
+                                                                if t % 47 < 15 and t > 15 else np.random.normal(loc = 200, scale = 500))
 adEx_utils.run_experiment(adExModel=MODEL, Tmax=Tmax, dt = dt, model_params=model_params, Iapp=Iapp,
-                          plot=PLOT, simple = SIMPLE)
+                          plot=PLOT)
 
 # # # Default experiment - pulsed current (not in original paper)
 Tmax, dt, model_params, _, Iapp =  adEx_utils.define_experiment(dt = 1) # returns the same as adEx.utils.default_experiment()
 adEx_utils.run_experiment(adExModel=MODEL, Tmax=Tmax, dt = dt, model_params=model_params, Iapp=Iapp,
-                          plot=PLOT, simple = SIMPLE)
+                          plot=PLOT)
 
 # Figure 1C - Voltage response to small and large current
 Tmax, dt, model_params, _, Iapp =  adEx_utils.define_experiment(Vpeak = -20, 
                                                                 figure = 'small_large')
 adEx_utils.run_experiment(adExModel=MODEL, Tmax=Tmax, dt = dt, model_params=model_params, Iapp=Iapp,
-                          plot=PLOT, simple = SIMPLE)
+                          plot=PLOT)
 
 # Figure 2C - Bursting Voltage response to small and large current when setting Vreset = -47
 Tmax, dt, model_params, _, Iapp =  adEx_utils.define_experiment(Vreset = -47, 
                                                                 figure = 'small_large')
 adEx_utils.run_experiment(adExModel=MODEL, Tmax=Tmax, dt = dt, model_params=model_params, Iapp=Iapp,
-                          plot=PLOT, simple = SIMPLE)
+                          plot=PLOT)
 
 # Figure 2D - Postinhibitory Rebound Voltage response to hyperpolarization when setting EL = -60, a = 80, tauw = 720
 Tmax, dt, model_params, _, Iapp =  adEx_utils.define_experiment(EL = -60, Vreset = -60, a = 80, tauw = 720,
                                                                 figure = 'hyperpol')
 adEx_utils.run_experiment(adExModel=MODEL, Tmax=Tmax, dt = dt, model_params=model_params, Iapp=Iapp,
-                          plot=PLOT, simple = SIMPLE)
+                          plot=PLOT)
 print(time()-start)
 
 
