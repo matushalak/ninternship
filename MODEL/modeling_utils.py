@@ -18,7 +18,7 @@ import os
 
 ### --- Optimizer utils ---
 def loss_func(ypred:np.ndarray, y:np.ndarray,
-              EPSILON:float = 1e-6, FIRING_penalty:float = .75
+              EPSILON:float = 1e-6, FIRING_penalty:float = .95
               )->float:
     '''
     # NEGATIVE POISSON LOG-LIKELIHOOD + SPIKING INCENTIVE
@@ -54,12 +54,12 @@ def loss_func(ypred:np.ndarray, y:np.ndarray,
 
     ## 2) Spike Rate difference
     if np.sum(predicted) == 0:
-        spike_rate_penalty = 10000
+        spike_rate_penalty = 1e8
     else:
-        spike_rate_penalty = (np.sum(predicted) - np.sum(observed))**2
+        spike_rate_penalty = 0
     
     # LL : spike rate penalizations
-    LLpenaltyWeight = 1 #- FIRING_penalty
+    LLpenaltyWeight = 1 - FIRING_penalty
     
     return (LLpenaltyWeight * nLLnorm) + (FIRING_penalty * spike_rate_penalty)
 
@@ -134,100 +134,66 @@ class Optimizer:
 
     objective : Callable (x) takes parameters vector (as specified in )
     """
-    def __init__(self, bounds:Parameters, objective_fun:Callable):
-        self.Params = bounds
-        self.bounds = bounds.get_bounds_array()
+    def __init__(self, Params:Parameters, objective_fun:Callable):
+        self.Params = Params
+        self.bounds = Params.get_bounds_array()
         self.objective_fun = objective_fun
         self.optim_history = []
     
-    def callback_(self, xk, convergence=None):
+    def fit_with_nevergrad(self, budget: int = 200):
         """
-        Track optimization progress
-        
-        Parameters:
-        -----------
-        xk : array_like
-            Current best solution vector
-        convergence : float, optional
-            Convergence measure (not always provided)
+        Replace SciPy DE with Nevergrad CMA-ES.
+        budget = total number of objective evaluations allowed.
+                 (E.g. 200 means ~ 200 calls to objective().)
         """
-        self.iteration_count += 1
-        
-        try:
-            current_loss = self.objective_fun(xk)
-            self.optim_history.append({
-                'iteration': self.iteration_count,
-                'loss': current_loss,
-                'parameters': xk.copy(),
-                'convergence': convergence
-            })
-            
-            print(f"Generation {self.iteration_count}: Loss = {current_loss:.4f}", flush=True)
-            
-        except Exception as e:
-            print(f"Error in callback: {e}", flush=True)
-            
-        return False  # Continue optimization
-    
-    def random_initialization(self, n_candidates=5):
-        """
-        Generate starting points within bounds
-        TODO: 
-        make this start within known firing ranges
-        """
-        candidates = []
-        
-        for _ in range(n_candidates):
-            candidate = []
-            for (low, high) in self.bounds:
-                candidate.append(np.random.uniform(low, high))
-            candidates.append(np.array(candidate))
-            
-        return candidates
-    
-    def differential_evolution_optimize(self, maxiter=1000, popsize=15, 
-                                     seed=None, polish=True):
-        """
-        Differential Evolution - Great for global optimization
-        Recommended as first choice for neural model fitting
-        """
-        print("Starting Differential Evolution optimization...")
-        print(f"Population size multiplier: {popsize}")
-        print(f"Max iterations: {maxiter}")
-        
-        start_time = time.time()
-        
-        # Reset tracking
-        self.optim_history = []
-        self.iteration_count = 0
-        
-        try:
-            result = differential_evolution(
-                func=self.objective_fun,
-                bounds=self.bounds,
-                maxiter=maxiter,
-                popsize=popsize,
-                seed=seed,
-                polish=polish,
-                callback=self.callback_,
-                # disp=True,
-            )
-            
-            optimization_time = time.time() - start_time
-            print(f"DE completed in {optimization_time:.2f} seconds")
-            print(f"Success: {result.success}")
-            print(f"Message: {result.message}")
-            print(f"Function evaluations: {result.nfev}")
-            print(f"Final loss: {result.fun:.6f}")
-            
-            return result
-            
-        except Exception as e:
-            print(f"Optimization failed with error: {e}")
-            optimization_time = time.time() - start_time
-            print(f"Failed after {optimization_time:.2f} seconds")
-            raise
+        num_params = len(self.bounds)
 
+        # 1) Build a Nevergrad Parameter space with Box (continuous) bounds
+        instr = ng.p.Array(shape=(num_params, ), 
+                           lower=self.bounds[:,0], 
+                           upper=self.bounds[:,1])
+        
+        # 2) Choose an optimizer; here we pick CMA-ES
+        optimizer = ng.optimizers.CMA(
+            parametrization=instr,
+            budget=budget,
+            num_workers=1,   # we’ll parallelize manually below if desired
+        )
+
+        # 3) Main ask/tell loop
+        #    We request one “candidate” at a time, evaluate it, then tell the optimizer.
+        #    Alternatively, we can ask in batches (e.g. popsize) and evaluate in parallel.
+        #    For simplicity, we’ll do one by one here; you can swap in parallel_map if you like.
+
+        for gen in range(budget):
+            cand = optimizer.ask()               # cand is a Nevergrad candidate
+            x = cand.value                       # numpy array of length num_params
+
+            # 4) Evaluate the objective on x
+            loss = self.objective_fun(x)
+
+            # 5) Tell the optimizer the loss
+            optimizer.tell(cand, loss)
+
+            # 6) Record best so far and print progress
+            #    optimizer.provide_recommendation() returns the best seen candidate
+            best = optimizer.provide_recommendation().value
+            best_loss = self.objective_fun(best)
+
+            self.optim_history.append({
+                'generation': gen + 1,
+                'loss':       best_loss,
+                'params':     best.copy()
+            })
+
+            print(f"Gen {gen+1:3d}/{budget:3d}  Best loss = {best_loss:.6f}")
+
+        # 7) At the end, the final “recommendation” is our best estimate
+        final_x = optimizer.provide_recommendation().value
+        final_loss = self.objective_fun(final_x)
+        print("NEVERGRAD done. Final loss =", final_loss)
+
+        return final_x, final_loss
 
 
 def create_objective_function(adExModel:adEx, Tmax:float,
@@ -427,23 +393,21 @@ def __runWRAP__(ineuron:int,
             eval_arr=eval_arr,
             MLspikeMaxSpikes=MLspikeMaxSpikes,
             ineuron=ineuron, ts = MODELts)
-        OPTIMIZER = Optimizer(bounds=BOUNDS, objective_fun=OBJECTIVE)
+        OPTIMIZER = Optimizer(Params=BOUNDS, objective_fun=OBJECTIVE)
         
-        # test_objective_randomness(OBJECTIVE, bounds=BOUNDS, n_tests=50)
-        # Method 1: Differential Evolution (recommended first try)
-        print("=== Differential Evolution ===")
-        de_result = OPTIMIZER.differential_evolution_optimize(maxiter=2, popsize=5)
+
+        DEBUG_OBJECTIVE:Callable = create_debug_objective_function(
+            adExModel= model, Tmax=Tmaxmodel, 
+            dt = DTmodel, Iapp=INPUT_highHZ, 
+            eval_arr=eval_arr,
+            MLspikeMaxSpikes=MLspikeMaxSpikes,
+            ineuron=ineuron, ts = MODELts)
         
-        # # Extract best parameters
-        # best_params = BOUNDS.params_to_dict(de_result.x)
-        # print(f"\nBest loss: {de_result.fun:.4f}")
-        # print("Best parameters:")
-        # for name, value in best_params.items():
-        #     if name != 'synaptic_weights':
-        #         print(f"  {name}: {value:.3f}")
-        # print(f"  Synaptic weights: {len(best_params['synaptic_weights'])} values")
+        test_objective_randomness(DEBUG_OBJECTIVE, bounds=BOUNDS, n_tests=50)
         
-        # return de_result, OPTIMIZER.optim_history
+        print("=== NEVERGRAD CMA-ES Evolution ===")
+        RESULT = OPTIMIZER.fit_with_nevergrad()
+        
 
     # Simply run experiment on one parameter set
     else:
