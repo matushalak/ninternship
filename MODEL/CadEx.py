@@ -100,6 +100,9 @@ class CadEx:
 
         _, _, self.model_params, _, _ = adEx_utils.define_experiment(
             dt = self.DTmodel, Tmax = self.Tmaxmodel, **fixed_params)
+        
+        # OPTIMIZED MODEL PARAMS
+        self.params_all_neur_optimized = dict()
 
     def upsample(NEURON):
         return modutl.upsample_memory_optimized(
@@ -118,21 +121,36 @@ class CadEx:
             model:adEx = adEx.nosynapse_euler_cython,
             # *100 correction for dF/F amplitude relative to current
             dFSCALER:float = 100,
-            plot:bool = True):
+            plot:bool = True,
+            fit:bool = False):
         start = time()
         # For synaptic model include adjMatrix and evaluation array
         if model in (adEx.synapse_euler, adEx.synapse_euler_cython):
             # second depth slice is cross-correlations of signals
             adjROW = self.adjM[ineuron, :, 1]
             adjROW = np.ascontiguousarray(adjROW)
-            modutl.__runWRAP__(ineuron = ineuron, 
-                            model = model, 
-                            INPUT_highHZ = INPUT_highHZ * dFSCALER,
-                            adjROW = adjROW,
-                            model_params = self.model_params,
-                            MODELts = self.MODELts,
-                            Tmaxmodel = self.Tmaxmodel, DTmodel = self.DTmodel, 
-                            plot = plot)
+
+            if fit:
+                eval_arr = self.spikes[:, ineuron]
+            else:
+                eval_arr = None
+
+            out = modutl.__runWRAP__(ineuron = ineuron, 
+                                    model = model, 
+                                    INPUT_highHZ = INPUT_highHZ * dFSCALER,
+                                    adjROW = adjROW,
+                                    eval_arr= eval_arr,
+                                    model_params = self.model_params,
+                                    MODELts = self.MODELts,
+                                    Tmaxmodel = self.Tmaxmodel, DTmodel = self.DTmodel, 
+                                    plot = plot)
+            
+            # UPDATE ROW of adjacency matrix with fitted params (won't affect fitting of other neurons)
+            # and save model params for each neuron
+            # if fit:
+            #     PARAMS, ADJ = out
+            #     self.adjM[ineuron, :, 1] = ADJ
+            #     self.params_all_neur_optimized[ineuron] = PARAMS
             
         else:
             adEx_utils.run_experiment(adExModel= model,
@@ -168,4 +186,5 @@ if __name__ == '__main__':
                ineuron=0,
                model=adEx.synapse_euler_cython,
                dFSCALER=10,
+               fit=True,
                plot=False)

@@ -186,4 +186,3 @@ def forward_euler_synapse_cython(double[:] y0,
         wout[i] = w
 
     return Vout_arr, wout_arr, spts_arr
-

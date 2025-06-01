@@ -3,13 +3,22 @@
 /* BEGIN: Cython Metadata
 {
     "distutils": {
-        "depends": [],
-        "name": "nin.MODEL.adex_euler",
+        "depends": [
+            "/Users/matushalak/miniforge3/envs/nin/lib/python3.13/site-packages/numpy/_core/include/numpy/arrayobject.h",
+            "/Users/matushalak/miniforge3/envs/nin/lib/python3.13/site-packages/numpy/_core/include/numpy/arrayscalars.h",
+            "/Users/matushalak/miniforge3/envs/nin/lib/python3.13/site-packages/numpy/_core/include/numpy/ndarrayobject.h",
+            "/Users/matushalak/miniforge3/envs/nin/lib/python3.13/site-packages/numpy/_core/include/numpy/ndarraytypes.h",
+            "/Users/matushalak/miniforge3/envs/nin/lib/python3.13/site-packages/numpy/_core/include/numpy/ufuncobject.h"
+        ],
+        "include_dirs": [
+            "/Users/matushalak/miniforge3/envs/nin/lib/python3.13/site-packages/numpy/_core/include"
+        ],
+        "name": "MODEL.adex_euler",
         "sources": [
-            "adex_euler.pyx"
+            "MODEL/adex_euler.pyx"
         ]
     },
-    "module_name": "nin.MODEL.adex_euler"
+    "module_name": "MODEL.adex_euler"
 }
 END: Cython Metadata */
 
@@ -1117,8 +1126,8 @@ static CYTHON_INLINE float __PYX_NAN() {
   #endif
 #endif
 
-#define __PYX_HAVE__nin__MODEL__adex_euler
-#define __PYX_HAVE_API__nin__MODEL__adex_euler
+#define __PYX_HAVE__MODEL__adex_euler
+#define __PYX_HAVE_API__MODEL__adex_euler
 /* Early includes */
 #include <math.h>
 #include <string.h>
@@ -1360,9 +1369,9 @@ static const char *__pyx_filename;
 /* #### Code section: filename_table ### */
 
 static const char* const __pyx_f[] = {
-  "adex_euler.pyx",
+  "MODEL/adex_euler.pyx",
   "<stringsource>",
-  "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd",
+  "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd",
   "cpython/type.pxd",
 };
 /* #### Code section: utility_code_proto_before_types ### */
@@ -1585,7 +1594,7 @@ typedef struct {
 
 /* #### Code section: numeric_typedefs ### */
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":787
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":787
  * # in Cython to enable them only on the right systems.
  * 
  * ctypedef npy_int8       int8_t             # <<<<<<<<<<<<<<
@@ -1594,7 +1603,7 @@ typedef struct {
 */
 typedef npy_int8 __pyx_t_5numpy_int8_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":788
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":788
  * 
  * ctypedef npy_int8       int8_t
  * ctypedef npy_int16      int16_t             # <<<<<<<<<<<<<<
@@ -1603,7 +1612,7 @@ typedef npy_int8 __pyx_t_5numpy_int8_t;
 */
 typedef npy_int16 __pyx_t_5numpy_int16_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":789
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":789
  * ctypedef npy_int8       int8_t
  * ctypedef npy_int16      int16_t
  * ctypedef npy_int32      int32_t             # <<<<<<<<<<<<<<
@@ -1612,7 +1621,7 @@ typedef npy_int16 __pyx_t_5numpy_int16_t;
 */
 typedef npy_int32 __pyx_t_5numpy_int32_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":790
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":790
  * ctypedef npy_int16      int16_t
  * ctypedef npy_int32      int32_t
  * ctypedef npy_int64      int64_t             # <<<<<<<<<<<<<<
@@ -1621,7 +1630,7 @@ typedef npy_int32 __pyx_t_5numpy_int32_t;
 */
 typedef npy_int64 __pyx_t_5numpy_int64_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":794
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":794
  * #ctypedef npy_int128     int128_t
  * 
  * ctypedef npy_uint8      uint8_t             # <<<<<<<<<<<<<<
@@ -1630,7 +1639,7 @@ typedef npy_int64 __pyx_t_5numpy_int64_t;
 */
 typedef npy_uint8 __pyx_t_5numpy_uint8_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":795
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":795
  * 
  * ctypedef npy_uint8      uint8_t
  * ctypedef npy_uint16     uint16_t             # <<<<<<<<<<<<<<
@@ -1639,7 +1648,7 @@ typedef npy_uint8 __pyx_t_5numpy_uint8_t;
 */
 typedef npy_uint16 __pyx_t_5numpy_uint16_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":796
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":796
  * ctypedef npy_uint8      uint8_t
  * ctypedef npy_uint16     uint16_t
  * ctypedef npy_uint32     uint32_t             # <<<<<<<<<<<<<<
@@ -1648,7 +1657,7 @@ typedef npy_uint16 __pyx_t_5numpy_uint16_t;
 */
 typedef npy_uint32 __pyx_t_5numpy_uint32_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":797
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":797
  * ctypedef npy_uint16     uint16_t
  * ctypedef npy_uint32     uint32_t
  * ctypedef npy_uint64     uint64_t             # <<<<<<<<<<<<<<
@@ -1657,7 +1666,7 @@ typedef npy_uint32 __pyx_t_5numpy_uint32_t;
 */
 typedef npy_uint64 __pyx_t_5numpy_uint64_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":801
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":801
  * #ctypedef npy_uint128    uint128_t
  * 
  * ctypedef npy_float32    float32_t             # <<<<<<<<<<<<<<
@@ -1666,7 +1675,7 @@ typedef npy_uint64 __pyx_t_5numpy_uint64_t;
 */
 typedef npy_float32 __pyx_t_5numpy_float32_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":802
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":802
  * 
  * ctypedef npy_float32    float32_t
  * ctypedef npy_float64    float64_t             # <<<<<<<<<<<<<<
@@ -1675,7 +1684,7 @@ typedef npy_float32 __pyx_t_5numpy_float32_t;
 */
 typedef npy_float64 __pyx_t_5numpy_float64_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":809
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":809
  * ctypedef double complex complex128_t
  * 
  * ctypedef npy_longlong   longlong_t             # <<<<<<<<<<<<<<
@@ -1684,7 +1693,7 @@ typedef npy_float64 __pyx_t_5numpy_float64_t;
 */
 typedef npy_longlong __pyx_t_5numpy_longlong_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":810
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":810
  * 
  * ctypedef npy_longlong   longlong_t
  * ctypedef npy_ulonglong  ulonglong_t             # <<<<<<<<<<<<<<
@@ -1693,7 +1702,7 @@ typedef npy_longlong __pyx_t_5numpy_longlong_t;
 */
 typedef npy_ulonglong __pyx_t_5numpy_ulonglong_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":812
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":812
  * ctypedef npy_ulonglong  ulonglong_t
  * 
  * ctypedef npy_intp       intp_t             # <<<<<<<<<<<<<<
@@ -1702,7 +1711,7 @@ typedef npy_ulonglong __pyx_t_5numpy_ulonglong_t;
 */
 typedef npy_intp __pyx_t_5numpy_intp_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":813
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":813
  * 
  * ctypedef npy_intp       intp_t
  * ctypedef npy_uintp      uintp_t             # <<<<<<<<<<<<<<
@@ -1711,7 +1720,7 @@ typedef npy_intp __pyx_t_5numpy_intp_t;
 */
 typedef npy_uintp __pyx_t_5numpy_uintp_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":815
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":815
  * ctypedef npy_uintp      uintp_t
  * 
  * ctypedef npy_double     float_t             # <<<<<<<<<<<<<<
@@ -1720,7 +1729,7 @@ typedef npy_uintp __pyx_t_5numpy_uintp_t;
 */
 typedef npy_double __pyx_t_5numpy_float_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":816
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":816
  * 
  * ctypedef npy_double     float_t
  * ctypedef npy_double     double_t             # <<<<<<<<<<<<<<
@@ -1729,7 +1738,7 @@ typedef npy_double __pyx_t_5numpy_float_t;
 */
 typedef npy_double __pyx_t_5numpy_double_t;
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":817
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":817
  * ctypedef npy_double     float_t
  * ctypedef npy_double     double_t
  * ctypedef npy_longdouble longdouble_t             # <<<<<<<<<<<<<<
@@ -3141,7 +3150,7 @@ static CYTHON_INLINE char *__pyx_f_5numpy_7ndarray_4data_data(PyArrayObject *__p
 
 /* Module declarations from "numpy" */
 
-/* Module declarations from "nin.MODEL.adex_euler" */
+/* Module declarations from "MODEL.adex_euler" */
 static PyObject *__pyx_collections_abc_Sequence = 0;
 static PyObject *generic = 0;
 static PyObject *strided = 0;
@@ -3188,11 +3197,11 @@ static PyObject *__pyx_unpickle_Enum__set_state(struct __pyx_MemviewEnum_obj *, 
 static const __Pyx_TypeInfo __Pyx_TypeInfo_double = { "double", NULL, sizeof(double), { 0 }, 0, 'R', 0, 0 };
 static const __Pyx_TypeInfo __Pyx_TypeInfo_long = { "long", NULL, sizeof(long), { 0 }, 0, __PYX_IS_UNSIGNED(long) ? 'U' : 'I', __PYX_IS_UNSIGNED(long), 0 };
 /* #### Code section: before_global_var ### */
-#define __Pyx_MODULE_NAME "nin.MODEL.adex_euler"
-extern int __pyx_module_is_main_nin__MODEL__adex_euler;
-int __pyx_module_is_main_nin__MODEL__adex_euler = 0;
+#define __Pyx_MODULE_NAME "MODEL.adex_euler"
+extern int __pyx_module_is_main_MODEL__adex_euler;
+int __pyx_module_is_main_MODEL__adex_euler = 0;
 
-/* Implementation of "nin.MODEL.adex_euler" */
+/* Implementation of "MODEL.adex_euler" */
 /* #### Code section: global_var ### */
 static PyObject *__pyx_builtin_range;
 static PyObject *__pyx_builtin_ValueError;
@@ -3334,19 +3343,19 @@ static const char __pyx_k_MemoryView_of[] = "<MemoryView of ";
 static const char __pyx_k_class_getitem[] = "__class_getitem__";
 static const char __pyx_k_reduce_cython[] = "__reduce_cython__";
 static const char __pyx_k_AssertionError[] = "AssertionError";
-static const char __pyx_k_adex_euler_pyx[] = "adex_euler.pyx";
 static const char __pyx_k_synaptic_input[] = "synaptic_input";
 static const char __pyx_k_View_MemoryView[] = "View.MemoryView";
 static const char __pyx_k_allocate_buffer[] = "allocate_buffer";
 static const char __pyx_k_collections_abc[] = "collections.abc";
 static const char __pyx_k_dtype_is_object[] = "dtype_is_object";
 static const char __pyx_k_setstate_cython[] = "__setstate_cython__";
+static const char __pyx_k_MODEL_adex_euler[] = "MODEL.adex_euler";
 static const char __pyx_k_pyx_unpickle_Enum[] = "__pyx_unpickle_Enum";
 static const char __pyx_k_asyncio_coroutines[] = "asyncio.coroutines";
 static const char __pyx_k_cline_in_traceback[] = "cline_in_traceback";
 static const char __pyx_k_strided_and_direct[] = "<strided and direct>";
+static const char __pyx_k_MODEL_adex_euler_pyx[] = "MODEL/adex_euler.pyx";
 static const char __pyx_k_forward_euler_cython[] = "forward_euler_cython";
-static const char __pyx_k_nin_MODEL_adex_euler[] = "nin.MODEL.adex_euler";
 static const char __pyx_k_strided_and_indirect[] = "<strided and indirect>";
 static const char __pyx_k_Invalid_shape_in_axis[] = "Invalid shape in axis ";
 static const char __pyx_k_contiguous_and_direct[] = "<contiguous and direct>";
@@ -3422,8 +3431,8 @@ static void __pyx_memoryviewslice___pyx_pf_15View_dot_MemoryView_16_memoryviewsl
 static PyObject *__pyx_pf___pyx_memoryviewslice___reduce_cython__(CYTHON_UNUSED struct __pyx_memoryviewslice_obj *__pyx_v_self); /* proto */
 static PyObject *__pyx_pf___pyx_memoryviewslice_2__setstate_cython__(CYTHON_UNUSED struct __pyx_memoryviewslice_obj *__pyx_v_self, CYTHON_UNUSED PyObject *__pyx_v___pyx_state); /* proto */
 static PyObject *__pyx_pf_15View_dot_MemoryView___pyx_unpickle_Enum(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v___pyx_type, long __pyx_v___pyx_checksum, PyObject *__pyx_v___pyx_state); /* proto */
-static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_y0, double __pyx_v_dt, PyObject *__pyx_v_model_params, PyObject *__pyx_v_reset_params, __Pyx_memviewslice __pyx_v_currents); /* proto */
-static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_y0, double __pyx_v_dt, PyObject *__pyx_v_model_params, PyObject *__pyx_v_reset_params, __Pyx_memviewslice __pyx_v_adjM, __Pyx_memviewslice __pyx_v_currents); /* proto */
+static PyObject *__pyx_pf_5MODEL_10adex_euler_forward_euler_cython(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_y0, double __pyx_v_dt, PyObject *__pyx_v_model_params, PyObject *__pyx_v_reset_params, __Pyx_memviewslice __pyx_v_currents); /* proto */
+static PyObject *__pyx_pf_5MODEL_10adex_euler_2forward_euler_synapse_cython(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_y0, double __pyx_v_dt, PyObject *__pyx_v_model_params, PyObject *__pyx_v_reset_params, __Pyx_memviewslice __pyx_v_adjM, __Pyx_memviewslice __pyx_v_currents); /* proto */
 static PyObject *__pyx_tp_new_array(PyTypeObject *t, PyObject *a, PyObject *k); /*proto*/
 static PyObject *__pyx_tp_new_Enum(PyTypeObject *t, PyObject *a, PyObject *k); /*proto*/
 static PyObject *__pyx_tp_new_memoryview(PyTypeObject *t, PyObject *a, PyObject *k); /*proto*/
@@ -3559,102 +3568,102 @@ static __pyx_mstatetype * const __pyx_mstate_global = &__pyx_mstate_global_stati
 #define __pyx_kp_u_Invalid_mode_expected_c_or_fortr __pyx_string_tab[21]
 #define __pyx_kp_u_Invalid_shape_in_axis __pyx_string_tab[22]
 #define __pyx_n_u_M __pyx_string_tab[23]
-#define __pyx_n_u_MemoryError __pyx_string_tab[24]
-#define __pyx_kp_u_MemoryView_of __pyx_string_tab[25]
-#define __pyx_n_u_N __pyx_string_tab[26]
-#define __pyx_kp_u_Note_that_Cython_is_deliberately __pyx_string_tab[27]
-#define __pyx_n_b_O __pyx_string_tab[28]
-#define __pyx_kp_u_Out_of_bounds_on_buffer_access_a __pyx_string_tab[29]
-#define __pyx_n_u_PickleError __pyx_string_tab[30]
-#define __pyx_n_u_Sequence __pyx_string_tab[31]
-#define __pyx_kp_u_Step_may_not_be_zero_axis_d __pyx_string_tab[32]
-#define __pyx_n_u_TypeError __pyx_string_tab[33]
-#define __pyx_kp_u_Unable_to_convert_item_to_object __pyx_string_tab[34]
-#define __pyx_n_u_V __pyx_string_tab[35]
-#define __pyx_n_u_V0 __pyx_string_tab[36]
-#define __pyx_n_u_V2 __pyx_string_tab[37]
-#define __pyx_n_u_VT __pyx_string_tab[38]
-#define __pyx_n_u_ValueError __pyx_string_tab[39]
-#define __pyx_n_u_View_MemoryView __pyx_string_tab[40]
-#define __pyx_n_u_Vout __pyx_string_tab[41]
-#define __pyx_n_u_Vout_arr __pyx_string_tab[42]
-#define __pyx_n_u_Vpeak __pyx_string_tab[43]
-#define __pyx_n_u_Vreset __pyx_string_tab[44]
-#define __pyx_kp_u__2 __pyx_string_tab[45]
-#define __pyx_kp_u__3 __pyx_string_tab[46]
-#define __pyx_kp_u__4 __pyx_string_tab[47]
-#define __pyx_kp_u__5 __pyx_string_tab[48]
-#define __pyx_kp_u__6 __pyx_string_tab[49]
-#define __pyx_n_u_a __pyx_string_tab[50]
-#define __pyx_n_u_abc __pyx_string_tab[51]
-#define __pyx_kp_u_add_note __pyx_string_tab[52]
-#define __pyx_kp_u_adex_euler_pyx __pyx_string_tab[53]
-#define __pyx_n_u_adjM __pyx_string_tab[54]
-#define __pyx_kp_u_adjM_size __pyx_string_tab[55]
-#define __pyx_n_u_allocate_buffer __pyx_string_tab[56]
-#define __pyx_kp_u_and __pyx_string_tab[57]
-#define __pyx_n_u_asyncio_coroutines __pyx_string_tab[58]
-#define __pyx_kp_u_at_0x __pyx_string_tab[59]
-#define __pyx_n_u_b __pyx_string_tab[60]
-#define __pyx_n_u_base __pyx_string_tab[61]
-#define __pyx_n_u_c __pyx_string_tab[62]
-#define __pyx_n_u_class __pyx_string_tab[63]
-#define __pyx_n_u_class_getitem __pyx_string_tab[64]
-#define __pyx_n_u_cline_in_traceback __pyx_string_tab[65]
-#define __pyx_kp_u_collections_abc __pyx_string_tab[66]
-#define __pyx_kp_u_contiguous_and_direct __pyx_string_tab[67]
-#define __pyx_kp_u_contiguous_and_indirect __pyx_string_tab[68]
-#define __pyx_n_u_count __pyx_string_tab[69]
-#define __pyx_n_u_currents __pyx_string_tab[70]
-#define __pyx_n_u_dV __pyx_string_tab[71]
-#define __pyx_n_u_dict __pyx_string_tab[72]
-#define __pyx_kp_u_disable __pyx_string_tab[73]
-#define __pyx_kp_u_doesn_t_match_number_of_neurons __pyx_string_tab[74]
-#define __pyx_n_u_dt __pyx_string_tab[75]
-#define __pyx_n_u_dtype __pyx_string_tab[76]
-#define __pyx_n_u_dtype_is_object __pyx_string_tab[77]
-#define __pyx_n_u_dw __pyx_string_tab[78]
-#define __pyx_n_u_empty __pyx_string_tab[79]
-#define __pyx_kp_u_enable __pyx_string_tab[80]
-#define __pyx_n_u_encode __pyx_string_tab[81]
-#define __pyx_n_u_enumerate __pyx_string_tab[82]
-#define __pyx_n_u_error __pyx_string_tab[83]
-#define __pyx_n_u_exp_arg __pyx_string_tab[84]
-#define __pyx_n_u_exp_term __pyx_string_tab[85]
-#define __pyx_n_u_flags __pyx_string_tab[86]
-#define __pyx_n_u_float64 __pyx_string_tab[87]
-#define __pyx_n_u_format __pyx_string_tab[88]
-#define __pyx_n_u_fortran __pyx_string_tab[89]
-#define __pyx_n_u_forward_euler_cython __pyx_string_tab[90]
-#define __pyx_n_u_forward_euler_synapse_cython __pyx_string_tab[91]
-#define __pyx_n_u_func __pyx_string_tab[92]
-#define __pyx_n_u_gL __pyx_string_tab[93]
-#define __pyx_kp_u_gc __pyx_string_tab[94]
-#define __pyx_n_u_getstate __pyx_string_tab[95]
-#define __pyx_kp_u_got __pyx_string_tab[96]
-#define __pyx_kp_u_got_differing_extents_in_dimensi __pyx_string_tab[97]
-#define __pyx_n_u_gs __pyx_string_tab[98]
-#define __pyx_n_u_i __pyx_string_tab[99]
-#define __pyx_n_u_id __pyx_string_tab[100]
-#define __pyx_n_u_import __pyx_string_tab[101]
-#define __pyx_n_u_index __pyx_string_tab[102]
-#define __pyx_n_u_initializing __pyx_string_tab[103]
-#define __pyx_n_u_int64 __pyx_string_tab[104]
-#define __pyx_n_u_is_coroutine __pyx_string_tab[105]
-#define __pyx_kp_u_isenabled __pyx_string_tab[106]
-#define __pyx_n_u_itemsize __pyx_string_tab[107]
-#define __pyx_kp_u_itemsize_0_for_cython_array __pyx_string_tab[108]
-#define __pyx_n_u_j __pyx_string_tab[109]
-#define __pyx_n_u_main __pyx_string_tab[110]
-#define __pyx_n_u_memview __pyx_string_tab[111]
-#define __pyx_n_u_mode __pyx_string_tab[112]
-#define __pyx_n_u_model_params __pyx_string_tab[113]
-#define __pyx_n_u_module __pyx_string_tab[114]
-#define __pyx_n_u_name __pyx_string_tab[115]
-#define __pyx_n_u_name_2 __pyx_string_tab[116]
-#define __pyx_n_u_ndim __pyx_string_tab[117]
-#define __pyx_n_u_new __pyx_string_tab[118]
-#define __pyx_n_u_nin_MODEL_adex_euler __pyx_string_tab[119]
+#define __pyx_n_u_MODEL_adex_euler __pyx_string_tab[24]
+#define __pyx_kp_u_MODEL_adex_euler_pyx __pyx_string_tab[25]
+#define __pyx_n_u_MemoryError __pyx_string_tab[26]
+#define __pyx_kp_u_MemoryView_of __pyx_string_tab[27]
+#define __pyx_n_u_N __pyx_string_tab[28]
+#define __pyx_kp_u_Note_that_Cython_is_deliberately __pyx_string_tab[29]
+#define __pyx_n_b_O __pyx_string_tab[30]
+#define __pyx_kp_u_Out_of_bounds_on_buffer_access_a __pyx_string_tab[31]
+#define __pyx_n_u_PickleError __pyx_string_tab[32]
+#define __pyx_n_u_Sequence __pyx_string_tab[33]
+#define __pyx_kp_u_Step_may_not_be_zero_axis_d __pyx_string_tab[34]
+#define __pyx_n_u_TypeError __pyx_string_tab[35]
+#define __pyx_kp_u_Unable_to_convert_item_to_object __pyx_string_tab[36]
+#define __pyx_n_u_V __pyx_string_tab[37]
+#define __pyx_n_u_V0 __pyx_string_tab[38]
+#define __pyx_n_u_V2 __pyx_string_tab[39]
+#define __pyx_n_u_VT __pyx_string_tab[40]
+#define __pyx_n_u_ValueError __pyx_string_tab[41]
+#define __pyx_n_u_View_MemoryView __pyx_string_tab[42]
+#define __pyx_n_u_Vout __pyx_string_tab[43]
+#define __pyx_n_u_Vout_arr __pyx_string_tab[44]
+#define __pyx_n_u_Vpeak __pyx_string_tab[45]
+#define __pyx_n_u_Vreset __pyx_string_tab[46]
+#define __pyx_kp_u__2 __pyx_string_tab[47]
+#define __pyx_kp_u__3 __pyx_string_tab[48]
+#define __pyx_kp_u__4 __pyx_string_tab[49]
+#define __pyx_kp_u__5 __pyx_string_tab[50]
+#define __pyx_kp_u__6 __pyx_string_tab[51]
+#define __pyx_n_u_a __pyx_string_tab[52]
+#define __pyx_n_u_abc __pyx_string_tab[53]
+#define __pyx_kp_u_add_note __pyx_string_tab[54]
+#define __pyx_n_u_adjM __pyx_string_tab[55]
+#define __pyx_kp_u_adjM_size __pyx_string_tab[56]
+#define __pyx_n_u_allocate_buffer __pyx_string_tab[57]
+#define __pyx_kp_u_and __pyx_string_tab[58]
+#define __pyx_n_u_asyncio_coroutines __pyx_string_tab[59]
+#define __pyx_kp_u_at_0x __pyx_string_tab[60]
+#define __pyx_n_u_b __pyx_string_tab[61]
+#define __pyx_n_u_base __pyx_string_tab[62]
+#define __pyx_n_u_c __pyx_string_tab[63]
+#define __pyx_n_u_class __pyx_string_tab[64]
+#define __pyx_n_u_class_getitem __pyx_string_tab[65]
+#define __pyx_n_u_cline_in_traceback __pyx_string_tab[66]
+#define __pyx_kp_u_collections_abc __pyx_string_tab[67]
+#define __pyx_kp_u_contiguous_and_direct __pyx_string_tab[68]
+#define __pyx_kp_u_contiguous_and_indirect __pyx_string_tab[69]
+#define __pyx_n_u_count __pyx_string_tab[70]
+#define __pyx_n_u_currents __pyx_string_tab[71]
+#define __pyx_n_u_dV __pyx_string_tab[72]
+#define __pyx_n_u_dict __pyx_string_tab[73]
+#define __pyx_kp_u_disable __pyx_string_tab[74]
+#define __pyx_kp_u_doesn_t_match_number_of_neurons __pyx_string_tab[75]
+#define __pyx_n_u_dt __pyx_string_tab[76]
+#define __pyx_n_u_dtype __pyx_string_tab[77]
+#define __pyx_n_u_dtype_is_object __pyx_string_tab[78]
+#define __pyx_n_u_dw __pyx_string_tab[79]
+#define __pyx_n_u_empty __pyx_string_tab[80]
+#define __pyx_kp_u_enable __pyx_string_tab[81]
+#define __pyx_n_u_encode __pyx_string_tab[82]
+#define __pyx_n_u_enumerate __pyx_string_tab[83]
+#define __pyx_n_u_error __pyx_string_tab[84]
+#define __pyx_n_u_exp_arg __pyx_string_tab[85]
+#define __pyx_n_u_exp_term __pyx_string_tab[86]
+#define __pyx_n_u_flags __pyx_string_tab[87]
+#define __pyx_n_u_float64 __pyx_string_tab[88]
+#define __pyx_n_u_format __pyx_string_tab[89]
+#define __pyx_n_u_fortran __pyx_string_tab[90]
+#define __pyx_n_u_forward_euler_cython __pyx_string_tab[91]
+#define __pyx_n_u_forward_euler_synapse_cython __pyx_string_tab[92]
+#define __pyx_n_u_func __pyx_string_tab[93]
+#define __pyx_n_u_gL __pyx_string_tab[94]
+#define __pyx_kp_u_gc __pyx_string_tab[95]
+#define __pyx_n_u_getstate __pyx_string_tab[96]
+#define __pyx_kp_u_got __pyx_string_tab[97]
+#define __pyx_kp_u_got_differing_extents_in_dimensi __pyx_string_tab[98]
+#define __pyx_n_u_gs __pyx_string_tab[99]
+#define __pyx_n_u_i __pyx_string_tab[100]
+#define __pyx_n_u_id __pyx_string_tab[101]
+#define __pyx_n_u_import __pyx_string_tab[102]
+#define __pyx_n_u_index __pyx_string_tab[103]
+#define __pyx_n_u_initializing __pyx_string_tab[104]
+#define __pyx_n_u_int64 __pyx_string_tab[105]
+#define __pyx_n_u_is_coroutine __pyx_string_tab[106]
+#define __pyx_kp_u_isenabled __pyx_string_tab[107]
+#define __pyx_n_u_itemsize __pyx_string_tab[108]
+#define __pyx_kp_u_itemsize_0_for_cython_array __pyx_string_tab[109]
+#define __pyx_n_u_j __pyx_string_tab[110]
+#define __pyx_n_u_main __pyx_string_tab[111]
+#define __pyx_n_u_memview __pyx_string_tab[112]
+#define __pyx_n_u_mode __pyx_string_tab[113]
+#define __pyx_n_u_model_params __pyx_string_tab[114]
+#define __pyx_n_u_module __pyx_string_tab[115]
+#define __pyx_n_u_name __pyx_string_tab[116]
+#define __pyx_n_u_name_2 __pyx_string_tab[117]
+#define __pyx_n_u_ndim __pyx_string_tab[118]
+#define __pyx_n_u_new __pyx_string_tab[119]
 #define __pyx_kp_u_no_default___reduce___due_to_non __pyx_string_tab[120]
 #define __pyx_n_u_np __pyx_string_tab[121]
 #define __pyx_n_u_numpy __pyx_string_tab[122]
@@ -17182,7 +17191,7 @@ static PyObject *__pyx_unpickle_Enum__set_state(struct __pyx_MemviewEnum_obj *__
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":286
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":286
  *         cdef int type_num
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17193,7 +17202,7 @@ static PyObject *__pyx_unpickle_Enum__set_state(struct __pyx_MemviewEnum_obj *__
 static CYTHON_INLINE npy_intp __pyx_f_5numpy_5dtype_8itemsize_itemsize(PyArray_Descr *__pyx_v_self) {
   npy_intp __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":288
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":288
  *         @property
  *         cdef inline npy_intp itemsize(self) noexcept nogil:
  *             return PyDataType_ELSIZE(self)             # <<<<<<<<<<<<<<
@@ -17203,7 +17212,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_5dtype_8itemsize_itemsize(PyArray_D
   __pyx_r = PyDataType_ELSIZE(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":286
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":286
  *         cdef int type_num
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17216,7 +17225,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_5dtype_8itemsize_itemsize(PyArray_D
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":290
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":290
  *             return PyDataType_ELSIZE(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17227,7 +17236,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_5dtype_8itemsize_itemsize(PyArray_D
 static CYTHON_INLINE npy_intp __pyx_f_5numpy_5dtype_9alignment_alignment(PyArray_Descr *__pyx_v_self) {
   npy_intp __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":292
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":292
  *         @property
  *         cdef inline npy_intp alignment(self) noexcept nogil:
  *             return PyDataType_ALIGNMENT(self)             # <<<<<<<<<<<<<<
@@ -17237,7 +17246,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_5dtype_9alignment_alignment(PyArray
   __pyx_r = PyDataType_ALIGNMENT(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":290
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":290
  *             return PyDataType_ELSIZE(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17250,7 +17259,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_5dtype_9alignment_alignment(PyArray
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":296
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":296
  *         # Use fields/names with care as they may be NULL.  You must check
  *         # for this using PyDataType_HASFIELDS.
  *         @property             # <<<<<<<<<<<<<<
@@ -17264,7 +17273,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_5dtype_6fields_fields(PyArray_Desc
   PyObject *__pyx_t_1;
   __Pyx_RefNannySetupContext("fields", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":298
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":298
  *         @property
  *         cdef inline object fields(self):
  *             return <object>PyDataType_FIELDS(self)             # <<<<<<<<<<<<<<
@@ -17277,7 +17286,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_5dtype_6fields_fields(PyArray_Desc
   __pyx_r = ((PyObject *)__pyx_t_1);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":296
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":296
  *         # Use fields/names with care as they may be NULL.  You must check
  *         # for this using PyDataType_HASFIELDS.
  *         @property             # <<<<<<<<<<<<<<
@@ -17292,7 +17301,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_5dtype_6fields_fields(PyArray_Desc
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":300
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":300
  *             return <object>PyDataType_FIELDS(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17306,7 +17315,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_5dtype_5names_names(PyArray_Descr 
   PyObject *__pyx_t_1;
   __Pyx_RefNannySetupContext("names", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":302
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":302
  *         @property
  *         cdef inline tuple names(self):
  *             return <tuple>PyDataType_NAMES(self)             # <<<<<<<<<<<<<<
@@ -17319,7 +17328,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_5dtype_5names_names(PyArray_Descr 
   __pyx_r = ((PyObject*)__pyx_t_1);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":300
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":300
  *             return <object>PyDataType_FIELDS(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17334,7 +17343,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_5dtype_5names_names(PyArray_Descr 
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":307
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":307
  *         # valid (the pointer can be NULL). Most users should access
  *         # this field via the inline helper method PyDataType_SHAPE.
  *         @property             # <<<<<<<<<<<<<<
@@ -17345,7 +17354,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_5dtype_5names_names(PyArray_Descr 
 static CYTHON_INLINE PyArray_ArrayDescr *__pyx_f_5numpy_5dtype_8subarray_subarray(PyArray_Descr *__pyx_v_self) {
   PyArray_ArrayDescr *__pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":309
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":309
  *         @property
  *         cdef inline PyArray_ArrayDescr* subarray(self) noexcept nogil:
  *             return PyDataType_SUBARRAY(self)             # <<<<<<<<<<<<<<
@@ -17355,7 +17364,7 @@ static CYTHON_INLINE PyArray_ArrayDescr *__pyx_f_5numpy_5dtype_8subarray_subarra
   __pyx_r = PyDataType_SUBARRAY(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":307
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":307
  *         # valid (the pointer can be NULL). Most users should access
  *         # this field via the inline helper method PyDataType_SHAPE.
  *         @property             # <<<<<<<<<<<<<<
@@ -17368,7 +17377,7 @@ static CYTHON_INLINE PyArray_ArrayDescr *__pyx_f_5numpy_5dtype_8subarray_subarra
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":311
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":311
  *             return PyDataType_SUBARRAY(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17379,7 +17388,7 @@ static CYTHON_INLINE PyArray_ArrayDescr *__pyx_f_5numpy_5dtype_8subarray_subarra
 static CYTHON_INLINE npy_uint64 __pyx_f_5numpy_5dtype_5flags_flags(PyArray_Descr *__pyx_v_self) {
   npy_uint64 __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":314
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":314
  *         cdef inline npy_uint64 flags(self) noexcept nogil:
  *             """The data types flags."""
  *             return PyDataType_FLAGS(self)             # <<<<<<<<<<<<<<
@@ -17389,7 +17398,7 @@ static CYTHON_INLINE npy_uint64 __pyx_f_5numpy_5dtype_5flags_flags(PyArray_Descr
   __pyx_r = PyDataType_FLAGS(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":311
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":311
  *             return PyDataType_SUBARRAY(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17402,7 +17411,7 @@ static CYTHON_INLINE npy_uint64 __pyx_f_5numpy_5dtype_5flags_flags(PyArray_Descr
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":323
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":323
  *     ctypedef class numpy.broadcast [object PyArrayMultiIterObject, check_size ignore]:
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17413,7 +17422,7 @@ static CYTHON_INLINE npy_uint64 __pyx_f_5numpy_5dtype_5flags_flags(PyArray_Descr
 static CYTHON_INLINE int __pyx_f_5numpy_9broadcast_7numiter_numiter(PyArrayMultiIterObject *__pyx_v_self) {
   int __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":326
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":326
  *         cdef inline int numiter(self) noexcept nogil:
  *             """The number of arrays that need to be broadcast to the same shape."""
  *             return PyArray_MultiIter_NUMITER(self)             # <<<<<<<<<<<<<<
@@ -17423,7 +17432,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_9broadcast_7numiter_numiter(PyArrayMulti
   __pyx_r = PyArray_MultiIter_NUMITER(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":323
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":323
  *     ctypedef class numpy.broadcast [object PyArrayMultiIterObject, check_size ignore]:
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17436,7 +17445,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_9broadcast_7numiter_numiter(PyArrayMulti
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":328
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":328
  *             return PyArray_MultiIter_NUMITER(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17447,7 +17456,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_9broadcast_7numiter_numiter(PyArrayMulti
 static CYTHON_INLINE npy_intp __pyx_f_5numpy_9broadcast_4size_size(PyArrayMultiIterObject *__pyx_v_self) {
   npy_intp __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":331
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":331
  *         cdef inline npy_intp size(self) noexcept nogil:
  *             """The total broadcasted size."""
  *             return PyArray_MultiIter_SIZE(self)             # <<<<<<<<<<<<<<
@@ -17457,7 +17466,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_9broadcast_4size_size(PyArrayMultiI
   __pyx_r = PyArray_MultiIter_SIZE(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":328
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":328
  *             return PyArray_MultiIter_NUMITER(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17470,7 +17479,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_9broadcast_4size_size(PyArrayMultiI
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":333
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":333
  *             return PyArray_MultiIter_SIZE(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17481,7 +17490,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_9broadcast_4size_size(PyArrayMultiI
 static CYTHON_INLINE npy_intp __pyx_f_5numpy_9broadcast_5index_index(PyArrayMultiIterObject *__pyx_v_self) {
   npy_intp __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":336
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":336
  *         cdef inline npy_intp index(self) noexcept nogil:
  *             """The current (1-d) index into the broadcasted result."""
  *             return PyArray_MultiIter_INDEX(self)             # <<<<<<<<<<<<<<
@@ -17491,7 +17500,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_9broadcast_5index_index(PyArrayMult
   __pyx_r = PyArray_MultiIter_INDEX(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":333
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":333
  *             return PyArray_MultiIter_SIZE(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17504,7 +17513,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_9broadcast_5index_index(PyArrayMult
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":338
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":338
  *             return PyArray_MultiIter_INDEX(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17515,7 +17524,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_9broadcast_5index_index(PyArrayMult
 static CYTHON_INLINE int __pyx_f_5numpy_9broadcast_2nd_nd(PyArrayMultiIterObject *__pyx_v_self) {
   int __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":341
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":341
  *         cdef inline int nd(self) noexcept nogil:
  *             """The number of dimensions in the broadcasted result."""
  *             return PyArray_MultiIter_NDIM(self)             # <<<<<<<<<<<<<<
@@ -17525,7 +17534,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_9broadcast_2nd_nd(PyArrayMultiIterObject
   __pyx_r = PyArray_MultiIter_NDIM(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":338
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":338
  *             return PyArray_MultiIter_INDEX(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17538,7 +17547,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_9broadcast_2nd_nd(PyArrayMultiIterObject
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":343
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":343
  *             return PyArray_MultiIter_NDIM(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17549,7 +17558,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_9broadcast_2nd_nd(PyArrayMultiIterObject
 static CYTHON_INLINE npy_intp *__pyx_f_5numpy_9broadcast_10dimensions_dimensions(PyArrayMultiIterObject *__pyx_v_self) {
   npy_intp *__pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":346
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":346
  *         cdef inline npy_intp* dimensions(self) noexcept nogil:
  *             """The shape of the broadcasted result."""
  *             return PyArray_MultiIter_DIMS(self)             # <<<<<<<<<<<<<<
@@ -17559,7 +17568,7 @@ static CYTHON_INLINE npy_intp *__pyx_f_5numpy_9broadcast_10dimensions_dimensions
   __pyx_r = PyArray_MultiIter_DIMS(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":343
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":343
  *             return PyArray_MultiIter_NDIM(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17572,7 +17581,7 @@ static CYTHON_INLINE npy_intp *__pyx_f_5numpy_9broadcast_10dimensions_dimensions
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":348
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":348
  *             return PyArray_MultiIter_DIMS(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17583,7 +17592,7 @@ static CYTHON_INLINE npy_intp *__pyx_f_5numpy_9broadcast_10dimensions_dimensions
 static CYTHON_INLINE void **__pyx_f_5numpy_9broadcast_5iters_iters(PyArrayMultiIterObject *__pyx_v_self) {
   void **__pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":352
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":352
  *             """An array of iterator objects that holds the iterators for the arrays to be broadcast together.
  *             On return, the iterators are adjusted for broadcasting."""
  *             return PyArray_MultiIter_ITERS(self)             # <<<<<<<<<<<<<<
@@ -17593,7 +17602,7 @@ static CYTHON_INLINE void **__pyx_f_5numpy_9broadcast_5iters_iters(PyArrayMultiI
   __pyx_r = PyArray_MultiIter_ITERS(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":348
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":348
  *             return PyArray_MultiIter_DIMS(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17606,7 +17615,7 @@ static CYTHON_INLINE void **__pyx_f_5numpy_9broadcast_5iters_iters(PyArrayMultiI
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":366
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":366
  *         # Instead, we use properties that map to the corresponding C-API functions.
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17617,7 +17626,7 @@ static CYTHON_INLINE void **__pyx_f_5numpy_9broadcast_5iters_iters(PyArrayMultiI
 static CYTHON_INLINE PyObject *__pyx_f_5numpy_7ndarray_4base_base(PyArrayObject *__pyx_v_self) {
   PyObject *__pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":370
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":370
  *             """Returns a borrowed reference to the object owning the data/memory.
  *             """
  *             return PyArray_BASE(self)             # <<<<<<<<<<<<<<
@@ -17627,7 +17636,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_7ndarray_4base_base(PyArrayObject 
   __pyx_r = PyArray_BASE(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":366
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":366
  *         # Instead, we use properties that map to the corresponding C-API functions.
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17640,7 +17649,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_7ndarray_4base_base(PyArrayObject 
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":372
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":372
  *             return PyArray_BASE(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17654,7 +17663,7 @@ static CYTHON_INLINE PyArray_Descr *__pyx_f_5numpy_7ndarray_5descr_descr(PyArray
   PyArray_Descr *__pyx_t_1;
   __Pyx_RefNannySetupContext("descr", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":376
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":376
  *             """Returns an owned reference to the dtype of the array.
  *             """
  *             return <dtype>PyArray_DESCR(self)             # <<<<<<<<<<<<<<
@@ -17667,7 +17676,7 @@ static CYTHON_INLINE PyArray_Descr *__pyx_f_5numpy_7ndarray_5descr_descr(PyArray
   __pyx_r = ((PyArray_Descr *)__pyx_t_1);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":372
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":372
  *             return PyArray_BASE(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17682,7 +17691,7 @@ static CYTHON_INLINE PyArray_Descr *__pyx_f_5numpy_7ndarray_5descr_descr(PyArray
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":378
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":378
  *             return <dtype>PyArray_DESCR(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17693,7 +17702,7 @@ static CYTHON_INLINE PyArray_Descr *__pyx_f_5numpy_7ndarray_5descr_descr(PyArray
 static CYTHON_INLINE int __pyx_f_5numpy_7ndarray_4ndim_ndim(PyArrayObject *__pyx_v_self) {
   int __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":382
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":382
  *             """Returns the number of dimensions in the array.
  *             """
  *             return PyArray_NDIM(self)             # <<<<<<<<<<<<<<
@@ -17703,7 +17712,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_7ndarray_4ndim_ndim(PyArrayObject *__pyx
   __pyx_r = PyArray_NDIM(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":378
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":378
  *             return <dtype>PyArray_DESCR(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17716,7 +17725,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_7ndarray_4ndim_ndim(PyArrayObject *__pyx
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":384
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":384
  *             return PyArray_NDIM(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17727,7 +17736,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_7ndarray_4ndim_ndim(PyArrayObject *__pyx
 static CYTHON_INLINE npy_intp *__pyx_f_5numpy_7ndarray_5shape_shape(PyArrayObject *__pyx_v_self) {
   npy_intp *__pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":390
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":390
  *             Can return NULL for 0-dimensional arrays.
  *             """
  *             return PyArray_DIMS(self)             # <<<<<<<<<<<<<<
@@ -17737,7 +17746,7 @@ static CYTHON_INLINE npy_intp *__pyx_f_5numpy_7ndarray_5shape_shape(PyArrayObjec
   __pyx_r = PyArray_DIMS(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":384
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":384
  *             return PyArray_NDIM(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17750,7 +17759,7 @@ static CYTHON_INLINE npy_intp *__pyx_f_5numpy_7ndarray_5shape_shape(PyArrayObjec
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":392
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":392
  *             return PyArray_DIMS(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17761,7 +17770,7 @@ static CYTHON_INLINE npy_intp *__pyx_f_5numpy_7ndarray_5shape_shape(PyArrayObjec
 static CYTHON_INLINE npy_intp *__pyx_f_5numpy_7ndarray_7strides_strides(PyArrayObject *__pyx_v_self) {
   npy_intp *__pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":397
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":397
  *             The number of elements matches the number of dimensions of the array (ndim).
  *             """
  *             return PyArray_STRIDES(self)             # <<<<<<<<<<<<<<
@@ -17771,7 +17780,7 @@ static CYTHON_INLINE npy_intp *__pyx_f_5numpy_7ndarray_7strides_strides(PyArrayO
   __pyx_r = PyArray_STRIDES(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":392
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":392
  *             return PyArray_DIMS(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17784,7 +17793,7 @@ static CYTHON_INLINE npy_intp *__pyx_f_5numpy_7ndarray_7strides_strides(PyArrayO
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":399
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":399
  *             return PyArray_STRIDES(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17795,7 +17804,7 @@ static CYTHON_INLINE npy_intp *__pyx_f_5numpy_7ndarray_7strides_strides(PyArrayO
 static CYTHON_INLINE npy_intp __pyx_f_5numpy_7ndarray_4size_size(PyArrayObject *__pyx_v_self) {
   npy_intp __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":403
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":403
  *             """Returns the total size (in number of elements) of the array.
  *             """
  *             return PyArray_SIZE(self)             # <<<<<<<<<<<<<<
@@ -17805,7 +17814,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_7ndarray_4size_size(PyArrayObject *
   __pyx_r = PyArray_SIZE(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":399
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":399
  *             return PyArray_STRIDES(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17818,7 +17827,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_7ndarray_4size_size(PyArrayObject *
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":405
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":405
  *             return PyArray_SIZE(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17829,7 +17838,7 @@ static CYTHON_INLINE npy_intp __pyx_f_5numpy_7ndarray_4size_size(PyArrayObject *
 static CYTHON_INLINE char *__pyx_f_5numpy_7ndarray_4data_data(PyArrayObject *__pyx_v_self) {
   char *__pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":412
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":412
  *             of `PyArray_DATA()` instead, which returns a 'void*'.
  *             """
  *             return PyArray_BYTES(self)             # <<<<<<<<<<<<<<
@@ -17839,7 +17848,7 @@ static CYTHON_INLINE char *__pyx_f_5numpy_7ndarray_4data_data(PyArrayObject *__p
   __pyx_r = PyArray_BYTES(__pyx_v_self);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":405
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":405
  *             return PyArray_SIZE(self)
  * 
  *         @property             # <<<<<<<<<<<<<<
@@ -17852,7 +17861,7 @@ static CYTHON_INLINE char *__pyx_f_5numpy_7ndarray_4data_data(PyArrayObject *__p
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":824
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":824
  * ctypedef long double complex clongdouble_t
  * 
  * cdef inline object PyArray_MultiIterNew1(a):             # <<<<<<<<<<<<<<
@@ -17869,7 +17878,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew1(PyObject *__
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("PyArray_MultiIterNew1", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":825
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":825
  * 
  * cdef inline object PyArray_MultiIterNew1(a):
  *     return PyArray_MultiIterNew(1, <void*>a)             # <<<<<<<<<<<<<<
@@ -17883,7 +17892,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew1(PyObject *__
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":824
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":824
  * ctypedef long double complex clongdouble_t
  * 
  * cdef inline object PyArray_MultiIterNew1(a):             # <<<<<<<<<<<<<<
@@ -17902,7 +17911,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew1(PyObject *__
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":827
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":827
  *     return PyArray_MultiIterNew(1, <void*>a)
  * 
  * cdef inline object PyArray_MultiIterNew2(a, b):             # <<<<<<<<<<<<<<
@@ -17919,7 +17928,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew2(PyObject *__
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("PyArray_MultiIterNew2", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":828
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":828
  * 
  * cdef inline object PyArray_MultiIterNew2(a, b):
  *     return PyArray_MultiIterNew(2, <void*>a, <void*>b)             # <<<<<<<<<<<<<<
@@ -17933,7 +17942,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew2(PyObject *__
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":827
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":827
  *     return PyArray_MultiIterNew(1, <void*>a)
  * 
  * cdef inline object PyArray_MultiIterNew2(a, b):             # <<<<<<<<<<<<<<
@@ -17952,7 +17961,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew2(PyObject *__
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":830
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":830
  *     return PyArray_MultiIterNew(2, <void*>a, <void*>b)
  * 
  * cdef inline object PyArray_MultiIterNew3(a, b, c):             # <<<<<<<<<<<<<<
@@ -17969,7 +17978,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew3(PyObject *__
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("PyArray_MultiIterNew3", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":831
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":831
  * 
  * cdef inline object PyArray_MultiIterNew3(a, b, c):
  *     return PyArray_MultiIterNew(3, <void*>a, <void*>b, <void*> c)             # <<<<<<<<<<<<<<
@@ -17983,7 +17992,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew3(PyObject *__
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":830
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":830
  *     return PyArray_MultiIterNew(2, <void*>a, <void*>b)
  * 
  * cdef inline object PyArray_MultiIterNew3(a, b, c):             # <<<<<<<<<<<<<<
@@ -18002,7 +18011,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew3(PyObject *__
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":833
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":833
  *     return PyArray_MultiIterNew(3, <void*>a, <void*>b, <void*> c)
  * 
  * cdef inline object PyArray_MultiIterNew4(a, b, c, d):             # <<<<<<<<<<<<<<
@@ -18019,7 +18028,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew4(PyObject *__
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("PyArray_MultiIterNew4", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":834
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":834
  * 
  * cdef inline object PyArray_MultiIterNew4(a, b, c, d):
  *     return PyArray_MultiIterNew(4, <void*>a, <void*>b, <void*>c, <void*> d)             # <<<<<<<<<<<<<<
@@ -18033,7 +18042,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew4(PyObject *__
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":833
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":833
  *     return PyArray_MultiIterNew(3, <void*>a, <void*>b, <void*> c)
  * 
  * cdef inline object PyArray_MultiIterNew4(a, b, c, d):             # <<<<<<<<<<<<<<
@@ -18052,7 +18061,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew4(PyObject *__
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":836
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":836
  *     return PyArray_MultiIterNew(4, <void*>a, <void*>b, <void*>c, <void*> d)
  * 
  * cdef inline object PyArray_MultiIterNew5(a, b, c, d, e):             # <<<<<<<<<<<<<<
@@ -18069,7 +18078,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew5(PyObject *__
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("PyArray_MultiIterNew5", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":837
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":837
  * 
  * cdef inline object PyArray_MultiIterNew5(a, b, c, d, e):
  *     return PyArray_MultiIterNew(5, <void*>a, <void*>b, <void*>c, <void*> d, <void*> e)             # <<<<<<<<<<<<<<
@@ -18083,7 +18092,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew5(PyObject *__
   __pyx_t_1 = 0;
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":836
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":836
  *     return PyArray_MultiIterNew(4, <void*>a, <void*>b, <void*>c, <void*> d)
  * 
  * cdef inline object PyArray_MultiIterNew5(a, b, c, d, e):             # <<<<<<<<<<<<<<
@@ -18102,7 +18111,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyArray_MultiIterNew5(PyObject *__
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":839
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":839
  *     return PyArray_MultiIterNew(5, <void*>a, <void*>b, <void*>c, <void*> d, <void*> e)
  * 
  * cdef inline tuple PyDataType_SHAPE(dtype d):             # <<<<<<<<<<<<<<
@@ -18117,7 +18126,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyDataType_SHAPE(PyArray_Descr *__
   PyObject *__pyx_t_2;
   __Pyx_RefNannySetupContext("PyDataType_SHAPE", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":840
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":840
  * 
  * cdef inline tuple PyDataType_SHAPE(dtype d):
  *     if PyDataType_HASSUBARRAY(d):             # <<<<<<<<<<<<<<
@@ -18127,7 +18136,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyDataType_SHAPE(PyArray_Descr *__
   __pyx_t_1 = PyDataType_HASSUBARRAY(__pyx_v_d);
   if (__pyx_t_1) {
 
-    /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":841
+    /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":841
  * cdef inline tuple PyDataType_SHAPE(dtype d):
  *     if PyDataType_HASSUBARRAY(d):
  *         return <tuple>d.subarray.shape             # <<<<<<<<<<<<<<
@@ -18140,7 +18149,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyDataType_SHAPE(PyArray_Descr *__
     __pyx_r = ((PyObject*)__pyx_t_2);
     goto __pyx_L0;
 
-    /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":840
+    /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":840
  * 
  * cdef inline tuple PyDataType_SHAPE(dtype d):
  *     if PyDataType_HASSUBARRAY(d):             # <<<<<<<<<<<<<<
@@ -18149,7 +18158,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyDataType_SHAPE(PyArray_Descr *__
 */
   }
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":843
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":843
  *         return <tuple>d.subarray.shape
  *     else:
  *         return ()             # <<<<<<<<<<<<<<
@@ -18163,7 +18172,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyDataType_SHAPE(PyArray_Descr *__
     goto __pyx_L0;
   }
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":839
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":839
  *     return PyArray_MultiIterNew(5, <void*>a, <void*>b, <void*>c, <void*> d, <void*> e)
  * 
  * cdef inline tuple PyDataType_SHAPE(dtype d):             # <<<<<<<<<<<<<<
@@ -18178,7 +18187,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_PyDataType_SHAPE(PyArray_Descr *__
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1035
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1035
  *     int _import_umath() except -1
  * 
  * cdef inline void set_array_base(ndarray arr, object base) except *:             # <<<<<<<<<<<<<<
@@ -18192,7 +18201,7 @@ static CYTHON_INLINE void __pyx_f_5numpy_set_array_base(PyArrayObject *__pyx_v_a
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1036
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1036
  * 
  * cdef inline void set_array_base(ndarray arr, object base) except *:
  *     Py_INCREF(base) # important to do this before stealing the reference below!             # <<<<<<<<<<<<<<
@@ -18201,7 +18210,7 @@ static CYTHON_INLINE void __pyx_f_5numpy_set_array_base(PyArrayObject *__pyx_v_a
 */
   Py_INCREF(__pyx_v_base);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1037
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1037
  * cdef inline void set_array_base(ndarray arr, object base) except *:
  *     Py_INCREF(base) # important to do this before stealing the reference below!
  *     PyArray_SetBaseObject(arr, base)             # <<<<<<<<<<<<<<
@@ -18210,7 +18219,7 @@ static CYTHON_INLINE void __pyx_f_5numpy_set_array_base(PyArrayObject *__pyx_v_a
 */
   __pyx_t_1 = PyArray_SetBaseObject(__pyx_v_arr, __pyx_v_base); if (unlikely(__pyx_t_1 == ((int)-1))) __PYX_ERR(2, 1037, __pyx_L1_error)
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1035
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1035
  *     int _import_umath() except -1
  * 
  * cdef inline void set_array_base(ndarray arr, object base) except *:             # <<<<<<<<<<<<<<
@@ -18225,7 +18234,7 @@ static CYTHON_INLINE void __pyx_f_5numpy_set_array_base(PyArrayObject *__pyx_v_a
   __pyx_L0:;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1039
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1039
  *     PyArray_SetBaseObject(arr, base)
  * 
  * cdef inline object get_array_base(ndarray arr):             # <<<<<<<<<<<<<<
@@ -18240,7 +18249,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_get_array_base(PyArrayObject *__py
   int __pyx_t_1;
   __Pyx_RefNannySetupContext("get_array_base", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1040
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1040
  * 
  * cdef inline object get_array_base(ndarray arr):
  *     base = PyArray_BASE(arr)             # <<<<<<<<<<<<<<
@@ -18249,7 +18258,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_get_array_base(PyArrayObject *__py
 */
   __pyx_v_base = PyArray_BASE(__pyx_v_arr);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1041
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1041
  * cdef inline object get_array_base(ndarray arr):
  *     base = PyArray_BASE(arr)
  *     if base is NULL:             # <<<<<<<<<<<<<<
@@ -18259,7 +18268,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_get_array_base(PyArrayObject *__py
   __pyx_t_1 = (__pyx_v_base == NULL);
   if (__pyx_t_1) {
 
-    /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1042
+    /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1042
  *     base = PyArray_BASE(arr)
  *     if base is NULL:
  *         return None             # <<<<<<<<<<<<<<
@@ -18270,7 +18279,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_get_array_base(PyArrayObject *__py
     __pyx_r = Py_None; __Pyx_INCREF(Py_None);
     goto __pyx_L0;
 
-    /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1041
+    /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1041
  * cdef inline object get_array_base(ndarray arr):
  *     base = PyArray_BASE(arr)
  *     if base is NULL:             # <<<<<<<<<<<<<<
@@ -18279,7 +18288,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_get_array_base(PyArrayObject *__py
 */
   }
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1043
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1043
  *     if base is NULL:
  *         return None
  *     return <object>base             # <<<<<<<<<<<<<<
@@ -18291,7 +18300,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_get_array_base(PyArrayObject *__py
   __pyx_r = ((PyObject *)__pyx_v_base);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1039
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1039
  *     PyArray_SetBaseObject(arr, base)
  * 
  * cdef inline object get_array_base(ndarray arr):             # <<<<<<<<<<<<<<
@@ -18306,7 +18315,7 @@ static CYTHON_INLINE PyObject *__pyx_f_5numpy_get_array_base(PyArrayObject *__py
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1047
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1047
  * # Versions of the import_* functions which are more suitable for
  * # Cython code.
  * cdef inline int import_array() except -1:             # <<<<<<<<<<<<<<
@@ -18333,7 +18342,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_array(void) {
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("import_array", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1048
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1048
  * # Cython code.
  * cdef inline int import_array() except -1:
  *     try:             # <<<<<<<<<<<<<<
@@ -18349,7 +18358,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_array(void) {
     __Pyx_XGOTREF(__pyx_t_3);
     /*try:*/ {
 
-      /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1049
+      /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1049
  * cdef inline int import_array() except -1:
  *     try:
  *         __pyx_import_array()             # <<<<<<<<<<<<<<
@@ -18358,7 +18367,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_array(void) {
 */
       __pyx_t_4 = _import_array(); if (unlikely(__pyx_t_4 == ((int)-1))) __PYX_ERR(2, 1049, __pyx_L3_error)
 
-      /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1048
+      /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1048
  * # Cython code.
  * cdef inline int import_array() except -1:
  *     try:             # <<<<<<<<<<<<<<
@@ -18372,7 +18381,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_array(void) {
     goto __pyx_L8_try_end;
     __pyx_L3_error:;
 
-    /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1050
+    /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1050
  *     try:
  *         __pyx_import_array()
  *     except Exception:             # <<<<<<<<<<<<<<
@@ -18387,7 +18396,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_array(void) {
       __Pyx_XGOTREF(__pyx_t_6);
       __Pyx_XGOTREF(__pyx_t_7);
 
-      /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1051
+      /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1051
  *         __pyx_import_array()
  *     except Exception:
  *         raise ImportError("numpy._core.multiarray failed to import")             # <<<<<<<<<<<<<<
@@ -18412,7 +18421,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_array(void) {
     }
     goto __pyx_L5_except_error;
 
-    /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1048
+    /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1048
  * # Cython code.
  * cdef inline int import_array() except -1:
  *     try:             # <<<<<<<<<<<<<<
@@ -18428,7 +18437,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_array(void) {
     __pyx_L8_try_end:;
   }
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1047
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1047
  * # Versions of the import_* functions which are more suitable for
  * # Cython code.
  * cdef inline int import_array() except -1:             # <<<<<<<<<<<<<<
@@ -18453,7 +18462,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_array(void) {
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1053
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1053
  *         raise ImportError("numpy._core.multiarray failed to import")
  * 
  * cdef inline int import_umath() except -1:             # <<<<<<<<<<<<<<
@@ -18480,7 +18489,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_umath(void) {
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("import_umath", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1054
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1054
  * 
  * cdef inline int import_umath() except -1:
  *     try:             # <<<<<<<<<<<<<<
@@ -18496,7 +18505,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_umath(void) {
     __Pyx_XGOTREF(__pyx_t_3);
     /*try:*/ {
 
-      /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1055
+      /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1055
  * cdef inline int import_umath() except -1:
  *     try:
  *         _import_umath()             # <<<<<<<<<<<<<<
@@ -18505,7 +18514,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_umath(void) {
 */
       __pyx_t_4 = _import_umath(); if (unlikely(__pyx_t_4 == ((int)-1))) __PYX_ERR(2, 1055, __pyx_L3_error)
 
-      /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1054
+      /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1054
  * 
  * cdef inline int import_umath() except -1:
  *     try:             # <<<<<<<<<<<<<<
@@ -18519,7 +18528,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_umath(void) {
     goto __pyx_L8_try_end;
     __pyx_L3_error:;
 
-    /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1056
+    /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1056
  *     try:
  *         _import_umath()
  *     except Exception:             # <<<<<<<<<<<<<<
@@ -18534,7 +18543,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_umath(void) {
       __Pyx_XGOTREF(__pyx_t_6);
       __Pyx_XGOTREF(__pyx_t_7);
 
-      /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1057
+      /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1057
  *         _import_umath()
  *     except Exception:
  *         raise ImportError("numpy._core.umath failed to import")             # <<<<<<<<<<<<<<
@@ -18559,7 +18568,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_umath(void) {
     }
     goto __pyx_L5_except_error;
 
-    /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1054
+    /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1054
  * 
  * cdef inline int import_umath() except -1:
  *     try:             # <<<<<<<<<<<<<<
@@ -18575,7 +18584,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_umath(void) {
     __pyx_L8_try_end:;
   }
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1053
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1053
  *         raise ImportError("numpy._core.multiarray failed to import")
  * 
  * cdef inline int import_umath() except -1:             # <<<<<<<<<<<<<<
@@ -18600,7 +18609,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_umath(void) {
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1059
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1059
  *         raise ImportError("numpy._core.umath failed to import")
  * 
  * cdef inline int import_ufunc() except -1:             # <<<<<<<<<<<<<<
@@ -18627,7 +18636,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_ufunc(void) {
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("import_ufunc", 0);
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1060
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1060
  * 
  * cdef inline int import_ufunc() except -1:
  *     try:             # <<<<<<<<<<<<<<
@@ -18643,7 +18652,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_ufunc(void) {
     __Pyx_XGOTREF(__pyx_t_3);
     /*try:*/ {
 
-      /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1061
+      /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1061
  * cdef inline int import_ufunc() except -1:
  *     try:
  *         _import_umath()             # <<<<<<<<<<<<<<
@@ -18652,7 +18661,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_ufunc(void) {
 */
       __pyx_t_4 = _import_umath(); if (unlikely(__pyx_t_4 == ((int)-1))) __PYX_ERR(2, 1061, __pyx_L3_error)
 
-      /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1060
+      /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1060
  * 
  * cdef inline int import_ufunc() except -1:
  *     try:             # <<<<<<<<<<<<<<
@@ -18666,7 +18675,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_ufunc(void) {
     goto __pyx_L8_try_end;
     __pyx_L3_error:;
 
-    /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1062
+    /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1062
  *     try:
  *         _import_umath()
  *     except Exception:             # <<<<<<<<<<<<<<
@@ -18681,7 +18690,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_ufunc(void) {
       __Pyx_XGOTREF(__pyx_t_6);
       __Pyx_XGOTREF(__pyx_t_7);
 
-      /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1063
+      /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1063
  *         _import_umath()
  *     except Exception:
  *         raise ImportError("numpy._core.umath failed to import")             # <<<<<<<<<<<<<<
@@ -18706,7 +18715,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_ufunc(void) {
     }
     goto __pyx_L5_except_error;
 
-    /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1060
+    /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1060
  * 
  * cdef inline int import_ufunc() except -1:
  *     try:             # <<<<<<<<<<<<<<
@@ -18722,7 +18731,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_ufunc(void) {
     __pyx_L8_try_end:;
   }
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1059
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1059
  *         raise ImportError("numpy._core.umath failed to import")
  * 
  * cdef inline int import_ufunc() except -1:             # <<<<<<<<<<<<<<
@@ -18747,7 +18756,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_ufunc(void) {
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1066
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1066
  * 
  * 
  * cdef inline bint is_timedelta64_object(object obj) noexcept:             # <<<<<<<<<<<<<<
@@ -18758,7 +18767,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_import_ufunc(void) {
 static CYTHON_INLINE int __pyx_f_5numpy_is_timedelta64_object(PyObject *__pyx_v_obj) {
   int __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1078
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1078
  *     bool
  *     """
  *     return PyObject_TypeCheck(obj, &PyTimedeltaArrType_Type)             # <<<<<<<<<<<<<<
@@ -18768,7 +18777,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_is_timedelta64_object(PyObject *__pyx_v_
   __pyx_r = PyObject_TypeCheck(__pyx_v_obj, (&PyTimedeltaArrType_Type));
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1066
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1066
  * 
  * 
  * cdef inline bint is_timedelta64_object(object obj) noexcept:             # <<<<<<<<<<<<<<
@@ -18781,7 +18790,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_is_timedelta64_object(PyObject *__pyx_v_
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1081
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1081
  * 
  * 
  * cdef inline bint is_datetime64_object(object obj) noexcept:             # <<<<<<<<<<<<<<
@@ -18792,7 +18801,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_is_timedelta64_object(PyObject *__pyx_v_
 static CYTHON_INLINE int __pyx_f_5numpy_is_datetime64_object(PyObject *__pyx_v_obj) {
   int __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1093
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1093
  *     bool
  *     """
  *     return PyObject_TypeCheck(obj, &PyDatetimeArrType_Type)             # <<<<<<<<<<<<<<
@@ -18802,7 +18811,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_is_datetime64_object(PyObject *__pyx_v_o
   __pyx_r = PyObject_TypeCheck(__pyx_v_obj, (&PyDatetimeArrType_Type));
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1081
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1081
  * 
  * 
  * cdef inline bint is_datetime64_object(object obj) noexcept:             # <<<<<<<<<<<<<<
@@ -18815,7 +18824,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_is_datetime64_object(PyObject *__pyx_v_o
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1096
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1096
  * 
  * 
  * cdef inline npy_datetime get_datetime64_value(object obj) noexcept nogil:             # <<<<<<<<<<<<<<
@@ -18826,7 +18835,7 @@ static CYTHON_INLINE int __pyx_f_5numpy_is_datetime64_object(PyObject *__pyx_v_o
 static CYTHON_INLINE npy_datetime __pyx_f_5numpy_get_datetime64_value(PyObject *__pyx_v_obj) {
   npy_datetime __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1103
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1103
  *     also needed.  That can be found using `get_datetime64_unit`.
  *     """
  *     return (<PyDatetimeScalarObject*>obj).obval             # <<<<<<<<<<<<<<
@@ -18836,7 +18845,7 @@ static CYTHON_INLINE npy_datetime __pyx_f_5numpy_get_datetime64_value(PyObject *
   __pyx_r = ((PyDatetimeScalarObject *)__pyx_v_obj)->obval;
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1096
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1096
  * 
  * 
  * cdef inline npy_datetime get_datetime64_value(object obj) noexcept nogil:             # <<<<<<<<<<<<<<
@@ -18849,7 +18858,7 @@ static CYTHON_INLINE npy_datetime __pyx_f_5numpy_get_datetime64_value(PyObject *
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1106
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1106
  * 
  * 
  * cdef inline npy_timedelta get_timedelta64_value(object obj) noexcept nogil:             # <<<<<<<<<<<<<<
@@ -18860,7 +18869,7 @@ static CYTHON_INLINE npy_datetime __pyx_f_5numpy_get_datetime64_value(PyObject *
 static CYTHON_INLINE npy_timedelta __pyx_f_5numpy_get_timedelta64_value(PyObject *__pyx_v_obj) {
   npy_timedelta __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1110
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1110
  *     returns the int64 value underlying scalar numpy timedelta64 object
  *     """
  *     return (<PyTimedeltaScalarObject*>obj).obval             # <<<<<<<<<<<<<<
@@ -18870,7 +18879,7 @@ static CYTHON_INLINE npy_timedelta __pyx_f_5numpy_get_timedelta64_value(PyObject
   __pyx_r = ((PyTimedeltaScalarObject *)__pyx_v_obj)->obval;
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1106
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1106
  * 
  * 
  * cdef inline npy_timedelta get_timedelta64_value(object obj) noexcept nogil:             # <<<<<<<<<<<<<<
@@ -18883,7 +18892,7 @@ static CYTHON_INLINE npy_timedelta __pyx_f_5numpy_get_timedelta64_value(PyObject
   return __pyx_r;
 }
 
-/* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1113
+/* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1113
  * 
  * 
  * cdef inline NPY_DATETIMEUNIT get_datetime64_unit(object obj) noexcept nogil:             # <<<<<<<<<<<<<<
@@ -18894,7 +18903,7 @@ static CYTHON_INLINE npy_timedelta __pyx_f_5numpy_get_timedelta64_value(PyObject
 static CYTHON_INLINE NPY_DATETIMEUNIT __pyx_f_5numpy_get_datetime64_unit(PyObject *__pyx_v_obj) {
   NPY_DATETIMEUNIT __pyx_r;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1117
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1117
  *     returns the unit part of the dtype for a numpy datetime64 object.
  *     """
  *     return <NPY_DATETIMEUNIT>(<PyDatetimeScalarObject*>obj).obmeta.base             # <<<<<<<<<<<<<<
@@ -18904,7 +18913,7 @@ static CYTHON_INLINE NPY_DATETIMEUNIT __pyx_f_5numpy_get_datetime64_unit(PyObjec
   __pyx_r = ((NPY_DATETIMEUNIT)((PyDatetimeScalarObject *)__pyx_v_obj)->obmeta.base);
   goto __pyx_L0;
 
-  /* "../../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1113
+  /* "../../miniforge3/envs/nin/lib/python3.13/site-packages/numpy/__init__.cython-30.pxd":1113
  * 
  * 
  * cdef inline NPY_DATETIMEUNIT get_datetime64_unit(object obj) noexcept nogil:             # <<<<<<<<<<<<<<
@@ -18917,7 +18926,7 @@ static CYTHON_INLINE NPY_DATETIMEUNIT __pyx_f_5numpy_get_datetime64_unit(PyObjec
   return __pyx_r;
 }
 
-/* "nin/MODEL/adex_euler.pyx":11
+/* "MODEL/adex_euler.pyx":11
  * 
  * # Use typed memoryviews for fast buffer access
  * def forward_euler_cython(double[:] y0,             # <<<<<<<<<<<<<<
@@ -18926,16 +18935,16 @@ static CYTHON_INLINE NPY_DATETIMEUNIT __pyx_f_5numpy_get_datetime64_unit(PyObjec
 */
 
 /* Python wrapper */
-static PyObject *__pyx_pw_3nin_5MODEL_10adex_euler_1forward_euler_cython(PyObject *__pyx_self, 
+static PyObject *__pyx_pw_5MODEL_10adex_euler_1forward_euler_cython(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_3nin_5MODEL_10adex_euler_forward_euler_cython, "\n    Clock-driven forward Euler for AdEx, returns numpy arrays for outputs.\n    ");
-static PyMethodDef __pyx_mdef_3nin_5MODEL_10adex_euler_1forward_euler_cython = {"forward_euler_cython", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_3nin_5MODEL_10adex_euler_1forward_euler_cython, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_3nin_5MODEL_10adex_euler_forward_euler_cython};
-static PyObject *__pyx_pw_3nin_5MODEL_10adex_euler_1forward_euler_cython(PyObject *__pyx_self, 
+PyDoc_STRVAR(__pyx_doc_5MODEL_10adex_euler_forward_euler_cython, "\n    Clock-driven forward Euler for AdEx, returns numpy arrays for outputs.\n    ");
+static PyMethodDef __pyx_mdef_5MODEL_10adex_euler_1forward_euler_cython = {"forward_euler_cython", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_5MODEL_10adex_euler_1forward_euler_cython, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_5MODEL_10adex_euler_forward_euler_cython};
+static PyObject *__pyx_pw_5MODEL_10adex_euler_1forward_euler_cython(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
@@ -19031,13 +19040,13 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   __PYX_XCLEAR_MEMVIEW(&__pyx_v_y0, 1);
   __PYX_XCLEAR_MEMVIEW(&__pyx_v_currents, 1);
-  __Pyx_AddTraceback("nin.MODEL.adex_euler.forward_euler_cython", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("MODEL.adex_euler.forward_euler_cython", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
   if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_model_params), (&PyTuple_Type), 1, "model_params", 1))) __PYX_ERR(0, 13, __pyx_L1_error)
   if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_reset_params), (&PyTuple_Type), 1, "reset_params", 1))) __PYX_ERR(0, 14, __pyx_L1_error)
-  __pyx_r = __pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(__pyx_self, __pyx_v_y0, __pyx_v_dt, __pyx_v_model_params, __pyx_v_reset_params, __pyx_v_currents);
+  __pyx_r = __pyx_pf_5MODEL_10adex_euler_forward_euler_cython(__pyx_self, __pyx_v_y0, __pyx_v_dt, __pyx_v_model_params, __pyx_v_reset_params, __pyx_v_currents);
 
   /* function exit code */
   goto __pyx_L0;
@@ -19058,7 +19067,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_y0, double __pyx_v_dt, PyObject *__pyx_v_model_params, PyObject *__pyx_v_reset_params, __Pyx_memviewslice __pyx_v_currents) {
+static PyObject *__pyx_pf_5MODEL_10adex_euler_forward_euler_cython(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_y0, double __pyx_v_dt, PyObject *__pyx_v_model_params, PyObject *__pyx_v_reset_params, __Pyx_memviewslice __pyx_v_currents) {
   double __pyx_v_V0;
   double __pyx_v_w0;
   Py_ssize_t __pyx_v_N;
@@ -19107,7 +19116,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("forward_euler_cython", 0);
 
-  /* "nin/MODEL/adex_euler.pyx":21
+  /* "MODEL/adex_euler.pyx":21
  *     """
  *     # initial conditions
  *     cdef double V0 = y0[0]             # <<<<<<<<<<<<<<
@@ -19117,7 +19126,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_1 = 0;
   __pyx_v_V0 = (*((double *) ( /* dim=0 */ (__pyx_v_y0.data + __pyx_t_1 * __pyx_v_y0.strides[0]) )));
 
-  /* "nin/MODEL/adex_euler.pyx":22
+  /* "MODEL/adex_euler.pyx":22
  *     # initial conditions
  *     cdef double V0 = y0[0]
  *     cdef double w0 = y0[1]             # <<<<<<<<<<<<<<
@@ -19127,7 +19136,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_1 = 1;
   __pyx_v_w0 = (*((double *) ( /* dim=0 */ (__pyx_v_y0.data + __pyx_t_1 * __pyx_v_y0.strides[0]) )));
 
-  /* "nin/MODEL/adex_euler.pyx":24
+  /* "MODEL/adex_euler.pyx":24
  *     cdef double w0 = y0[1]
  * 
  *     cdef Py_ssize_t N = currents.shape[0]             # <<<<<<<<<<<<<<
@@ -19136,7 +19145,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
   __pyx_v_N = (__pyx_v_currents.shape[0]);
 
-  /* "nin/MODEL/adex_euler.pyx":26
+  /* "MODEL/adex_euler.pyx":26
  *     cdef Py_ssize_t N = currents.shape[0]
  *     # Allocate output numpy arrays
  *     Vout_arr = np.empty(N, dtype=np.float64)             # <<<<<<<<<<<<<<
@@ -19185,7 +19194,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_v_Vout_arr = __pyx_t_2;
   __pyx_t_2 = 0;
 
-  /* "nin/MODEL/adex_euler.pyx":27
+  /* "MODEL/adex_euler.pyx":27
  *     # Allocate output numpy arrays
  *     Vout_arr = np.empty(N, dtype=np.float64)
  *     wout_arr = np.empty(N, dtype=np.float64)             # <<<<<<<<<<<<<<
@@ -19234,7 +19243,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_v_wout_arr = __pyx_t_2;
   __pyx_t_2 = 0;
 
-  /* "nin/MODEL/adex_euler.pyx":28
+  /* "MODEL/adex_euler.pyx":28
  *     Vout_arr = np.empty(N, dtype=np.float64)
  *     wout_arr = np.empty(N, dtype=np.float64)
  *     spts_arr = np.zeros(N, dtype=np.int64)             # <<<<<<<<<<<<<<
@@ -19283,7 +19292,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_v_spts_arr = __pyx_t_2;
   __pyx_t_2 = 0;
 
-  /* "nin/MODEL/adex_euler.pyx":31
+  /* "MODEL/adex_euler.pyx":31
  * 
  *     # Create memoryviews for C-level indexing
  *     cdef double[::1] Vout = Vout_arr             # <<<<<<<<<<<<<<
@@ -19295,7 +19304,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_9.memview = NULL;
   __pyx_t_9.data = NULL;
 
-  /* "nin/MODEL/adex_euler.pyx":32
+  /* "MODEL/adex_euler.pyx":32
  *     # Create memoryviews for C-level indexing
  *     cdef double[::1] Vout = Vout_arr
  *     cdef double[::1] wout = wout_arr             # <<<<<<<<<<<<<<
@@ -19307,7 +19316,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_9.memview = NULL;
   __pyx_t_9.data = NULL;
 
-  /* "nin/MODEL/adex_euler.pyx":33
+  /* "MODEL/adex_euler.pyx":33
  *     cdef double[::1] Vout = Vout_arr
  *     cdef double[::1] wout = wout_arr
  *     cdef long[::1]   spts = spts_arr             # <<<<<<<<<<<<<<
@@ -19319,7 +19328,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_10.memview = NULL;
   __pyx_t_10.data = NULL;
 
-  /* "nin/MODEL/adex_euler.pyx":36
+  /* "MODEL/adex_euler.pyx":36
  * 
  *     # Unpack parameters into C locals
  *     cdef double C      = model_params[0]             # <<<<<<<<<<<<<<
@@ -19333,7 +19342,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_11 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 0)); if (unlikely((__pyx_t_11 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 36, __pyx_L1_error)
   __pyx_v_C = __pyx_t_11;
 
-  /* "nin/MODEL/adex_euler.pyx":37
+  /* "MODEL/adex_euler.pyx":37
  *     # Unpack parameters into C locals
  *     cdef double C      = model_params[0]
  *     cdef double gL     = model_params[1]             # <<<<<<<<<<<<<<
@@ -19347,7 +19356,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_11 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 1)); if (unlikely((__pyx_t_11 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 37, __pyx_L1_error)
   __pyx_v_gL = __pyx_t_11;
 
-  /* "nin/MODEL/adex_euler.pyx":38
+  /* "MODEL/adex_euler.pyx":38
  *     cdef double C      = model_params[0]
  *     cdef double gL     = model_params[1]
  *     cdef double EL     = model_params[2]             # <<<<<<<<<<<<<<
@@ -19361,7 +19370,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_11 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 2)); if (unlikely((__pyx_t_11 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 38, __pyx_L1_error)
   __pyx_v_EL = __pyx_t_11;
 
-  /* "nin/MODEL/adex_euler.pyx":39
+  /* "MODEL/adex_euler.pyx":39
  *     cdef double gL     = model_params[1]
  *     cdef double EL     = model_params[2]
  *     cdef double VT     = model_params[3]             # <<<<<<<<<<<<<<
@@ -19375,7 +19384,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_11 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 3)); if (unlikely((__pyx_t_11 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 39, __pyx_L1_error)
   __pyx_v_VT = __pyx_t_11;
 
-  /* "nin/MODEL/adex_euler.pyx":40
+  /* "MODEL/adex_euler.pyx":40
  *     cdef double EL     = model_params[2]
  *     cdef double VT     = model_params[3]
  *     cdef double DeltaT = model_params[4]             # <<<<<<<<<<<<<<
@@ -19389,7 +19398,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_11 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 4)); if (unlikely((__pyx_t_11 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 40, __pyx_L1_error)
   __pyx_v_DeltaT = __pyx_t_11;
 
-  /* "nin/MODEL/adex_euler.pyx":41
+  /* "MODEL/adex_euler.pyx":41
  *     cdef double VT     = model_params[3]
  *     cdef double DeltaT = model_params[4]
  *     cdef double tauw   = model_params[5]             # <<<<<<<<<<<<<<
@@ -19403,7 +19412,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_11 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 5)); if (unlikely((__pyx_t_11 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 41, __pyx_L1_error)
   __pyx_v_tauw = __pyx_t_11;
 
-  /* "nin/MODEL/adex_euler.pyx":42
+  /* "MODEL/adex_euler.pyx":42
  *     cdef double DeltaT = model_params[4]
  *     cdef double tauw   = model_params[5]
  *     cdef double a      = model_params[6]             # <<<<<<<<<<<<<<
@@ -19417,7 +19426,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_11 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 6)); if (unlikely((__pyx_t_11 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 42, __pyx_L1_error)
   __pyx_v_a = __pyx_t_11;
 
-  /* "nin/MODEL/adex_euler.pyx":44
+  /* "MODEL/adex_euler.pyx":44
  *     cdef double a      = model_params[6]
  * 
  *     cdef double Vpeak  = reset_params[0]             # <<<<<<<<<<<<<<
@@ -19431,7 +19440,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_11 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_reset_params, 0)); if (unlikely((__pyx_t_11 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 44, __pyx_L1_error)
   __pyx_v_Vpeak = __pyx_t_11;
 
-  /* "nin/MODEL/adex_euler.pyx":45
+  /* "MODEL/adex_euler.pyx":45
  * 
  *     cdef double Vpeak  = reset_params[0]
  *     cdef double Vreset = reset_params[1]             # <<<<<<<<<<<<<<
@@ -19445,7 +19454,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_11 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_reset_params, 1)); if (unlikely((__pyx_t_11 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 45, __pyx_L1_error)
   __pyx_v_Vreset = __pyx_t_11;
 
-  /* "nin/MODEL/adex_euler.pyx":46
+  /* "MODEL/adex_euler.pyx":46
  *     cdef double Vpeak  = reset_params[0]
  *     cdef double Vreset = reset_params[1]
  *     cdef double b      = reset_params[2]             # <<<<<<<<<<<<<<
@@ -19459,7 +19468,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_11 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_reset_params, 2)); if (unlikely((__pyx_t_11 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 46, __pyx_L1_error)
   __pyx_v_b = __pyx_t_11;
 
-  /* "nin/MODEL/adex_euler.pyx":48
+  /* "MODEL/adex_euler.pyx":48
  *     cdef double b      = reset_params[2]
  * 
  *     cdef double V = V0             # <<<<<<<<<<<<<<
@@ -19468,7 +19477,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
   __pyx_v_V = __pyx_v_V0;
 
-  /* "nin/MODEL/adex_euler.pyx":49
+  /* "MODEL/adex_euler.pyx":49
  * 
  *     cdef double V = V0
  *     cdef double w = w0             # <<<<<<<<<<<<<<
@@ -19477,7 +19486,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
   __pyx_v_w = __pyx_v_w0;
 
-  /* "nin/MODEL/adex_euler.pyx":53
+  /* "MODEL/adex_euler.pyx":53
  *     cdef Py_ssize_t i
  * 
  *     for i in range(N):             # <<<<<<<<<<<<<<
@@ -19489,7 +19498,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   for (__pyx_t_14 = 0; __pyx_t_14 < __pyx_t_13; __pyx_t_14+=1) {
     __pyx_v_i = __pyx_t_14;
 
-    /* "nin/MODEL/adex_euler.pyx":57
+    /* "MODEL/adex_euler.pyx":57
  *         dV = (-gL * (V - EL)
  *               + gL * DeltaT * exp((V - VT)/DeltaT)
  *               - w + currents[i]) / C             # <<<<<<<<<<<<<<
@@ -19499,7 +19508,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
     __pyx_t_1 = __pyx_v_i;
     __pyx_v_dV = ((((((-__pyx_v_gL) * (__pyx_v_V - __pyx_v_EL)) + ((__pyx_v_gL * __pyx_v_DeltaT) * exp(((__pyx_v_V - __pyx_v_VT) / __pyx_v_DeltaT)))) - __pyx_v_w) + (*((double *) ( /* dim=0 */ ((char *) (((double *) __pyx_v_currents.data) + __pyx_t_1)) )))) / __pyx_v_C);
 
-    /* "nin/MODEL/adex_euler.pyx":58
+    /* "MODEL/adex_euler.pyx":58
  *               + gL * DeltaT * exp((V - VT)/DeltaT)
  *               - w + currents[i]) / C
  *         dw = (a * (V - EL) - w) / tauw             # <<<<<<<<<<<<<<
@@ -19508,7 +19517,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
     __pyx_v_dw = (((__pyx_v_a * (__pyx_v_V - __pyx_v_EL)) - __pyx_v_w) / __pyx_v_tauw);
 
-    /* "nin/MODEL/adex_euler.pyx":61
+    /* "MODEL/adex_euler.pyx":61
  * 
  *         # forward Euler step
  *         V2 = V + dV * dt             # <<<<<<<<<<<<<<
@@ -19517,7 +19526,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
     __pyx_v_V2 = (__pyx_v_V + (__pyx_v_dV * __pyx_v_dt));
 
-    /* "nin/MODEL/adex_euler.pyx":62
+    /* "MODEL/adex_euler.pyx":62
  *         # forward Euler step
  *         V2 = V + dV * dt
  *         w2 = w + dw * dt             # <<<<<<<<<<<<<<
@@ -19526,7 +19535,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
     __pyx_v_w2 = (__pyx_v_w + (__pyx_v_dw * __pyx_v_dt));
 
-    /* "nin/MODEL/adex_euler.pyx":65
+    /* "MODEL/adex_euler.pyx":65
  * 
  *         # spike reset
  *         if V2 >= Vpeak:             # <<<<<<<<<<<<<<
@@ -19536,7 +19545,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
     __pyx_t_15 = (__pyx_v_V2 >= __pyx_v_Vpeak);
     if (__pyx_t_15) {
 
-      /* "nin/MODEL/adex_euler.pyx":66
+      /* "MODEL/adex_euler.pyx":66
  *         # spike reset
  *         if V2 >= Vpeak:
  *             V2 = Vreset             # <<<<<<<<<<<<<<
@@ -19545,7 +19554,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
       __pyx_v_V2 = __pyx_v_Vreset;
 
-      /* "nin/MODEL/adex_euler.pyx":67
+      /* "MODEL/adex_euler.pyx":67
  *         if V2 >= Vpeak:
  *             V2 = Vreset
  *             w2 = w + b             # <<<<<<<<<<<<<<
@@ -19554,7 +19563,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
       __pyx_v_w2 = (__pyx_v_w + __pyx_v_b);
 
-      /* "nin/MODEL/adex_euler.pyx":69
+      /* "MODEL/adex_euler.pyx":69
  *             w2 = w + b
  *             # Count spike occured at this time
  *             spts[i] = 1             # <<<<<<<<<<<<<<
@@ -19564,7 +19573,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
       __pyx_t_1 = __pyx_v_i;
       *((long *) ( /* dim=0 */ ((char *) (((long *) __pyx_v_spts.data) + __pyx_t_1)) )) = 1;
 
-      /* "nin/MODEL/adex_euler.pyx":70
+      /* "MODEL/adex_euler.pyx":70
  *             # Count spike occured at this time
  *             spts[i] = 1
  *             Vout[i-1] = Vpeak             # <<<<<<<<<<<<<<
@@ -19574,7 +19583,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
       __pyx_t_1 = (__pyx_v_i - 1);
       *((double *) ( /* dim=0 */ ((char *) (((double *) __pyx_v_Vout.data) + __pyx_t_1)) )) = __pyx_v_Vpeak;
 
-      /* "nin/MODEL/adex_euler.pyx":65
+      /* "MODEL/adex_euler.pyx":65
  * 
  *         # spike reset
  *         if V2 >= Vpeak:             # <<<<<<<<<<<<<<
@@ -19583,7 +19592,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
     }
 
-    /* "nin/MODEL/adex_euler.pyx":73
+    /* "MODEL/adex_euler.pyx":73
  * 
  *         # save and advance
  *         V = V2             # <<<<<<<<<<<<<<
@@ -19592,7 +19601,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
     __pyx_v_V = __pyx_v_V2;
 
-    /* "nin/MODEL/adex_euler.pyx":74
+    /* "MODEL/adex_euler.pyx":74
  *         # save and advance
  *         V = V2
  *         w = w2             # <<<<<<<<<<<<<<
@@ -19601,7 +19610,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
     __pyx_v_w = __pyx_v_w2;
 
-    /* "nin/MODEL/adex_euler.pyx":75
+    /* "MODEL/adex_euler.pyx":75
  *         V = V2
  *         w = w2
  *         Vout[i] = V             # <<<<<<<<<<<<<<
@@ -19611,7 +19620,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
     __pyx_t_1 = __pyx_v_i;
     *((double *) ( /* dim=0 */ ((char *) (((double *) __pyx_v_Vout.data) + __pyx_t_1)) )) = __pyx_v_V;
 
-    /* "nin/MODEL/adex_euler.pyx":76
+    /* "MODEL/adex_euler.pyx":76
  *         w = w2
  *         Vout[i] = V
  *         wout[i] = w             # <<<<<<<<<<<<<<
@@ -19622,7 +19631,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
     *((double *) ( /* dim=0 */ ((char *) (((double *) __pyx_v_wout.data) + __pyx_t_1)) )) = __pyx_v_w;
   }
 
-  /* "nin/MODEL/adex_euler.pyx":78
+  /* "MODEL/adex_euler.pyx":78
  *         wout[i] = w
  * 
  *     return Vout_arr, wout_arr, spts_arr             # <<<<<<<<<<<<<<
@@ -19645,7 +19654,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __pyx_t_2 = 0;
   goto __pyx_L0;
 
-  /* "nin/MODEL/adex_euler.pyx":11
+  /* "MODEL/adex_euler.pyx":11
  * 
  * # Use typed memoryviews for fast buffer access
  * def forward_euler_cython(double[:] y0,             # <<<<<<<<<<<<<<
@@ -19663,7 +19672,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   __Pyx_XDECREF(__pyx_t_7);
   __PYX_XCLEAR_MEMVIEW(&__pyx_t_9, 1);
   __PYX_XCLEAR_MEMVIEW(&__pyx_t_10, 1);
-  __Pyx_AddTraceback("nin.MODEL.adex_euler.forward_euler_cython", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("MODEL.adex_euler.forward_euler_cython", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XDECREF(__pyx_v_Vout_arr);
@@ -19677,7 +19686,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
   return __pyx_r;
 }
 
-/* "nin/MODEL/adex_euler.pyx":82
+/* "MODEL/adex_euler.pyx":82
  * 
  * # this is the synaptic model
  * def forward_euler_synapse_cython(double[:] y0,             # <<<<<<<<<<<<<<
@@ -19686,16 +19695,16 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_forward_euler_cython(CYTHON_U
 */
 
 /* Python wrapper */
-static PyObject *__pyx_pw_3nin_5MODEL_10adex_euler_3forward_euler_synapse_cython(PyObject *__pyx_self, 
+static PyObject *__pyx_pw_5MODEL_10adex_euler_3forward_euler_synapse_cython(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython, "\n    Clock-driven forward Euler for synaptic AdEx model.\n    \n    Parameters:\n    -----------\n    y0 : initial conditions [V0, w0]\n    dt : time step\n    model_params : (C, gL, EL, VT, DeltaT, tauw, a, gs)\n    reset_params : (Vpeak, Vreset, b)\n    adjM : adjacency matrix row for target neuron (synaptic weights)\n    currents : calcium signals for all neurons (nsamples x nneurons)\n    ");
-static PyMethodDef __pyx_mdef_3nin_5MODEL_10adex_euler_3forward_euler_synapse_cython = {"forward_euler_synapse_cython", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_3nin_5MODEL_10adex_euler_3forward_euler_synapse_cython, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython};
-static PyObject *__pyx_pw_3nin_5MODEL_10adex_euler_3forward_euler_synapse_cython(PyObject *__pyx_self, 
+PyDoc_STRVAR(__pyx_doc_5MODEL_10adex_euler_2forward_euler_synapse_cython, "\n    Clock-driven forward Euler for synaptic AdEx model.\n    \n    Parameters:\n    -----------\n    y0 : initial conditions [V0, w0]\n    dt : time step\n    model_params : (C, gL, EL, VT, DeltaT, tauw, a, gs)\n    reset_params : (Vpeak, Vreset, b)\n    adjM : adjacency matrix row for target neuron (synaptic weights)\n    currents : calcium signals for all neurons (nsamples x nneurons)\n    ");
+static PyMethodDef __pyx_mdef_5MODEL_10adex_euler_3forward_euler_synapse_cython = {"forward_euler_synapse_cython", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_5MODEL_10adex_euler_3forward_euler_synapse_cython, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_5MODEL_10adex_euler_2forward_euler_synapse_cython};
+static PyObject *__pyx_pw_5MODEL_10adex_euler_3forward_euler_synapse_cython(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
@@ -19800,13 +19809,13 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   __PYX_XCLEAR_MEMVIEW(&__pyx_v_y0, 1);
   __PYX_XCLEAR_MEMVIEW(&__pyx_v_adjM, 1);
   __PYX_XCLEAR_MEMVIEW(&__pyx_v_currents, 1);
-  __Pyx_AddTraceback("nin.MODEL.adex_euler.forward_euler_synapse_cython", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("MODEL.adex_euler.forward_euler_synapse_cython", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
   if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_model_params), (&PyTuple_Type), 1, "model_params", 1))) __PYX_ERR(0, 84, __pyx_L1_error)
   if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_reset_params), (&PyTuple_Type), 1, "reset_params", 1))) __PYX_ERR(0, 85, __pyx_L1_error)
-  __pyx_r = __pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython(__pyx_self, __pyx_v_y0, __pyx_v_dt, __pyx_v_model_params, __pyx_v_reset_params, __pyx_v_adjM, __pyx_v_currents);
+  __pyx_r = __pyx_pf_5MODEL_10adex_euler_2forward_euler_synapse_cython(__pyx_self, __pyx_v_y0, __pyx_v_dt, __pyx_v_model_params, __pyx_v_reset_params, __pyx_v_adjM, __pyx_v_currents);
 
   /* function exit code */
   goto __pyx_L0;
@@ -19828,7 +19837,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_y0, double __pyx_v_dt, PyObject *__pyx_v_model_params, PyObject *__pyx_v_reset_params, __Pyx_memviewslice __pyx_v_adjM, __Pyx_memviewslice __pyx_v_currents) {
+static PyObject *__pyx_pf_5MODEL_10adex_euler_2forward_euler_synapse_cython(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_y0, double __pyx_v_dt, PyObject *__pyx_v_model_params, PyObject *__pyx_v_reset_params, __Pyx_memviewslice __pyx_v_adjM, __Pyx_memviewslice __pyx_v_currents) {
   double __pyx_v_V0;
   double __pyx_v_w0;
   Py_ssize_t __pyx_v_N;
@@ -19889,7 +19898,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("forward_euler_synapse_cython", 0);
 
-  /* "nin/MODEL/adex_euler.pyx":102
+  /* "MODEL/adex_euler.pyx":102
  *     """
  *     # Initial conditions
  *     cdef double V0 = y0[0]             # <<<<<<<<<<<<<<
@@ -19899,7 +19908,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_1 = 0;
   __pyx_v_V0 = (*((double *) ( /* dim=0 */ (__pyx_v_y0.data + __pyx_t_1 * __pyx_v_y0.strides[0]) )));
 
-  /* "nin/MODEL/adex_euler.pyx":103
+  /* "MODEL/adex_euler.pyx":103
  *     # Initial conditions
  *     cdef double V0 = y0[0]
  *     cdef double w0 = y0[1]             # <<<<<<<<<<<<<<
@@ -19909,7 +19918,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_1 = 1;
   __pyx_v_w0 = (*((double *) ( /* dim=0 */ (__pyx_v_y0.data + __pyx_t_1 * __pyx_v_y0.strides[0]) )));
 
-  /* "nin/MODEL/adex_euler.pyx":105
+  /* "MODEL/adex_euler.pyx":105
  *     cdef double w0 = y0[1]
  * 
  *     cdef Py_ssize_t N = currents.shape[0]  # number of time samples             # <<<<<<<<<<<<<<
@@ -19918,7 +19927,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
   __pyx_v_N = (__pyx_v_currents.shape[0]);
 
-  /* "nin/MODEL/adex_euler.pyx":106
+  /* "MODEL/adex_euler.pyx":106
  * 
  *     cdef Py_ssize_t N = currents.shape[0]  # number of time samples
  *     cdef Py_ssize_t M = currents.shape[1]  # number of neurons             # <<<<<<<<<<<<<<
@@ -19927,7 +19936,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
   __pyx_v_M = (__pyx_v_currents.shape[1]);
 
-  /* "nin/MODEL/adex_euler.pyx":109
+  /* "MODEL/adex_euler.pyx":109
  * 
  *     # Verify adjacency matrix size matches number of neurons
  *     if adjM.shape[0] != M:             # <<<<<<<<<<<<<<
@@ -19937,7 +19946,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_2 = ((__pyx_v_adjM.shape[0]) != __pyx_v_M);
   if (unlikely(__pyx_t_2)) {
 
-    /* "nin/MODEL/adex_euler.pyx":110
+    /* "MODEL/adex_euler.pyx":110
  *     # Verify adjacency matrix size matches number of neurons
  *     if adjM.shape[0] != M:
  *         raise ValueError(f"adjM size {adjM.shape[0]} doesn't match number of neurons {M}")             # <<<<<<<<<<<<<<
@@ -19974,7 +19983,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     __PYX_ERR(0, 110, __pyx_L1_error)
 
-    /* "nin/MODEL/adex_euler.pyx":109
+    /* "MODEL/adex_euler.pyx":109
  * 
  *     # Verify adjacency matrix size matches number of neurons
  *     if adjM.shape[0] != M:             # <<<<<<<<<<<<<<
@@ -19983,7 +19992,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
   }
 
-  /* "nin/MODEL/adex_euler.pyx":113
+  /* "MODEL/adex_euler.pyx":113
  * 
  *     # Allocate output numpy arrays
  *     Vout_arr = np.empty(N, dtype=np.float64)             # <<<<<<<<<<<<<<
@@ -20032,7 +20041,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_v_Vout_arr = __pyx_t_3;
   __pyx_t_3 = 0;
 
-  /* "nin/MODEL/adex_euler.pyx":114
+  /* "MODEL/adex_euler.pyx":114
  *     # Allocate output numpy arrays
  *     Vout_arr = np.empty(N, dtype=np.float64)
  *     wout_arr = np.empty(N, dtype=np.float64)             # <<<<<<<<<<<<<<
@@ -20081,7 +20090,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_v_wout_arr = __pyx_t_3;
   __pyx_t_3 = 0;
 
-  /* "nin/MODEL/adex_euler.pyx":115
+  /* "MODEL/adex_euler.pyx":115
  *     Vout_arr = np.empty(N, dtype=np.float64)
  *     wout_arr = np.empty(N, dtype=np.float64)
  *     spts_arr = np.zeros(N, dtype=np.int64)             # <<<<<<<<<<<<<<
@@ -20130,7 +20139,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_v_spts_arr = __pyx_t_3;
   __pyx_t_3 = 0;
 
-  /* "nin/MODEL/adex_euler.pyx":118
+  /* "MODEL/adex_euler.pyx":118
  * 
  *     # Create memoryviews for C-level indexing
  *     cdef double[::1] Vout = Vout_arr             # <<<<<<<<<<<<<<
@@ -20142,7 +20151,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_11.memview = NULL;
   __pyx_t_11.data = NULL;
 
-  /* "nin/MODEL/adex_euler.pyx":119
+  /* "MODEL/adex_euler.pyx":119
  *     # Create memoryviews for C-level indexing
  *     cdef double[::1] Vout = Vout_arr
  *     cdef double[::1] wout = wout_arr             # <<<<<<<<<<<<<<
@@ -20154,7 +20163,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_11.memview = NULL;
   __pyx_t_11.data = NULL;
 
-  /* "nin/MODEL/adex_euler.pyx":120
+  /* "MODEL/adex_euler.pyx":120
  *     cdef double[::1] Vout = Vout_arr
  *     cdef double[::1] wout = wout_arr
  *     cdef long[::1]   spts = spts_arr             # <<<<<<<<<<<<<<
@@ -20166,7 +20175,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_12.memview = NULL;
   __pyx_t_12.data = NULL;
 
-  /* "nin/MODEL/adex_euler.pyx":123
+  /* "MODEL/adex_euler.pyx":123
  * 
  *     # Unpack model parameters into C locals
  *     cdef double C      = model_params[0]             # <<<<<<<<<<<<<<
@@ -20180,7 +20189,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 0)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 123, __pyx_L1_error)
   __pyx_v_C = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":124
+  /* "MODEL/adex_euler.pyx":124
  *     # Unpack model parameters into C locals
  *     cdef double C      = model_params[0]
  *     cdef double gL     = model_params[1]             # <<<<<<<<<<<<<<
@@ -20194,7 +20203,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 1)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 124, __pyx_L1_error)
   __pyx_v_gL = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":125
+  /* "MODEL/adex_euler.pyx":125
  *     cdef double C      = model_params[0]
  *     cdef double gL     = model_params[1]
  *     cdef double EL     = model_params[2]             # <<<<<<<<<<<<<<
@@ -20208,7 +20217,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 2)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 125, __pyx_L1_error)
   __pyx_v_EL = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":126
+  /* "MODEL/adex_euler.pyx":126
  *     cdef double gL     = model_params[1]
  *     cdef double EL     = model_params[2]
  *     cdef double VT     = model_params[3]             # <<<<<<<<<<<<<<
@@ -20222,7 +20231,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 3)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 126, __pyx_L1_error)
   __pyx_v_VT = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":127
+  /* "MODEL/adex_euler.pyx":127
  *     cdef double EL     = model_params[2]
  *     cdef double VT     = model_params[3]
  *     cdef double DeltaT = model_params[4]             # <<<<<<<<<<<<<<
@@ -20236,7 +20245,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 4)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 127, __pyx_L1_error)
   __pyx_v_DeltaT = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":128
+  /* "MODEL/adex_euler.pyx":128
  *     cdef double VT     = model_params[3]
  *     cdef double DeltaT = model_params[4]
  *     cdef double tauw   = model_params[5]             # <<<<<<<<<<<<<<
@@ -20250,7 +20259,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 5)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 128, __pyx_L1_error)
   __pyx_v_tauw = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":129
+  /* "MODEL/adex_euler.pyx":129
  *     cdef double DeltaT = model_params[4]
  *     cdef double tauw   = model_params[5]
  *     cdef double a      = model_params[6]             # <<<<<<<<<<<<<<
@@ -20264,7 +20273,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 6)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 129, __pyx_L1_error)
   __pyx_v_a = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":130
+  /* "MODEL/adex_euler.pyx":130
  *     cdef double tauw   = model_params[5]
  *     cdef double a      = model_params[6]
  *     cdef double gs     = model_params[7]  # synaptic conductance             # <<<<<<<<<<<<<<
@@ -20278,7 +20287,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_model_params, 7)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 130, __pyx_L1_error)
   __pyx_v_gs = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":133
+  /* "MODEL/adex_euler.pyx":133
  * 
  *     # Unpack reset parameters
  *     cdef double Vpeak  = reset_params[0]             # <<<<<<<<<<<<<<
@@ -20292,7 +20301,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_reset_params, 0)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 133, __pyx_L1_error)
   __pyx_v_Vpeak = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":134
+  /* "MODEL/adex_euler.pyx":134
  *     # Unpack reset parameters
  *     cdef double Vpeak  = reset_params[0]
  *     cdef double Vreset = reset_params[1]             # <<<<<<<<<<<<<<
@@ -20306,7 +20315,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_reset_params, 1)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 134, __pyx_L1_error)
   __pyx_v_Vreset = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":135
+  /* "MODEL/adex_euler.pyx":135
  *     cdef double Vpeak  = reset_params[0]
  *     cdef double Vreset = reset_params[1]
  *     cdef double b      = reset_params[2]             # <<<<<<<<<<<<<<
@@ -20320,7 +20329,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_13 = __Pyx_PyFloat_AsDouble(__Pyx_PyTuple_GET_ITEM(__pyx_v_reset_params, 2)); if (unlikely((__pyx_t_13 == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 135, __pyx_L1_error)
   __pyx_v_b = __pyx_t_13;
 
-  /* "nin/MODEL/adex_euler.pyx":138
+  /* "MODEL/adex_euler.pyx":138
  * 
  *     # State variables
  *     cdef double V = V0             # <<<<<<<<<<<<<<
@@ -20329,7 +20338,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
   __pyx_v_V = __pyx_v_V0;
 
-  /* "nin/MODEL/adex_euler.pyx":139
+  /* "MODEL/adex_euler.pyx":139
  *     # State variables
  *     cdef double V = V0
  *     cdef double w = w0             # <<<<<<<<<<<<<<
@@ -20338,7 +20347,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
   __pyx_v_w = __pyx_v_w0;
 
-  /* "nin/MODEL/adex_euler.pyx":148
+  /* "MODEL/adex_euler.pyx":148
  * 
  *     # Main integration loop
  *     for i in range(N):             # <<<<<<<<<<<<<<
@@ -20350,7 +20359,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   for (__pyx_t_16 = 0; __pyx_t_16 < __pyx_t_15; __pyx_t_16+=1) {
     __pyx_v_i = __pyx_t_16;
 
-    /* "nin/MODEL/adex_euler.pyx":150
+    /* "MODEL/adex_euler.pyx":150
  *     for i in range(N):
  *         # Calculate synaptic input: gs * sum(adjM[j] * currents[i, j])
  *         synaptic_input = 0.0             # <<<<<<<<<<<<<<
@@ -20359,7 +20368,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     __pyx_v_synaptic_input = 0.0;
 
-    /* "nin/MODEL/adex_euler.pyx":151
+    /* "MODEL/adex_euler.pyx":151
  *         # Calculate synaptic input: gs * sum(adjM[j] * currents[i, j])
  *         synaptic_input = 0.0
  *         for j in range(M):             # <<<<<<<<<<<<<<
@@ -20371,7 +20380,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
     for (__pyx_t_19 = 0; __pyx_t_19 < __pyx_t_18; __pyx_t_19+=1) {
       __pyx_v_j = __pyx_t_19;
 
-      /* "nin/MODEL/adex_euler.pyx":152
+      /* "MODEL/adex_euler.pyx":152
  *         synaptic_input = 0.0
  *         for j in range(M):
  *             synaptic_input += adjM[j] * currents[i, j]             # <<<<<<<<<<<<<<
@@ -20384,7 +20393,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
       __pyx_v_synaptic_input = (__pyx_v_synaptic_input + ((*((double *) ( /* dim=0 */ ((char *) (((double *) __pyx_v_adjM.data) + __pyx_t_1)) ))) * (*((double *) ( /* dim=1 */ ((char *) (((double *) ( /* dim=0 */ (__pyx_v_currents.data + __pyx_t_20 * __pyx_v_currents.strides[0]) )) + __pyx_t_21)) )))));
     }
 
-    /* "nin/MODEL/adex_euler.pyx":153
+    /* "MODEL/adex_euler.pyx":153
  *         for j in range(M):
  *             synaptic_input += adjM[j] * currents[i, j]
  *         synaptic_input *= gs             # <<<<<<<<<<<<<<
@@ -20393,7 +20402,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     __pyx_v_synaptic_input = (__pyx_v_synaptic_input * __pyx_v_gs);
 
-    /* "nin/MODEL/adex_euler.pyx":155
+    /* "MODEL/adex_euler.pyx":155
  *         synaptic_input *= gs
  * 
  *         exp_arg = (V - VT) / DeltaT             # <<<<<<<<<<<<<<
@@ -20402,7 +20411,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     __pyx_v_exp_arg = ((__pyx_v_V - __pyx_v_VT) / __pyx_v_DeltaT);
 
-    /* "nin/MODEL/adex_euler.pyx":160
+    /* "MODEL/adex_euler.pyx":160
  *         #    exp_term = exp(20.0)
  *         #else:
  *         exp_term = exp(exp_arg)             # <<<<<<<<<<<<<<
@@ -20411,7 +20420,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     __pyx_v_exp_term = exp(__pyx_v_exp_arg);
 
-    /* "nin/MODEL/adex_euler.pyx":166
+    /* "MODEL/adex_euler.pyx":166
  *               + gL * DeltaT * exp_term
  *               - w
  *               + synaptic_input) / C             # <<<<<<<<<<<<<<
@@ -20420,7 +20429,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     __pyx_v_dV = ((((((-__pyx_v_gL) * (__pyx_v_V - __pyx_v_EL)) + ((__pyx_v_gL * __pyx_v_DeltaT) * __pyx_v_exp_term)) - __pyx_v_w) + __pyx_v_synaptic_input) / __pyx_v_C);
 
-    /* "nin/MODEL/adex_euler.pyx":167
+    /* "MODEL/adex_euler.pyx":167
  *               - w
  *               + synaptic_input) / C
  *         dw = (a * (V - EL) - w) / tauw             # <<<<<<<<<<<<<<
@@ -20429,7 +20438,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     __pyx_v_dw = (((__pyx_v_a * (__pyx_v_V - __pyx_v_EL)) - __pyx_v_w) / __pyx_v_tauw);
 
-    /* "nin/MODEL/adex_euler.pyx":170
+    /* "MODEL/adex_euler.pyx":170
  * 
  *         # Forward Euler step
  *         V2 = V + dV * dt             # <<<<<<<<<<<<<<
@@ -20438,7 +20447,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     __pyx_v_V2 = (__pyx_v_V + (__pyx_v_dV * __pyx_v_dt));
 
-    /* "nin/MODEL/adex_euler.pyx":171
+    /* "MODEL/adex_euler.pyx":171
  *         # Forward Euler step
  *         V2 = V + dV * dt
  *         w2 = w + dw * dt             # <<<<<<<<<<<<<<
@@ -20447,7 +20456,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     __pyx_v_w2 = (__pyx_v_w + (__pyx_v_dw * __pyx_v_dt));
 
-    /* "nin/MODEL/adex_euler.pyx":174
+    /* "MODEL/adex_euler.pyx":174
  * 
  *         # Spike detection and reset
  *         if V2 >= Vpeak:             # <<<<<<<<<<<<<<
@@ -20457,7 +20466,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
     __pyx_t_2 = (__pyx_v_V2 >= __pyx_v_Vpeak);
     if (__pyx_t_2) {
 
-      /* "nin/MODEL/adex_euler.pyx":175
+      /* "MODEL/adex_euler.pyx":175
  *         # Spike detection and reset
  *         if V2 >= Vpeak:
  *             V2 = Vreset             # <<<<<<<<<<<<<<
@@ -20466,7 +20475,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
       __pyx_v_V2 = __pyx_v_Vreset;
 
-      /* "nin/MODEL/adex_euler.pyx":176
+      /* "MODEL/adex_euler.pyx":176
  *         if V2 >= Vpeak:
  *             V2 = Vreset
  *             w2 = w + b             # <<<<<<<<<<<<<<
@@ -20475,7 +20484,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
       __pyx_v_w2 = (__pyx_v_w + __pyx_v_b);
 
-      /* "nin/MODEL/adex_euler.pyx":177
+      /* "MODEL/adex_euler.pyx":177
  *             V2 = Vreset
  *             w2 = w + b
  *             spts[i] = 1             # <<<<<<<<<<<<<<
@@ -20485,7 +20494,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
       __pyx_t_21 = __pyx_v_i;
       *((long *) ( /* dim=0 */ ((char *) (((long *) __pyx_v_spts.data) + __pyx_t_21)) )) = 1;
 
-      /* "nin/MODEL/adex_euler.pyx":179
+      /* "MODEL/adex_euler.pyx":179
  *             spts[i] = 1
  *             # Set previous voltage to peak for visualization
  *             if i > 0:             # <<<<<<<<<<<<<<
@@ -20495,7 +20504,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
       __pyx_t_2 = (__pyx_v_i > 0);
       if (__pyx_t_2) {
 
-        /* "nin/MODEL/adex_euler.pyx":180
+        /* "MODEL/adex_euler.pyx":180
  *             # Set previous voltage to peak for visualization
  *             if i > 0:
  *                 Vout[i-1] = Vpeak             # <<<<<<<<<<<<<<
@@ -20505,7 +20514,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
         __pyx_t_21 = (__pyx_v_i - 1);
         *((double *) ( /* dim=0 */ ((char *) (((double *) __pyx_v_Vout.data) + __pyx_t_21)) )) = __pyx_v_Vpeak;
 
-        /* "nin/MODEL/adex_euler.pyx":179
+        /* "MODEL/adex_euler.pyx":179
  *             spts[i] = 1
  *             # Set previous voltage to peak for visualization
  *             if i > 0:             # <<<<<<<<<<<<<<
@@ -20514,7 +20523,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
       }
 
-      /* "nin/MODEL/adex_euler.pyx":174
+      /* "MODEL/adex_euler.pyx":174
  * 
  *         # Spike detection and reset
  *         if V2 >= Vpeak:             # <<<<<<<<<<<<<<
@@ -20523,7 +20532,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     }
 
-    /* "nin/MODEL/adex_euler.pyx":183
+    /* "MODEL/adex_euler.pyx":183
  * 
  *         # Save state and advance
  *         V = V2             # <<<<<<<<<<<<<<
@@ -20532,7 +20541,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     __pyx_v_V = __pyx_v_V2;
 
-    /* "nin/MODEL/adex_euler.pyx":184
+    /* "MODEL/adex_euler.pyx":184
  *         # Save state and advance
  *         V = V2
  *         w = w2             # <<<<<<<<<<<<<<
@@ -20541,7 +20550,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
 */
     __pyx_v_w = __pyx_v_w2;
 
-    /* "nin/MODEL/adex_euler.pyx":185
+    /* "MODEL/adex_euler.pyx":185
  *         V = V2
  *         w = w2
  *         Vout[i] = V             # <<<<<<<<<<<<<<
@@ -20551,7 +20560,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
     __pyx_t_21 = __pyx_v_i;
     *((double *) ( /* dim=0 */ ((char *) (((double *) __pyx_v_Vout.data) + __pyx_t_21)) )) = __pyx_v_V;
 
-    /* "nin/MODEL/adex_euler.pyx":186
+    /* "MODEL/adex_euler.pyx":186
  *         w = w2
  *         Vout[i] = V
  *         wout[i] = w             # <<<<<<<<<<<<<<
@@ -20562,11 +20571,10 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
     *((double *) ( /* dim=0 */ ((char *) (((double *) __pyx_v_wout.data) + __pyx_t_21)) )) = __pyx_v_w;
   }
 
-  /* "nin/MODEL/adex_euler.pyx":188
+  /* "MODEL/adex_euler.pyx":188
  *         wout[i] = w
  * 
  *     return Vout_arr, wout_arr, spts_arr             # <<<<<<<<<<<<<<
- * 
 */
   __Pyx_XDECREF(__pyx_r);
   __pyx_t_3 = PyTuple_New(3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 188, __pyx_L1_error)
@@ -20584,7 +20592,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "nin/MODEL/adex_euler.pyx":82
+  /* "MODEL/adex_euler.pyx":82
  * 
  * # this is the synaptic model
  * def forward_euler_synapse_cython(double[:] y0,             # <<<<<<<<<<<<<<
@@ -20602,7 +20610,7 @@ static PyObject *__pyx_pf_3nin_5MODEL_10adex_euler_2forward_euler_synapse_cython
   __Pyx_XDECREF(__pyx_t_9);
   __PYX_XCLEAR_MEMVIEW(&__pyx_t_11, 1);
   __PYX_XCLEAR_MEMVIEW(&__pyx_t_12, 1);
-  __Pyx_AddTraceback("nin.MODEL.adex_euler.forward_euler_synapse_cython", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("MODEL.adex_euler.forward_euler_synapse_cython", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XDECREF(__pyx_v_Vout_arr);
@@ -20747,7 +20755,7 @@ static PyType_Slot __pyx_type___pyx_array_slots[] = {
   {0, 0},
 };
 static PyType_Spec __pyx_type___pyx_array_spec = {
-  "nin.MODEL.adex_euler.array",
+  "MODEL.adex_euler.array",
   sizeof(struct __pyx_array_obj),
   0,
   Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_VERSION_TAG|Py_TPFLAGS_CHECKTYPES|Py_TPFLAGS_HAVE_NEWBUFFER|Py_TPFLAGS_BASETYPE|Py_TPFLAGS_SEQUENCE,
@@ -20781,7 +20789,7 @@ static PyBufferProcs __pyx_tp_as_buffer_array = {
 
 static PyTypeObject __pyx_type___pyx_array = {
   PyVarObject_HEAD_INIT(0, 0)
-  "nin.MODEL.adex_euler.""array", /*tp_name*/
+  "MODEL.adex_euler.""array", /*tp_name*/
   sizeof(struct __pyx_array_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc_array, /*tp_dealloc*/
@@ -20936,7 +20944,7 @@ static PyType_Slot __pyx_type___pyx_MemviewEnum_slots[] = {
   {0, 0},
 };
 static PyType_Spec __pyx_type___pyx_MemviewEnum_spec = {
-  "nin.MODEL.adex_euler.Enum",
+  "MODEL.adex_euler.Enum",
   sizeof(struct __pyx_MemviewEnum_obj),
   0,
   Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_VERSION_TAG|Py_TPFLAGS_CHECKTYPES|Py_TPFLAGS_HAVE_NEWBUFFER|Py_TPFLAGS_BASETYPE|Py_TPFLAGS_HAVE_GC,
@@ -20946,7 +20954,7 @@ static PyType_Spec __pyx_type___pyx_MemviewEnum_spec = {
 
 static PyTypeObject __pyx_type___pyx_MemviewEnum = {
   PyVarObject_HEAD_INIT(0, 0)
-  "nin.MODEL.adex_euler.""Enum", /*tp_name*/
+  "MODEL.adex_euler.""Enum", /*tp_name*/
   sizeof(struct __pyx_MemviewEnum_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc_Enum, /*tp_dealloc*/
@@ -21231,7 +21239,7 @@ static PyType_Slot __pyx_type___pyx_memoryview_slots[] = {
   {0, 0},
 };
 static PyType_Spec __pyx_type___pyx_memoryview_spec = {
-  "nin.MODEL.adex_euler.memoryview",
+  "MODEL.adex_euler.memoryview",
   sizeof(struct __pyx_memoryview_obj),
   0,
   Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_VERSION_TAG|Py_TPFLAGS_CHECKTYPES|Py_TPFLAGS_HAVE_NEWBUFFER|Py_TPFLAGS_BASETYPE|Py_TPFLAGS_HAVE_GC,
@@ -21265,7 +21273,7 @@ static PyBufferProcs __pyx_tp_as_buffer_memoryview = {
 
 static PyTypeObject __pyx_type___pyx_memoryview = {
   PyVarObject_HEAD_INIT(0, 0)
-  "nin.MODEL.adex_euler.""memoryview", /*tp_name*/
+  "MODEL.adex_euler.""memoryview", /*tp_name*/
   sizeof(struct __pyx_memoryview_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc_memoryview, /*tp_dealloc*/
@@ -21413,7 +21421,7 @@ static PyType_Slot __pyx_type___pyx_memoryviewslice_slots[] = {
   {0, 0},
 };
 static PyType_Spec __pyx_type___pyx_memoryviewslice_spec = {
-  "nin.MODEL.adex_euler._memoryviewslice",
+  "MODEL.adex_euler._memoryviewslice",
   sizeof(struct __pyx_memoryviewslice_obj),
   0,
   Py_TPFLAGS_DEFAULT|Py_TPFLAGS_HAVE_VERSION_TAG|Py_TPFLAGS_CHECKTYPES|Py_TPFLAGS_HAVE_NEWBUFFER|Py_TPFLAGS_BASETYPE|Py_TPFLAGS_HAVE_GC|Py_TPFLAGS_SEQUENCE,
@@ -21423,7 +21431,7 @@ static PyType_Spec __pyx_type___pyx_memoryviewslice_spec = {
 
 static PyTypeObject __pyx_type___pyx_memoryviewslice = {
   PyVarObject_HEAD_INIT(0, 0)
-  "nin.MODEL.adex_euler.""_memoryviewslice", /*tp_name*/
+  "MODEL.adex_euler.""_memoryviewslice", /*tp_name*/
   sizeof(struct __pyx_memoryviewslice_obj), /*tp_basicsize*/
   0, /*tp_itemsize*/
   __pyx_tp_dealloc__memoryviewslice, /*tp_dealloc*/
@@ -22136,13 +22144,13 @@ __Pyx_RefNannySetupContext("PyInit_adex_euler", 0);
   if (__Pyx_InitConstants(__pyx_mstate) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
   stringtab_initialized = 1;
   if (__Pyx_InitGlobals() < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (__pyx_module_is_main_nin__MODEL__adex_euler) {
+  if (__pyx_module_is_main_MODEL__adex_euler) {
     if (PyObject_SetAttr(__pyx_m, __pyx_mstate_global->__pyx_n_u_name_2, __pyx_mstate_global->__pyx_n_u_main) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
   }
   {
     PyObject *modules = PyImport_GetModuleDict(); if (unlikely(!modules)) __PYX_ERR(0, 1, __pyx_L1_error)
-    if (!PyDict_GetItemString(modules, "nin.MODEL.adex_euler")) {
-      if (unlikely((PyDict_SetItemString(modules, "nin.MODEL.adex_euler", __pyx_m) < 0))) __PYX_ERR(0, 1, __pyx_L1_error)
+    if (!PyDict_GetItemString(modules, "MODEL.adex_euler")) {
+      if (unlikely((PyDict_SetItemString(modules, "MODEL.adex_euler", __pyx_m) < 0))) __PYX_ERR(0, 1, __pyx_L1_error)
     }
   }
   /*--- Builtin init code ---*/
@@ -22692,7 +22700,7 @@ __Pyx_RefNannySetupContext("PyInit_adex_euler", 0);
   if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_pyx_unpickle_Enum, __pyx_t_5) < 0) __PYX_ERR(1, 1, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-  /* "nin/MODEL/adex_euler.pyx":6
+  /* "MODEL/adex_euler.pyx":6
  * 
  * from libc.math cimport exp
  * import numpy as np             # <<<<<<<<<<<<<<
@@ -22704,31 +22712,31 @@ __Pyx_RefNannySetupContext("PyInit_adex_euler", 0);
   if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_np, __pyx_t_5) < 0) __PYX_ERR(0, 6, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-  /* "nin/MODEL/adex_euler.pyx":11
+  /* "MODEL/adex_euler.pyx":11
  * 
  * # Use typed memoryviews for fast buffer access
  * def forward_euler_cython(double[:] y0,             # <<<<<<<<<<<<<<
  *                          double dt,
  *                          tuple model_params,   # length 7: C, gL, EL, VT, DeltaT, tauw, a
 */
-  __pyx_t_5 = __Pyx_CyFunction_New(&__pyx_mdef_3nin_5MODEL_10adex_euler_1forward_euler_cython, 0, __pyx_mstate_global->__pyx_n_u_forward_euler_cython, NULL, __pyx_mstate_global->__pyx_n_u_nin_MODEL_adex_euler, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[0])); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 11, __pyx_L1_error)
+  __pyx_t_5 = __Pyx_CyFunction_New(&__pyx_mdef_5MODEL_10adex_euler_1forward_euler_cython, 0, __pyx_mstate_global->__pyx_n_u_forward_euler_cython, NULL, __pyx_mstate_global->__pyx_n_u_MODEL_adex_euler, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[0])); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_forward_euler_cython, __pyx_t_5) < 0) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-  /* "nin/MODEL/adex_euler.pyx":82
+  /* "MODEL/adex_euler.pyx":82
  * 
  * # this is the synaptic model
  * def forward_euler_synapse_cython(double[:] y0,             # <<<<<<<<<<<<<<
  *                                 double dt,
  *                                 tuple model_params,   # length 8: C, gL, EL, VT, DeltaT, tauw, a, gs
 */
-  __pyx_t_5 = __Pyx_CyFunction_New(&__pyx_mdef_3nin_5MODEL_10adex_euler_3forward_euler_synapse_cython, 0, __pyx_mstate_global->__pyx_n_u_forward_euler_synapse_cython, NULL, __pyx_mstate_global->__pyx_n_u_nin_MODEL_adex_euler, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[1])); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 82, __pyx_L1_error)
+  __pyx_t_5 = __Pyx_CyFunction_New(&__pyx_mdef_5MODEL_10adex_euler_3forward_euler_synapse_cython, 0, __pyx_mstate_global->__pyx_n_u_forward_euler_synapse_cython, NULL, __pyx_mstate_global->__pyx_n_u_MODEL_adex_euler, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[1])); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 82, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   if (PyDict_SetItem(__pyx_mstate_global->__pyx_d, __pyx_mstate_global->__pyx_n_u_forward_euler_synapse_cython, __pyx_t_5) < 0) __PYX_ERR(0, 82, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-  /* "nin/MODEL/adex_euler.pyx":1
+  /* "MODEL/adex_euler.pyx":1
  * # Cython implementations             # <<<<<<<<<<<<<<
  * # cython: language_level=3
  * # cython: boundscheck=False, wraparound=False, cdivision=True
@@ -22747,7 +22755,7 @@ __Pyx_RefNannySetupContext("PyInit_adex_euler", 0);
   __Pyx_XDECREF(__pyx_t_6);
   if (__pyx_m) {
     if (__pyx_mstate->__pyx_d && stringtab_initialized) {
-      __Pyx_AddTraceback("init nin.MODEL.adex_euler", __pyx_clineno, __pyx_lineno, __pyx_filename);
+      __Pyx_AddTraceback("init MODEL.adex_euler", __pyx_clineno, __pyx_lineno, __pyx_filename);
     }
     #if !CYTHON_USE_MODULE_STATE
     Py_CLEAR(__pyx_m);
@@ -22761,7 +22769,7 @@ __Pyx_RefNannySetupContext("PyInit_adex_euler", 0);
     }
     #endif
   } else if (!PyErr_Occurred()) {
-    PyErr_SetString(PyExc_ImportError, "init nin.MODEL.adex_euler");
+    PyErr_SetString(PyExc_ImportError, "init MODEL.adex_euler");
   }
   __pyx_L0:;
   __Pyx_RefNannyFinishContext();
@@ -22822,6 +22830,8 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_Invalid_mode_expected_c_or_fortr, sizeof(__pyx_k_Invalid_mode_expected_c_or_fortr), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Invalid_mode_expected_c_or_fortr */
   {__pyx_k_Invalid_shape_in_axis, sizeof(__pyx_k_Invalid_shape_in_axis), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_Invalid_shape_in_axis */
   {__pyx_k_M, sizeof(__pyx_k_M), 0, 1, 1}, /* PyObject cname: __pyx_n_u_M */
+  {__pyx_k_MODEL_adex_euler, sizeof(__pyx_k_MODEL_adex_euler), 0, 1, 1}, /* PyObject cname: __pyx_n_u_MODEL_adex_euler */
+  {__pyx_k_MODEL_adex_euler_pyx, sizeof(__pyx_k_MODEL_adex_euler_pyx), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_MODEL_adex_euler_pyx */
   {__pyx_k_MemoryError, sizeof(__pyx_k_MemoryError), 0, 1, 1}, /* PyObject cname: __pyx_n_u_MemoryError */
   {__pyx_k_MemoryView_of, sizeof(__pyx_k_MemoryView_of), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_MemoryView_of */
   {__pyx_k_N, sizeof(__pyx_k_N), 0, 1, 1}, /* PyObject cname: __pyx_n_u_N */
@@ -22851,7 +22861,6 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_a, sizeof(__pyx_k_a), 0, 1, 1}, /* PyObject cname: __pyx_n_u_a */
   {__pyx_k_abc, sizeof(__pyx_k_abc), 0, 1, 1}, /* PyObject cname: __pyx_n_u_abc */
   {__pyx_k_add_note, sizeof(__pyx_k_add_note), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_add_note */
-  {__pyx_k_adex_euler_pyx, sizeof(__pyx_k_adex_euler_pyx), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_adex_euler_pyx */
   {__pyx_k_adjM, sizeof(__pyx_k_adjM), 0, 1, 1}, /* PyObject cname: __pyx_n_u_adjM */
   {__pyx_k_adjM_size, sizeof(__pyx_k_adjM_size), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_adjM_size */
   {__pyx_k_allocate_buffer, sizeof(__pyx_k_allocate_buffer), 0, 1, 1}, /* PyObject cname: __pyx_n_u_allocate_buffer */
@@ -22917,7 +22926,6 @@ static const __Pyx_StringTabEntry __pyx_string_tab[] = {
   {__pyx_k_name_2, sizeof(__pyx_k_name_2), 0, 1, 1}, /* PyObject cname: __pyx_n_u_name_2 */
   {__pyx_k_ndim, sizeof(__pyx_k_ndim), 0, 1, 1}, /* PyObject cname: __pyx_n_u_ndim */
   {__pyx_k_new, sizeof(__pyx_k_new), 0, 1, 1}, /* PyObject cname: __pyx_n_u_new */
-  {__pyx_k_nin_MODEL_adex_euler, sizeof(__pyx_k_nin_MODEL_adex_euler), 0, 1, 1}, /* PyObject cname: __pyx_n_u_nin_MODEL_adex_euler */
   {__pyx_k_no_default___reduce___due_to_non, sizeof(__pyx_k_no_default___reduce___due_to_non), 0, 1, 0}, /* PyObject cname: __pyx_kp_u_no_default___reduce___due_to_non */
   {__pyx_k_np, sizeof(__pyx_k_np), 0, 1, 1}, /* PyObject cname: __pyx_n_u_np */
   {__pyx_k_numpy, sizeof(__pyx_k_numpy), 0, 1, 1}, /* PyObject cname: __pyx_n_u_numpy */
@@ -23087,12 +23095,12 @@ static int __Pyx_CreateCodeObjects(__pyx_mstatetype *__pyx_mstate) {
   {
     __Pyx_PyCode_New_function_description descr = {5, 0, 0, 31, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 11, 408};
     PyObject* varnames[] = {__pyx_mstate->__pyx_n_u_y0, __pyx_mstate->__pyx_n_u_dt, __pyx_mstate->__pyx_n_u_model_params, __pyx_mstate->__pyx_n_u_reset_params, __pyx_mstate->__pyx_n_u_currents, __pyx_mstate->__pyx_n_u_V0, __pyx_mstate->__pyx_n_u_w0, __pyx_mstate->__pyx_n_u_N, __pyx_mstate->__pyx_n_u_Vout_arr, __pyx_mstate->__pyx_n_u_wout_arr, __pyx_mstate->__pyx_n_u_spts_arr, __pyx_mstate->__pyx_n_u_Vout, __pyx_mstate->__pyx_n_u_wout, __pyx_mstate->__pyx_n_u_spts, __pyx_mstate->__pyx_n_u_C, __pyx_mstate->__pyx_n_u_gL, __pyx_mstate->__pyx_n_u_EL, __pyx_mstate->__pyx_n_u_VT, __pyx_mstate->__pyx_n_u_DeltaT, __pyx_mstate->__pyx_n_u_tauw, __pyx_mstate->__pyx_n_u_a, __pyx_mstate->__pyx_n_u_Vpeak, __pyx_mstate->__pyx_n_u_Vreset, __pyx_mstate->__pyx_n_u_b, __pyx_mstate->__pyx_n_u_V, __pyx_mstate->__pyx_n_u_w, __pyx_mstate->__pyx_n_u_dV, __pyx_mstate->__pyx_n_u_dw, __pyx_mstate->__pyx_n_u_V2, __pyx_mstate->__pyx_n_u_w2, __pyx_mstate->__pyx_n_u_i};
-    __pyx_mstate_global->__pyx_codeobj_tab[0] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_adex_euler_pyx, __pyx_mstate->__pyx_n_u_forward_euler_cython, __pyx_k_Rq_Rq_aq_r_q_6_1_r_q_6_1_r_q_6, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[0])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[0] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_MODEL_adex_euler_pyx, __pyx_mstate->__pyx_n_u_forward_euler_cython, __pyx_k_Rq_Rq_aq_r_q_6_1_r_q_6_1_r_q_6, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[0])) goto bad;
   }
   {
     __Pyx_PyCode_New_function_description descr = {6, 0, 0, 38, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 82, 535};
     PyObject* varnames[] = {__pyx_mstate->__pyx_n_u_y0, __pyx_mstate->__pyx_n_u_dt, __pyx_mstate->__pyx_n_u_model_params, __pyx_mstate->__pyx_n_u_reset_params, __pyx_mstate->__pyx_n_u_adjM, __pyx_mstate->__pyx_n_u_currents, __pyx_mstate->__pyx_n_u_V0, __pyx_mstate->__pyx_n_u_w0, __pyx_mstate->__pyx_n_u_N, __pyx_mstate->__pyx_n_u_M, __pyx_mstate->__pyx_n_u_Vout_arr, __pyx_mstate->__pyx_n_u_wout_arr, __pyx_mstate->__pyx_n_u_spts_arr, __pyx_mstate->__pyx_n_u_Vout, __pyx_mstate->__pyx_n_u_wout, __pyx_mstate->__pyx_n_u_spts, __pyx_mstate->__pyx_n_u_C, __pyx_mstate->__pyx_n_u_gL, __pyx_mstate->__pyx_n_u_EL, __pyx_mstate->__pyx_n_u_VT, __pyx_mstate->__pyx_n_u_DeltaT, __pyx_mstate->__pyx_n_u_tauw, __pyx_mstate->__pyx_n_u_a, __pyx_mstate->__pyx_n_u_gs, __pyx_mstate->__pyx_n_u_Vpeak, __pyx_mstate->__pyx_n_u_Vreset, __pyx_mstate->__pyx_n_u_b, __pyx_mstate->__pyx_n_u_V, __pyx_mstate->__pyx_n_u_w, __pyx_mstate->__pyx_n_u_dV, __pyx_mstate->__pyx_n_u_dw, __pyx_mstate->__pyx_n_u_V2, __pyx_mstate->__pyx_n_u_w2, __pyx_mstate->__pyx_n_u_synaptic_input, __pyx_mstate->__pyx_n_u_exp_arg, __pyx_mstate->__pyx_n_u_exp_term, __pyx_mstate->__pyx_n_u_i, __pyx_mstate->__pyx_n_u_j};
-    __pyx_mstate_global->__pyx_codeobj_tab[1] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_adex_euler_pyx, __pyx_mstate->__pyx_n_u_forward_euler_synapse_cython, __pyx_k_Rq_Rq_aq_aq_t6_S_j_V14YYZ_r_q_6, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[1])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[1] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_MODEL_adex_euler_pyx, __pyx_mstate->__pyx_n_u_forward_euler_synapse_cython, __pyx_k_Rq_Rq_aq_aq_t6_S_j_V14YYZ_r_q_6, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[1])) goto bad;
   }
   Py_DECREF(tuple_dedup_map);
   return 0;

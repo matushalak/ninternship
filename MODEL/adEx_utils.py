@@ -98,8 +98,8 @@ def run_experiment(adExModel:adEx, Tmax:float, dt:float, model_params:dict, Iapp
                    ineuron:int = 0,
                    ts:np.ndarray | None = None, 
                    adjM:np.ndarray | None = None,
-                   eval_arr:np.ndarray | None = None,
-                   plot:bool = False)->float | None:
+                   evaluate:bool = False,
+                   plot:bool = False)-> np.ndarray | None:
     '''
     Runs entire experiment for adEx model of choice with model and experimental parameters of choice
     '''        
@@ -132,24 +132,22 @@ def run_experiment(adExModel:adEx, Tmax:float, dt:float, model_params:dict, Iapp
         assert max(Iapp.shape) == ts.size, f'Iapp shape {Iapp.shape} must match ts shape {ts.shape} on 1 dimension!'
         # model must be synaptic model, won't work with the other ones
         assert adExModel in (adEx.synapse_euler, adEx.synapse_euler_cython), 'When providing adjacency matrix, must choose synaptic model'
-        assert adjM.size == Iapp.shape[1], f'The number of entries in the adjacency matrix row dont {adjM.size} match the number of neurons {Iapp.shape[1]}'
-        assert adjM[ineuron] == 0
-        assert adjM.flags['C_CONTIGUOUS']
+        assert adjM.size == Iapp.shape[1], f'The number of entries in the adjacency matrix row {adjM.size} dont match the number of neurons {Iapp.shape[1]}'
+        adjM[ineuron] = 0.0
+        assert adjM[ineuron] == 0, 'Synaptic weight for autosynapse must be 0'
+        assert adjM.flags['C_CONTIGUOUS'], 'Synaptic weights must be C-contiguous array'
         V_all, w_all, spikes = adExModel(y0 = y0,dt=dt,
                                         model_params=model_tuple, 
                                         reset_params=reset_tuple,
                                         adjM=adjM,
                                         currents=Iapp,
                                         )
-        if eval_arr is not None:
-            pass
-            # return fitness score based on comparing binned spikes
-            return 0
-    
-    spikes = np.array(spikes, dtype=bool)
     
     t_all = ts
-    spike_times = t_all[spikes]
+    spike_times = t_all[spikes.astype(bool)]
+    # return spike times
+    if evaluate:
+        return spike_times
     
     if plot:
         ninputs = len(Iapp.shape)
@@ -165,11 +163,11 @@ def run_experiment(adExModel:adEx, Tmax:float, dt:float, model_params:dict, Iapp
         if ninputs > 1:
             # show only top 10 most strongly connected
             if adjM is not None:
-                absoluteCORR = np.abs(adjM)
-                neurons_sorted = np.argsort(absoluteCORR)[-10:]
+                neurons_sorted = np.argsort(adjM)[-10:]
             else:
                 neurons_sorted = np.arange(ineuron-5, ineuron+5)
             hm = sns.heatmap(data = Iapp.T[neurons_sorted,:], ax = ax[2], cbar_kws={'location':'top'})
+            ax[2].set_yticks(ticks = np.arange(neurons_sorted.size)[1::2], labels = neurons_sorted[1::2])
         else:
             ax[2].plot(t_all, all_curr, # *1000 conversion to nA for plotting if applied current in nA!!! 
                     color = 'b')
