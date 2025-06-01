@@ -187,4 +187,4 @@ if __name__ == '__main__':
                model=adEx.synapse_euler_cython,
                dFSCALER=10,
                fit=True,
-               plot=False)
+               plot=True)

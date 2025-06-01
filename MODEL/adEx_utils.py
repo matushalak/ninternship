@@ -18,12 +18,12 @@ def default_experiment()->tuple[int, float, dict, dict, Callable]:
         'EL' : -70.6,    # mV
         'VT' : -50.4,    # mV
         'DeltaT' : 2.0,   # mV
-        'Vreset' : -70.6, # mV
         'Vpeak' : 0.0, # mV - can't be more than 5 due to numerical overflow in scipy
         'tauw' : 144.0,  # ms
         'a' : 4.0,       # nS
+        'gs' : .99, # overall synaptic conductance
+        'Vreset' : -70.6, # mV
         'b' : 80.5,    # pA !!!!
-        'gs' : 1 # overall synaptic conductance
     }
     experiment_settings = {
         'figure' : None,
@@ -92,6 +92,16 @@ def Iapp(t:float,
     elif figure ==  'hyperpol':
         # Fig 3D - rebound spike
         return -800 if 10 < t < 410 else 0
+    
+
+def bin_spikes(spts_ms:np.ndarray, nbins:int, Tmax_ms:float,
+               maxcount:int)->np.ndarray:
+    """
+    Bin high-res spiketimes into designated number of bins
+    """
+    bin_edges = np.linspace(0,Tmax_ms, nbins+1)
+    spike_counts, _ = np.histogram(spts_ms, bins = bin_edges)
+    return np.clip(spike_counts, 0,maxcount)
 
 
 def run_experiment(adExModel:adEx, Tmax:float, dt:float, model_params:dict, Iapp:Callable|np.ndarray, 
@@ -99,6 +109,7 @@ def run_experiment(adExModel:adEx, Tmax:float, dt:float, model_params:dict, Iapp
                    ts:np.ndarray | None = None, 
                    adjM:np.ndarray | None = None,
                    evaluate:bool = False,
+                   eval_array:np.ndarray | None = None,
                    plot:bool = False)-> np.ndarray | None:
     '''
     Runs entire experiment for adEx model of choice with model and experimental parameters of choice
@@ -146,14 +157,16 @@ def run_experiment(adExModel:adEx, Tmax:float, dt:float, model_params:dict, Iapp
     t_all = ts
     spike_times = t_all[spikes.astype(bool)]
     # return spike times
-    if evaluate:
+    if evaluate and not plot:
         return spike_times
     
     if plot:
         ninputs = len(Iapp.shape)
-        f, ax = plt.subplots(nrows=3, figsize = (9, 9), 
+        ROWS = 3 if not evaluate else 4
+        HR = [1,.2,.5] if not evaluate else [.8,.3,.5, .75]
+        f, ax = plt.subplots(nrows=ROWS, figsize = (12, 2.5*ROWS), 
                              sharex='all',
-                             gridspec_kw={'height_ratios':[1,.2,.5]})
+                             gridspec_kw={'height_ratios': HR})
         ax[0].plot(t_all, V_all, color = 'k')
         ax[0].set_ylabel('Membrane potential (mV)')
 
@@ -166,15 +179,29 @@ def run_experiment(adExModel:adEx, Tmax:float, dt:float, model_params:dict, Iapp
                 neurons_sorted = np.argsort(adjM)[-10:]
             else:
                 neurons_sorted = np.arange(ineuron-5, ineuron+5)
-            hm = sns.heatmap(data = Iapp.T[neurons_sorted,:], ax = ax[2], cbar_kws={'location':'top'})
-            ax[2].set_yticks(ticks = np.arange(neurons_sorted.size)[1::2], labels = neurons_sorted[1::2])
+            hm = sns.heatmap(data = Iapp.T[neurons_sorted,:], ax = ax[-1], 
+                             cbar_kws={'location':'top'})
+            ax[-1].set_yticks(ticks = np.arange(neurons_sorted.size)[1::2], labels = neurons_sorted[1::2])
         else:
-            ax[2].plot(t_all, all_curr, # *1000 conversion to nA for plotting if applied current in nA!!! 
+            ax[-1].plot(t_all, all_curr, # *1000 conversion to nA for plotting if applied current in nA!!! 
                     color = 'b')
-        ax[2].set_ylabel('Synaptic Input')
+        ax[-1].set_ylabel('Synaptic Input')
+        ax[-1].set_xlabel('Time (ms)')
 
-        ax[2].set_xlabel('Time (ms)')
-        # f.suptitle('adEX neuron with event-based spiking')
+        if evaluate:
+            assert eval_array is not None, 'To evaluate AND plot, need eval_array of MLspike output!'
+            pred_array = bin_spikes(spts_ms=spike_times, nbins=eval_array.size, Tmax_ms=Tmax, maxcount=3)
+            BINS = np.linspace(0, Tmax, eval_array.size + 1)
+            bin_centers = (BINS[:-1] + BINS[1:]) / 2   
+            ax[2].bar(bin_centers, eval_array, alpha = 0.7, color = 'blue', label = 'Target MLspike output',
+                      width = 120
+                      )
+            ax[2].bar(bin_centers, pred_array, alpha = 0.7, color = 'orange', label = 'Fitted Model output',
+                      width = 120
+                      )
+            ax[2].legend(loc = 1)
+            ax[2].set_ylabel('Spikes per imaging frame')
+        
         plt.tight_layout()
         plt.show()
 

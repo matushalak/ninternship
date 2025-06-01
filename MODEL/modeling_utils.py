@@ -3,7 +3,7 @@ from scipy.special import gammaln
 import matplotlib.pyplot as plt
 from joblib import cpu_count, delayed, Parallel
 import MODEL.adEx_models as adEx
-from MODEL.adEx_utils import run_experiment
+from MODEL.adEx_utils import run_experiment, bin_spikes
 from typing import Callable
 
 # OPTIMIZATION
@@ -17,8 +17,9 @@ from MODEL import PYDATA
 import os
 
 ### --- Optimizer utils ---
+# TODO: consider also convolution and continuous optimization
 def loss_func(ypred:np.ndarray, y:np.ndarray,
-              EPSILON:float = 1e-6, FIRING_penalty:float = .95
+              EPSILON:float = 1e-7, FIRING_penalty:float = .5
               )->float:
     '''
     # NEGATIVE POISSON LOG-LIKELIHOOD + SPIKING INCENTIVE
@@ -32,6 +33,12 @@ def loss_func(ypred:np.ndarray, y:np.ndarray,
     - λ = predicted spike rate (model output ypred)
     '''
     assert ypred.shape == y.shape, 'Spike counts must be sampled at same time resolution'
+    assert np.sum(y) !=0, 'Cannot fit the model if target vector has no spikes'
+    if np.sum(ypred) == 0:
+        spike_rate_penalty = 1e8
+        # discourage no spiking
+        return spike_rate_penalty
+    N = y.size
     ## 1) Poisson Log-likelihood part
     # cast to float to allow taking logs
     observed = y.astype(float)
@@ -39,6 +46,11 @@ def loss_func(ypred:np.ndarray, y:np.ndarray,
     # Add small epsilon to 0s to prevent ln(0) undefined
     np.maximum(observed, EPSILON, out = observed)
     np.maximum(predicted, EPSILON, out = predicted)
+    
+    # only consider nonzero bins in Y
+    # nonzero_bins = (y > 0)
+    # observed = observed[nonzero_bins]
+    # predicted = predicted[nonzero_bins]
     
     # Calculate Poisson log likelihood at each bin (vectorized)
     # log(k!) = gammaln(k+1)
@@ -48,19 +60,20 @@ def loss_func(ypred:np.ndarray, y:np.ndarray,
     
     # If perfectly predicted
     LLoptimal = np.sum((observed * np.log(observed)) - observed - gammaln(observed+1))
-    
     # Normalized negative LL : 0 is perfect
-    nLLnorm = -(LL - LLoptimal) / abs(LLoptimal)
+    nLLnorm = -(LL - LLoptimal)
 
     ## 2) Spike Rate difference
-    if np.sum(predicted) == 0:
-        spike_rate_penalty = 1e8
-    else:
-        spike_rate_penalty = 0
+    NPREDspikes, NREALspikes = np.sum(ypred), np.sum(y)
+    spike_rate_penalty = (NPREDspikes - NREALspikes)**2
     
     # LL : spike rate penalizations
-    LLpenaltyWeight = 1 - FIRING_penalty
-    
+    LLpenaltyWeight = 1
+    print(f'{NPREDspikes} / {NREALspikes} spikes ',
+          f'total loss: {(LLpenaltyWeight * nLLnorm) + (FIRING_penalty * spike_rate_penalty)} ',
+          f'LL: {LL}, LLoptimal: {LLoptimal}, nLLnorm = {nLLnorm}', 
+          flush=True)
+    # return combined loss
     return (LLpenaltyWeight * nLLnorm) + (FIRING_penalty * spike_rate_penalty)
 
 
@@ -70,8 +83,8 @@ class Parameters:
     9 intrinsic model parameters
     ----------------------------
     C      = (30, 300)
-    gL     = (1.5, 15)
-    EL     = (-70, -59)
+    gL     = (1.5, 31)
+    EL     = (-71, -59)
     VT     = (-60, -42)
     DeltaT = (0.6, 6)
     tauw   = (16, 720)
@@ -91,11 +104,11 @@ class Parameters:
     # Intrinsic parameters (9 parameters)
     intrinsic_bounds = {
         'C': (30, 300),          # Capacitance (pF)
-        'gL': (1.5, 15),         # Leak conductance (nS)  
-        'EL': (-70, -59),        # Leak reversal (mV)
-        'VT': (-60, -42),        # Threshold voltage (mV)
+        'gL': (1.5, 31),         # Leak conductance (nS)  
+        'EL': (-71, -57),        # Leak reversal (mV)
+        'VT': (-60, -41.9),        # Threshold voltage (mV)
         'DeltaT': (0.6, 6),      # Slope factor (mV)
-        'tauw': (16, 720),       # Adaptation time constant (ms)
+        'tauw': (15, 500),       # Adaptation time constant (ms)
         'a': (-12, 80),          # Subthreshold adaptation (nS)
         'gs': (0, 1),            # Synaptic scaling factor
         # Reset parameters
@@ -124,7 +137,7 @@ class Parameters:
     
     def dict_to_params(self, model_params:dict, adjM:np.ndarray
                        ) -> np.ndarray:
-        return np.array(list(model_params.keys()) + adjM.tolist())
+        return np.array(list(model_params.values()) + adjM.tolist())
 
 
 class Optimizer:
@@ -134,46 +147,103 @@ class Optimizer:
 
     objective : Callable (x) takes parameters vector (as specified in )
     """
-    def __init__(self, Params:Parameters, objective_fun:Callable):
+    def __init__(self, Params:Parameters, objective_fun:Callable, 
+                 adjM:np.ndarray, model_params:dict):
         self.Params = Params
         self.bounds = Params.get_bounds_array()
         self.objective_fun = objective_fun
         self.optim_history = []
+        # correlations adjM
+        self.iniADJM = adjM
+        # default initial model params
+        model_params.pop('Vpeak', None)
+        self.defaultParams = model_params
     
-    def fit_with_nevergrad(self, budget: int = 200):
+    def firing_patterns(self)->list[dict]:
+        '''
+        11 Initial "hot start" solutions based on adEx firing types
+        identified in Table 1 Naud et al. (2008)
+        '''
+        keys = list(self.defaultParams.keys())
+        assert 'Vpeak' not in keys
+
+        # Table 1 Naud et al. (2008)
+        values = {
+        'C' : [59, 83, 104, 200, 200, 130, 200, 200, 200, 100, 100],     # pF
+        'gL' : [2.9, 1.7, 4.3, 10, 12, 18, 10, 12, 12, 10, 12],     # nS
+        'EL' : [-62, -59 , -65, -70, -70, -58, -58, -70, -70, -65, -60],    # mV
+        'VT' : [-42,-56,-52,-50,-50,-50,-50,-50,-50,-50,-50],    # mV
+        'DeltaT' : [3, 5.5, 0.8, 2,2,2,2,2,2,2,2],   # mV
+        'tauw' : [16, 41, 88, 30, 300, 150, 120, 300, 300, 90, 130],  # ms
+        'a' : [1.8, 2, -0.8, 2, 2, 4, 2, -10, -6, -10, -11],       # nS
+        'gs' : [.8, .99, .99, .99, .99, .99, .75, .99, .99, .99, .99, .9], # overall synaptic conductance
+        'Vreset' : [-54,-54,-53,-58,-58,-50,-46,-58,-58,-47,-48], # mV
+        'b' : [61, 66, 65, 0.0001, 60, 120, 100, 0.0001, 0.0001, 30, 30],    # pA !!!!
+        }
+
+        firing_params = [{k:values[k][i] for k in keys}
+                         for i in range(len(values['C']))]
+        
+        return firing_params
+
+
+    def fit_with_nevergrad(self, generations:int = 20, popsize:int = 100):
         """
         Replace SciPy DE with Nevergrad CMA-ES.
         budget = total number of objective evaluations allowed.
                  (E.g. 200 means ~ 200 calls to objective().)
         """
         num_params = len(self.bounds)
+        # default initial candidate
+        default = self.Params.dict_to_params(self.defaultParams, self.iniADJM)
 
+        # 11 other firing patterns identified in literature
+        patterns = self.firing_patterns()
+
+        # Initial guesses are patterns + default
+        ini_guesses:list[np.ndarray] = [self.Params.dict_to_params(patt, self.iniADJM)
+                                        for patt in patterns] + [default]
+        
         # 1) Build a Nevergrad Parameter space with Box (continuous) bounds
-        instr = ng.p.Array(shape=(num_params, ), 
+        parametrization = ng.p.Array(shape=(num_params, ), 
                            lower=self.bounds[:,0], 
                            upper=self.bounds[:,1])
         
-        # 2) Choose an optimizer; here we pick CMA-ES
-        optimizer = ng.optimizers.CMA(
-            parametrization=instr,
-            budget=budget,
-            num_workers=1,   # we’ll parallelize manually below if desired
+        parametrization.value = default
+        
+        # 2) Choose an optimizer; LOTS of room for improvement here
+        CustomDE = ng.optimizers.DifferentialEvolution(
+            initialization='LHS', crossover='random', popsize=popsize,
+            multiobjective_adaptation=False, high_speed=True)
+        
+        optimizer = CustomDE(
+            parametrization=parametrization,
+            budget=generations,
+            num_workers=popsize, 
         )
-
-        # 3) Main ask/tell loop
-        #    We request one “candidate” at a time, evaluate it, then tell the optimizer.
-        #    Alternatively, we can ask in batches (e.g. popsize) and evaluate in parallel.
-        #    For simplicity, we’ll do one by one here; you can swap in parallel_map if you like.
-
-        for gen in range(budget):
-            cand = optimizer.ask()               # cand is a Nevergrad candidate
-            x = cand.value                       # numpy array of length num_params
-
-            # 4) Evaluate the objective on x
-            loss = self.objective_fun(x)
-
-            # 5) Tell the optimizer the loss
-            optimizer.tell(cand, loss)
+        counter = 0
+        # 3) Main ask/tell loop through generations
+        for gen in range(generations):
+            #    We request one “candidate” at a time, evaluate it, then tell the optimizer.
+            # candidate == individual solution
+            for ind in range(popsize):
+                # cand is a Nevergrad candidate
+                # every 2 generations,
+                # first len(ini_guesses) individuals are informed guesses
+                # consisting of different firing patterns
+                if gen % 2 == 0 and ind < len(ini_guesses):
+                    # suggest takes in same input as our loss function
+                    optimizer.suggest(ini_guesses[ind])
+                
+                # then next ask is the suggested one / or randomly generated one
+                cand = optimizer.ask()
+                # numpy array of length num_params       
+                x = cand.value                       
+                # 4) Evaluate the objective on x
+                loss = self.objective_fun(x, gen)
+                counter += 1
+                # 5) Tell the optimizer the loss
+                optimizer.tell(cand, loss)
 
             # 6) Record best so far and print progress
             #    optimizer.provide_recommendation() returns the best seen candidate
@@ -186,15 +256,15 @@ class Optimizer:
                 'params':     best.copy()
             })
 
-            print(f"Gen {gen+1:3d}/{budget:3d}  Best loss = {best_loss:.6f}")
-
+            print(f"Gen {gen+1:3d}/{generations:3d}  Best loss = {best_loss:.6f}")
+        print(counter)
         # 7) At the end, the final “recommendation” is our best estimate
         final_x = optimizer.provide_recommendation().value
         final_loss = self.objective_fun(final_x)
         print("NEVERGRAD done. Final loss =", final_loss)
 
         return final_x, final_loss
-
+        
 
 def create_objective_function(adExModel:adEx, Tmax:float,
                               dt:float, Iapp:np.ndarray, 
@@ -205,7 +275,7 @@ def create_objective_function(adExModel:adEx, Tmax:float,
     """
     Create objective function that wraps run_experiment for CadEx model
     """
-    def objective(param_vector)->float:
+    def objective(param_vector, igen = 5)->float:
         # print('Evaluating: ', param_vector[:10], flush=True)
         # Convert parameter vector to model parameters
         model_params:dict = Parameters.params_to_dict(params=param_vector)
@@ -226,13 +296,173 @@ def create_objective_function(adExModel:adEx, Tmax:float,
         ypred = bin_spikes(spts_ms=pred_spts_ms, nbins=eval_arr.size, Tmax_ms=Tmax,
                            maxcount=MLspikeMaxSpikes)
         
-        L = loss_func(ypred=ypred, y = eval_arr)
-        # print(L, flush=True)
+        L = loss_func(ypred=ypred, y = eval_arr, 
+                    #   FIRING_penalty=np.exp(-.2*igen) # adaptive loss function (better without)
+                      )
         return L
     
     return objective
 
+def __runWRAP__(ineuron:int, 
+                model:adEx, 
+                INPUT_highHZ:np.ndarray,
+                adjROW:np.ndarray,
+                eval_arr:np.ndarray | None,
+                model_params:dict,
+                MODELts:np.ndarray,
+                Tmaxmodel:float, DTmodel:float, 
+                plot:bool,
+                MLspikeMaxSpikes:int = 3):
+    '''
+    Wrapper for running parameter fitting for synaptic CadEx in a 
+    parallelized manner using joblib
 
+    or also just for plotting and exploring (synaptic) CadEx
+    '''
+    adjROW[ineuron] = 0
+    evaluate = isinstance(eval_arr, np.ndarray)
+    
+    # Run optimization
+    if evaluate:
+        # Optimization setup
+        BOUNDS = Parameters(ineuron=ineuron, n_synapses=adjROW.size)
+        OBJECTIVE:Callable = create_objective_function(
+            adExModel= model, Tmax=Tmaxmodel, 
+            dt = DTmodel, Iapp=INPUT_highHZ, 
+            eval_arr=eval_arr,
+            MLspikeMaxSpikes=MLspikeMaxSpikes,
+            ineuron=ineuron, ts = MODELts)
+        OPTIMIZER = Optimizer(Params=BOUNDS, objective_fun=OBJECTIVE,
+                              adjM=adjROW, model_params=model_params)
+        
+
+        # Great for debugging and seeing what's going on
+        # DEBUG_OBJECTIVE:Callable = create_debug_objective_function(
+        #     adExModel= model, Tmax=Tmaxmodel, 
+        #     dt = DTmodel, Iapp=INPUT_highHZ, 
+        #     eval_arr=eval_arr,
+        #     MLspikeMaxSpikes=MLspikeMaxSpikes,
+        #     ineuron=ineuron, ts = MODELts)
+        
+        # test_objective_randomness(OPTIMIZER.objective_fun, bounds=BOUNDS, n_tests=50)
+        
+        print("=== NEVERGRAD CMA-ES Evolution ===")
+        finalParam, finalLoss = OPTIMIZER.fit_with_nevergrad()
+
+        if plot:
+            _params = BOUNDS.params_to_dict(finalParam)
+            _ADJ = _params.pop('synaptic_weights')
+            _params['Vpeak'] = 0
+            run_experiment(adExModel= model,
+                            Tmax=Tmaxmodel, dt = DTmodel,
+                            model_params=_params,
+                            Iapp=INPUT_highHZ, 
+                            adjM=_ADJ,
+                            eval_array=eval_arr,
+                            evaluate=evaluate,
+                            ineuron=ineuron,
+                            plot=plot,
+                            ts = MODELts)
+        
+
+    # Simply run experiment on one parameter set
+    else:
+        pred_spts_ms = run_experiment(adExModel= model,
+                                    Tmax=Tmaxmodel, dt = DTmodel,
+                                    model_params=model_params,
+                                    Iapp=INPUT_highHZ, 
+                                    adjM=adjROW,
+                                    evaluate=evaluate,
+                                    ineuron=ineuron,
+                                    plot=plot,
+                                    ts = MODELts)
+
+
+### --- Other model utils ---
+def upsampling_worker(sigBATCH:np.ndarray, MODELts:np.ndarray,
+                      batchSize:int,
+                      SIGsize:float, MODELsize:int,
+                      gaussSD:float, 
+                      bindelaysBATCH:np.ndarray, additionalMSoffset:float,
+                      ibatch:int,
+                      ):
+    pid = os.getpid()
+    print(f"[upsampling_worker STARTED, PID={pid}, batchSize={batchSize}]", flush=True)
+    BATCH = np.zeros((MODELsize, batchSize), dtype=float, order = 'C')
+    MODELdownsampledTS = np.linspace(MODELts[0], MODELts[-1], SIGsize)
+    for ni in tqdm(range(batchSize), position=ibatch):
+        # Linear interpolation to get higher sampling rate
+        out = np.interp(x=MODELts, xp = MODELdownsampledTS, fp = sigBATCH[:,ni])
+        # Convolve with gaussian to smooth over linear interpolation artifacts
+        symmgaussrange = np.linspace(-MODELsize//2, MODELsize//2, MODELsize)
+        gaussian = np.exp(-(symmgaussrange/gaussSD)**2/2)
+        gaussian = gaussian[gaussian > 0]
+        out = np.convolve(out, gaussian, mode='same')
+        # 0 pad from left to shift by few ms (first to correct for imaging offset)
+        # + to allow for some "causality" in which signal came first
+        lag = round(bindelaysBATCH[ni] + additionalMSoffset)
+        out = np.roll(out, shift = lag)
+        out[:lag] = 0
+        BATCH[:,ni] = out
+        # print('Neuron w lag: ',lag, 'done', flush=True)
+    return BATCH
+
+def upsample_memory_optimized(sig: np.ndarray,
+                             MODELts: np.ndarray,
+                             MODELsize: int,
+                             SIGsize: int,
+                             ITERneuron: np.ndarray,
+                             msdelays: np.ndarray,
+                             gaussSD: float = 20,
+                             additionalMSoffset: float = 5,
+                             ) -> tuple[np.ndarray, np.ndarray]:
+    
+    # Force single-threaded NumPy to avoid conflicts
+    os.environ['OPENBLAS_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
+    os.environ['OMP_NUM_THREADS'] = '1'
+    
+    bindelays = np.round(msdelays)
+    
+    # Use fewer workers for memory-intensive tasks
+    n_workers = min(cpu_count() // 2, 8)
+    batches = np.array_split(ITERneuron, n_workers)
+    
+    print(f"Memory-optimized version using {n_workers} workers")
+    
+    worker_args = [
+        [sig[:, batch].copy(),  # Make explicit copies to avoid sharing issues
+         MODELts.copy(),
+         batch.size,
+         SIGsize, MODELsize,
+         gaussSD,
+         bindelays[batch].copy(), additionalMSoffset,
+         ibatch
+        ]
+        for ibatch, batch in enumerate(batches)
+    ]
+    
+    # Try different multiprocessing backends
+    for backend in ['loky', 'threading', 'multiprocessing']:
+        try:
+            print(f"Trying backend: {backend}")
+            outList = Parallel(n_jobs=n_workers, verbose=10, backend=backend)(
+                delayed(upsampling_worker)(*wa) for wa in worker_args
+            )
+            print(f"Success with {backend} backend!")
+            break
+        except Exception as e:
+            print(f"Failed with {backend}: {e}")
+            continue
+    else:
+        print("All backends failed, falling back to sequential processing")
+        # single core also good for debugging
+        outList = [upsampling_worker(*wa) for wa in worker_args]
+    
+    return np.column_stack(outList)
+
+
+## ---- DEBUGGING CORNER ----
 def create_debug_objective_function(adExModel, Tmax, dt, Iapp, eval_arr, 
                                    MLspikeMaxSpikes, ineuron, ts):
     """
@@ -362,155 +592,3 @@ def test_objective_randomness(objective_func, bounds, n_tests=10):
     print(f"Count of most common: {losses.count(max(set(losses), key=losses.count))}")
     
     return losses, param_sets
-
-#%%
-def __runWRAP__(ineuron:int, 
-                model:adEx, 
-                INPUT_highHZ:np.ndarray,
-                adjROW:np.ndarray,
-                eval_arr:np.ndarray | None,
-                model_params:dict,
-                MODELts:np.ndarray,
-                Tmaxmodel:float, DTmodel:float, 
-                plot:bool,
-                MLspikeMaxSpikes:int = 3):
-    '''
-    Wrapper for running parameter fitting for synaptic CadEx in a 
-    parallelized manner using joblib
-
-    or also just for plotting and exploring (synaptic) CadEx
-    '''
-    adjROW[ineuron] = 0
-    evaluate = isinstance(eval_arr, np.ndarray)
-    
-    # Run optimization
-    if evaluate:
-        # Optimization setup
-        BOUNDS = Parameters(ineuron=ineuron, n_synapses=adjROW.size)
-        OBJECTIVE:Callable = create_objective_function(
-            adExModel= model, Tmax=Tmaxmodel, 
-            dt = DTmodel, Iapp=INPUT_highHZ, 
-            eval_arr=eval_arr,
-            MLspikeMaxSpikes=MLspikeMaxSpikes,
-            ineuron=ineuron, ts = MODELts)
-        OPTIMIZER = Optimizer(Params=BOUNDS, objective_fun=OBJECTIVE)
-        
-
-        DEBUG_OBJECTIVE:Callable = create_debug_objective_function(
-            adExModel= model, Tmax=Tmaxmodel, 
-            dt = DTmodel, Iapp=INPUT_highHZ, 
-            eval_arr=eval_arr,
-            MLspikeMaxSpikes=MLspikeMaxSpikes,
-            ineuron=ineuron, ts = MODELts)
-        
-        test_objective_randomness(DEBUG_OBJECTIVE, bounds=BOUNDS, n_tests=50)
-        
-        print("=== NEVERGRAD CMA-ES Evolution ===")
-        RESULT = OPTIMIZER.fit_with_nevergrad()
-        
-
-    # Simply run experiment on one parameter set
-    else:
-        pred_spts_ms = run_experiment(adExModel= model,
-                                    Tmax=Tmaxmodel, dt = DTmodel,
-                                    model_params=model_params,
-                                    Iapp=INPUT_highHZ, 
-                                    adjM=adjROW,
-                                    evaluate=evaluate,
-                                    ineuron=ineuron,
-                                    plot=plot,
-                                    ts = MODELts)
-
-
-### --- Other model utils ---
-def bin_spikes(spts_ms:np.ndarray, nbins:int, Tmax_ms:float,
-               maxcount:int)->np.ndarray:
-    """
-    Bin high-res spiketimes into designated number of bins
-    """
-    bin_edges = np.linspace(0,Tmax_ms, nbins+1)
-    spike_counts, _ = np.histogram(spts_ms, bins = bin_edges)
-    return np.clip(spike_counts, 0,maxcount)
-
-
-def upsampling_worker(sigBATCH:np.ndarray, MODELts:np.ndarray,
-                      batchSize:int,
-                      SIGsize:float, MODELsize:int,
-                      gaussSD:float, 
-                      bindelaysBATCH:np.ndarray, additionalMSoffset:float,
-                      ibatch:int,
-                      ):
-    pid = os.getpid()
-    print(f"[upsampling_worker STARTED, PID={pid}, batchSize={batchSize}]", flush=True)
-    BATCH = np.zeros((MODELsize, batchSize), dtype=float, order = 'C')
-    MODELdownsampledTS = np.linspace(MODELts[0], MODELts[-1], SIGsize)
-    for ni in tqdm(range(batchSize), position=ibatch):
-        # Linear interpolation to get higher sampling rate
-        out = np.interp(x=MODELts, xp = MODELdownsampledTS, fp = sigBATCH[:,ni])
-        # Convolve with gaussian to smooth over linear interpolation artifacts
-        symmgaussrange = np.linspace(-MODELsize//2, MODELsize//2, MODELsize)
-        gaussian = np.exp(-(symmgaussrange/gaussSD)**2/2)
-        gaussian = gaussian[gaussian > 0]
-        out = np.convolve(out, gaussian, mode='same')
-        # 0 pad from left to shift by few ms (first to correct for imaging offset)
-        # + to allow for some "causality" in which signal came first
-        lag = round(bindelaysBATCH[ni] + additionalMSoffset)
-        out = np.roll(out, shift = lag)
-        out[:lag] = 0
-        BATCH[:,ni] = out
-        # print('Neuron w lag: ',lag, 'done', flush=True)
-    return BATCH
-
-def upsample_memory_optimized(sig: np.ndarray,
-                             MODELts: np.ndarray,
-                             MODELsize: int,
-                             SIGsize: int,
-                             ITERneuron: np.ndarray,
-                             msdelays: np.ndarray,
-                             gaussSD: float = 20,
-                             additionalMSoffset: float = 5,
-                             ) -> tuple[np.ndarray, np.ndarray]:
-    
-    # Force single-threaded NumPy to avoid conflicts
-    os.environ['OPENBLAS_NUM_THREADS'] = '1'
-    os.environ['MKL_NUM_THREADS'] = '1'
-    os.environ['OMP_NUM_THREADS'] = '1'
-    
-    bindelays = np.round(msdelays)
-    
-    # Use fewer workers for memory-intensive tasks
-    n_workers = min(cpu_count() // 2, 8)
-    batches = np.array_split(ITERneuron, n_workers)
-    
-    print(f"Memory-optimized version using {n_workers} workers")
-    
-    worker_args = [
-        [sig[:, batch].copy(),  # Make explicit copies to avoid sharing issues
-         MODELts.copy(),
-         batch.size,
-         SIGsize, MODELsize,
-         gaussSD,
-         bindelays[batch].copy(), additionalMSoffset,
-         ibatch
-        ]
-        for ibatch, batch in enumerate(batches)
-    ]
-    
-    # Try different multiprocessing backends
-    for backend in ['loky', 'threading', 'multiprocessing']:
-        try:
-            print(f"Trying backend: {backend}")
-            outList = Parallel(n_jobs=n_workers, verbose=10, backend=backend)(
-                delayed(upsampling_worker)(*wa) for wa in worker_args
-            )
-            print(f"Success with {backend} backend!")
-            break
-        except Exception as e:
-            print(f"Failed with {backend}: {e}")
-            continue
-    else:
-        print("All backends failed, falling back to sequential processing")
-        # single core also good for debugging
-        outList = [upsampling_worker(*wa) for wa in worker_args]
-    
-    return np.column_stack(outList)
