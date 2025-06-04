@@ -161,9 +161,12 @@ def run_experiment(adExModel:adEx, Tmax:float, dt:float, model_params:dict, Iapp
         return spike_times
     
     if plot:
-        ninputs = len(Iapp.shape)
+        if isinstance(Iapp, np.ndarray):
+            ninputs = len(Iapp.shape)
+        else:
+            ninputs = 1
         ROWS = 3 if not evaluate else 4
-        HR = [1,.2,.5] if not evaluate else [.8,.3,.5, .75]
+        HR = [1,.3,.25] if not evaluate else [.8,.3,.5, .75]
         f, ax = plt.subplots(nrows=ROWS, figsize = (12, 2.5*ROWS), 
                              sharex='all',
                              gridspec_kw={'height_ratios': HR})
@@ -181,11 +184,20 @@ def run_experiment(adExModel:adEx, Tmax:float, dt:float, model_params:dict, Iapp
                 neurons_sorted = np.arange(ineuron-5, ineuron+5)
             hm = sns.heatmap(data = Iapp.T[neurons_sorted,:], ax = ax[-1], 
                              cbar_kws={'location':'top'})
-            ax[-1].set_yticks(ticks = np.arange(neurons_sorted.size)[1::2], labels = neurons_sorted[1::2])
+            ax[-1].set_yticks([])
+            ax[-1].set_ylabel('Synaptic Input')
         else:
-            ax[-1].plot(t_all, all_curr, # *1000 conversion to nA for plotting if applied current in nA!!! 
-                    color = 'b')
-        ax[-1].set_ylabel('Synaptic Input')
+            if isinstance(Iapp, np.ndarray):
+                ax[-1].plot(t_all, all_curr,
+                        color = 'b')
+                
+                ax[-1].set_ylabel('Synaptic Input')
+            else:
+                ax[-1].plot(t_all, all_curr / 1000, # conversion to nA for plotting if applied current in nA!!! 
+                        color = 'b')
+                ax[-1].set_xlim(0, Tmax)
+                ax[-1].set_ylabel('Input current (nA)')
+
         ax[-1].set_xlabel('Time (ms)')
 
         if evaluate:
@@ -203,6 +215,11 @@ def run_experiment(adExModel:adEx, Tmax:float, dt:float, model_params:dict, Iapp
             ax[2].set_ylabel('Spikes per imaging frame')
         
         plt.tight_layout()
-        plt.show()
+        mp = {k:round(v, 2) for k,v in model_params.items()}
+        mt = [round(ti, 2) for ti in model_tuple]
 
+        plt.savefig(f'AdEx{mt}.png', dpi = 300)
+        plt.show()
+        if not isinstance(Iapp, np.ndarray):
+            return V_all, w_all, all_curr, model_params
     print(f"Total spikes: {len(spike_times)}", flush=True)

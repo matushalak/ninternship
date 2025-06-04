@@ -113,14 +113,14 @@ class CadEx:
                     ITERneuron=NEURON.ITERneuron,
                     msdelays=NEURON.msdelays,
                     gaussSD=20,
-                    additionalMSoffset=5)
+                    additionalMSoffset=10)
 
 
     def run(self, INPUT_highHZ:np.ndarray,
             ineuron:int = 0,
             model:adEx = adEx.nosynapse_euler_cython,
             # *100 correction for dF/F amplitude relative to current
-            dFSCALER:float = 100,
+            dFSCALER:float = 10,
             plot:bool = True,
             fit:bool = False):
         start = time()
@@ -131,7 +131,10 @@ class CadEx:
             adjROW = np.ascontiguousarray(adjROW)
 
             if fit:
-                eval_arr = self.spikes[:, ineuron]
+                # correct for MS delay
+                lag = round(self.msdelays[ineuron] + 10) # additional causal MSdelay 10 ms
+                eval_arr = np.roll(self.spikes[:, ineuron], shift=lag)
+                eval_arr[:lag] = 0
             else:
                 eval_arr = None
 
@@ -178,12 +181,12 @@ if __name__ == '__main__':
     start = time()
     NEURON = CadEx(SFmodel=1000, 
                    # 3600 1h, 1800 30 min, 900 15 min, 600 10 min, 300 5 min,
-                   model_runtime_sec=300, 
+                   model_runtime_sec=400, 
                    **MP)
     print(f'{time()-start} s')
 
     NEURON.run(INPUT_highHZ=NEURON.calciumMODEL,
-               ineuron=0,
+               ineuron=1,
                model=adEx.synapse_euler_cython,
                dFSCALER=10,
                fit=True,

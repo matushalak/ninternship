@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from src.AUDVIS import AUDVIS, Behavior, load_in_data
 from src.VisualAreas import Areas
+import seaborn as sns
 
 #%% general tester
 avs:list[AUDVIS] = load_in_data('pre')
@@ -9,25 +10,29 @@ for av in avs:
     AR = Areas(av)
     # Quick distance - signal correlation analysis
     A = AR.adjacencyMATRIX(signal=av.zsig)
+
     # flat
-    f, ax = plt.subplots(
-        # nrows=len(av.session_neurons), 
-        figsize = (6,3))
+    # f, ax = plt.subplots(
+    #     # nrows=len(av.session_neurons), 
+    #     figsize = (6,3))
     for si, (start, stop) in enumerate(av.session_neurons):
         session = slice(start, stop)
         Asess = A[session, session, :]
-        Asess = np.tril(Asess) # get rid of reduntant upped triangle
+        # show correlations
+        # hm = sns.heatmap(Asess[:,:,1])
+        # plt.show()
+    #     Asess = np.tril(Asess) # get rid of reduntant upped triangle
 
-        Aflat = Asess.reshape(-1, 2)
-        dists, corrs = Aflat[:,0], Aflat[:, 1]
-        ax.scatter(dists, corrs,
-                   alpha = 0.1,
-                   label = f'r(d, abs(r)) = {round(np.corrcoef(dists, corrs.__abs__())[0,1], 3)}')
-        ax.set_xlabel('Distance (a.u.)')
-        ax.set_ylabel('Correlation')
-        ax.legend(loc = 1)
-    plt.tight_layout()
-    plt.show()
+    #     Aflat = Asess.reshape(-1, 2)
+    #     dists, corrs = Aflat[:,0], Aflat[:, 1]
+    #     ax.scatter(dists, corrs,
+    #                alpha = 0.1,
+    #                label = f'r(d, abs(r)) = {round(np.corrcoef(dists, corrs.__abs__())[0,1], 3)}')
+    #     ax.set_xlabel('Distance (a.u.)')
+    #     ax.set_ylabel('Correlation')
+    #     ax.legend(loc = 1)
+    # plt.tight_layout()
+    # plt.show()
 
 #%% Quick script to check adaptation or any systematic trends in signal over the session
 avs:list[AUDVIS] = load_in_data('both')

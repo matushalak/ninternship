@@ -109,11 +109,11 @@ class Parameters:
         'VT': (-60, -41.9),        # Threshold voltage (mV)
         'DeltaT': (0.6, 6),      # Slope factor (mV)
         'tauw': (15, 500),       # Adaptation time constant (ms)
-        'a': (-12, 80),          # Subthreshold adaptation (nS)
+        'a': (-30, 80),          # Subthreshold adaptation (nS)
         'gs': (0, 1),            # Synaptic scaling factor
         # Reset parameters
-        'Vreset': (-80, -40),    # Reset voltage (mV)
-        'b': (0, 400),           # Spike-triggered adaptation (pA)
+        'Vreset': (-80, -45),    # Reset voltage (mV)
+        'b': (1e-5, 400),           # Spike-triggered adaptation (pA)
     }
     def __init__(self, ineuron:int, n_synapses:int):
         self.ineuron = ineuron
@@ -123,7 +123,8 @@ class Parameters:
         self.synaptic_bounds = [(-1, 1)] * n_synapses
         self.synaptic_bounds[ineuron] = (-1e-6,1e-6) # set own weight to 0
 
-        self.param_bounds = list(Parameters.intrinsic_bounds.values()) + self.synaptic_bounds
+        self.param_bounds = list(Parameters.intrinsic_bounds.values()
+                                 ) + self.synaptic_bounds
     
     def get_bounds_array(self)->np.ndarray:
         return np.array(self.param_bounds)
@@ -137,7 +138,9 @@ class Parameters:
     
     def dict_to_params(self, model_params:dict, adjM:np.ndarray
                        ) -> np.ndarray:
-        return np.array(list(model_params.values()) + adjM.tolist())
+        return np.array(list(model_params.values()) 
+                        + adjM.tolist()
+                        )
 
 
 class Optimizer:
@@ -187,7 +190,7 @@ class Optimizer:
         return firing_params
 
 
-    def fit_with_nevergrad(self, generations:int = 20, popsize:int = 100):
+    def fit_with_nevergrad(self, generations:int = 20, popsize:int = 300):
         """
         Replace SciPy DE with Nevergrad CMA-ES.
         budget = total number of objective evaluations allowed.
@@ -240,7 +243,9 @@ class Optimizer:
                 # numpy array of length num_params       
                 x = cand.value                       
                 # 4) Evaluate the objective on x
-                loss = self.objective_fun(x, gen)
+                loss = self.objective_fun(x, gen, 
+                                          True # optimize weights
+                                          )
                 counter += 1
                 # 5) Tell the optimizer the loss
                 optimizer.tell(cand, loss)
@@ -270,17 +275,22 @@ def create_objective_function(adExModel:adEx, Tmax:float,
                               dt:float, Iapp:np.ndarray, 
                               eval_arr:np.ndarray, 
                               MLspikeMaxSpikes:int,
-                              ineuron:int, ts:np.ndarray
+                              ineuron:int, ts:np.ndarray,
+                              ADJ:np.ndarray
                               )->Callable:
     """
     Create objective function that wraps run_experiment for CadEx model
     """
-    def objective(param_vector, igen = 5)->float:
+    def objective(param_vector, igen = 5, optimize_weights:bool = True)->float:
         # print('Evaluating: ', param_vector[:10], flush=True)
         # Convert parameter vector to model parameters
         model_params:dict = Parameters.params_to_dict(params=param_vector)
-        adjM = np.ascontiguousarray(model_params['synaptic_weights'])
-        model_params.pop('synaptic_weights', None)
+        A = ADJ
+        if optimize_weights:
+            adjM = np.ascontiguousarray(model_params['synaptic_weights'])
+            model_params.pop('synaptic_weights', None)
+        else:
+            adjM = A
         model_params['Vpeak'] = 0
         
         # Run AdEx simulation
@@ -331,7 +341,9 @@ def __runWRAP__(ineuron:int,
             dt = DTmodel, Iapp=INPUT_highHZ, 
             eval_arr=eval_arr,
             MLspikeMaxSpikes=MLspikeMaxSpikes,
-            ineuron=ineuron, ts = MODELts)
+            ineuron=ineuron, ts = MODELts,
+            ADJ=adjROW # if correlations hard-coded as the adjacency matrix
+            )
         OPTIMIZER = Optimizer(Params=BOUNDS, objective_fun=OBJECTIVE,
                               adjM=adjROW, model_params=model_params)
         
@@ -351,7 +363,8 @@ def __runWRAP__(ineuron:int,
 
         if plot:
             _params = BOUNDS.params_to_dict(finalParam)
-            _ADJ = _params.pop('synaptic_weights')
+            # _ADJ = adjROW # when not optimizing weight
+            _ADJ = _params.pop('synaptic_weights') # when optimizing weights
             _params['Vpeak'] = 0
             run_experiment(adExModel= model,
                             Tmax=Tmaxmodel, dt = DTmodel,
@@ -414,7 +427,7 @@ def upsample_memory_optimized(sig: np.ndarray,
                              ITERneuron: np.ndarray,
                              msdelays: np.ndarray,
                              gaussSD: float = 20,
-                             additionalMSoffset: float = 5,
+                             additionalMSoffset: float = 10,
                              ) -> tuple[np.ndarray, np.ndarray]:
     
     # Force single-threaded NumPy to avoid conflicts
