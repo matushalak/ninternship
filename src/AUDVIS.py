@@ -132,7 +132,7 @@ class AUDVIS:
         self.SF = SF#self.signal.shape[1] / sum(self.trial_sec) 
         # Trial window (pre_trial, post_trial) in frames
         self.trial_frames = (self.SF * np.array(self.trial_sec)).round().astype(int)
-        # TRIAL duration between frames hardcoded TODO: fixed based on indicated trial duration
+        # TRIAL duration between frames hardcoded TODO: fix based on indicated trial duration
         self.TRIAL = self.trial_frames#(self.trial_frames[0], 2*self.trial_frames[0]) 
 
         # Trial MAPS from str->int and int->str
@@ -204,8 +204,7 @@ class AUDVIS:
 
         for tt in sorted(list(ttypes)): # 0-n_trial types
             _, trials = ttypes[tt]
-            # trials = trials[tt*trials_per_TT : (tt+1)*trials_per_TT]
-            # if (trials, time, neurons)
+
             if len(signal.shape) == 3:
                 signal_tt = []
                 for isess, (n_first, n_last) in enumerate(self.session_neurons):
@@ -217,9 +216,8 @@ class AUDVIS:
             # one neuron / behavior (trials, time)
             elif len(signal.shape) == 2:
                 raise NotImplementedError('This code was incorrect and needs to be fixed! \
-                                          Use general_separate_signal instead!')
-                # breakpoint()
-                # signal_by_trials[tt] = signal[trials, :]
+                                          Use general_separate_signal from src.analysis_utils instead!')
+                
 
         return signal_by_trials
     

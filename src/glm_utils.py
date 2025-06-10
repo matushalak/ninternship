@@ -198,8 +198,9 @@ def encodingLOOP_(groupName:str, groupDict:dict,
                        for i, nb in enumerate(neuron_batches)]
         
         # use get shuffled_dist here
-        session_res = Parallel(n_jobs=MP.cpu_count())(delayed(lightweight_EV_worker)(*wa) 
-                                                      for wa in worker_args)
+        session_res = Parallel(n_jobs=MP.cpu_count(), backend='threading'
+                               )(delayed(lightweight_EV_worker)(*wa) 
+                                 for wa in worker_args)
         
         GROUP_RESULTS.append(np.concatenate(session_res, axis = 3))
 

@@ -8,10 +8,15 @@ from src.Analyze import Analyze, neuron_typesVENN_analysis
 from src.analysis_utils import calc_avrg_trace, plot_avrg_trace, snake_plot
 from typing import Literal
 from scipy.io.matlab import loadmat
-from matplotlib import artist, colors
-from statannotations.Annotator import Annotator
+
 import matplotlib.pyplot as plt
+from matplotlib import artist, colors
+import matplotlib.tri as tri
+from matplotlib.colors import Normalize
+from matplotlib.cm     import ScalarMappable
 from matplotlib.patches import Polygon
+
+from statannotations.Annotator import Annotator
 import seaborn as sns
 import skimage as ski
 import numpy as np
@@ -97,7 +102,13 @@ class Areas:
                      CONTOURS:bool = False,
                      title: str | None = None,
                      svg:bool = False,
-                     show:bool = False):
+                     show:bool = False,
+                     values: np.ndarray | None = None, # continuous values, one per ROI
+                     cmap: str | plt.Colormap = 'viridis', # any matplotlib colormap
+                     colorbar: str | None = None, # colorbar label,
+                     suppressAreaColors:bool = False,
+                     interpolate_vals:bool = False # only works with values
+                     ):
         if indices is not None:
             if not ONLY_indices:
                 if len(indices) == 1:
@@ -115,11 +126,12 @@ class Areas:
             ind_colors: list[str] = ['mediumseagreen', 'coral', 'rosybrown', 'orchid']
             ind_labels = list(self.region_indices.keys())
         
-        alpha = 0.3
+        alpha = 0.3 if not suppressAreaColors else 0
         outlines = ski.segmentation.find_boundaries(self.overlay.astype(int), connectivity=1, mode='thick')
         # dilate outline mask (thicker)
         outlines = ndimage.binary_dilation(outlines, iterations=7)
-        self.overlay[outlines] = 255
+        overlay = self.overlay.copy()
+        overlay[outlines] = 255
         # Add black outlines
         areaColors = {6:colors.to_rgba('mediumseagreen', alpha=alpha),#V1
                       0:colors.to_rgba('coral', alpha=alpha), # PM
@@ -146,7 +158,7 @@ class Areas:
         cmap_list = [areaColors[v] for v in labels]
 
         # draw filled contours  ->  each region becomes one closed SVG path
-        im = ax.contourf(self.overlay,
+        im = ax.contourf(overlay,
                         levels=levels,
                         colors=cmap_list,
                         antialiased=False)
@@ -154,7 +166,36 @@ class Areas:
         if ZOOM:
             maxX, minX = [], []
             maxY, minY = [], []
+        
+        if values is not None:
+            # determine min/max
+            _vmin = -0.2#float(np.nanmin(values))
+            _vmax = 0.2#float(np.nanmax(values))
+            norm = Normalize(vmin=_vmin, vmax=_vmax)
+            sm   = ScalarMappable(norm=norm, cmap=cmap)
+
         for ii, (inds, indcol, indlab) in enumerate(zip(indices, ind_colors, ind_labels)):
+            if interpolate_vals:
+                x = self.dfROI.ABAx.iloc[inds].values
+                y = self.dfROI.ABAy.iloc[inds].values
+                values = np.clip(values, -0.2, 0.2)
+                z = values[inds]
+                triang = tri.Triangulation(x, y)
+                # 3) compute the maximum edge‐length for each triangle
+                pts = np.column_stack([x, y])
+                max_edge = np.zeros(len(triang.triangles))
+                for i, (i0, i1, i2) in enumerate(triang.triangles):
+                    a = np.linalg.norm(pts[i0] - pts[i1])
+                    b = np.linalg.norm(pts[i1] - pts[i2])
+                    c = np.linalg.norm(pts[i2] - pts[i0])
+                    max_edge[i] = max(a, b, c)
+
+                # 4) pick a threshold: e.g. everything longer than the 90th percentile
+                thr = np.percentile(max_edge, 99.5)
+                mask = max_edge > thr
+                triang.set_mask(mask)
+                cf = ax.tricontourf(triang, z, levels = 10, cmap = cmap)
+
             if CONTOURS:
                 for i in inds:
                     x, y = self.dfROI.ABAcontour.iloc[i]['x'], self.dfROI.ABAcontour.iloc[i]['y']
@@ -162,12 +203,24 @@ class Areas:
                     # print('Centers:', self.dfROI.ABAx.iloc[i], self.dfROI.ABAy.iloc[i])
                     # print('Contours:', x, y) 
                     coords = np.column_stack((x, y))
+                    if values is not None:
+                        try:
+                            rgba = sm.to_rgba(values[i])
+                        except IndexError:
+                            print(f'Index {i} out of range!')
+                            continue
+
+                        alpha_here = 1.0
+                    else:
+                        rgba = indcol
+                        alpha_here = (1.0 if indlab!='Unresponsive' else 0.6)
+
                     patch = Polygon(coords,
                                     closed=True,
-                                    facecolor=indcol,
+                                    facecolor=rgba,
                                     edgecolor='none',
-                                    alpha= 1 if indlab != 'Unresponsive' else 0.6,
-                                    zorder = 10)
+                                    alpha=alpha_here,
+                                    zorder=10)
                     ax.add_patch(patch)
             else:
                 sc = ax.scatter(self.dfROI.ABAx.iloc[inds],
@@ -182,11 +235,14 @@ class Areas:
                 maxY.append(self.dfROI.ABAy.iloc[inds].max())
                 minY.append(self.dfROI.ABAy.iloc[inds].min())
         
+        if values is not None and isinstance(colorbar, str):
+            fig.colorbar(sm, ax=ax, label=colorbar)
+        
         if ZOOM:
             ax.set_xlim(min(minX)-50, max(maxX)+50)
             ax.set_ylim(min(minY)-50, max(maxY)+50)
 
-        if ind_labels is not None:
+        if ind_labels is not None and values is None:
             ax.legend(loc = 1)
         
         if title is not None:
@@ -204,10 +260,11 @@ class Areas:
             return None
         
         if svg:
-            plt.savefig(f'{title}_ALL_NEURONS_ABA.svg')
+            fig.savefig(os.path.join(PLOTSDIR, f'{title}_ALL_NEURONS_ABA.svg'))
+            plt.close()
         else:
-            plt.savefig(f'{title}_ALL_NEURONS_ABA.png', dpi = 500)
-        plt.close()
+            fig.savefig(os.path.join(PLOTSDIR,f'{title}_ALL_NEURONS_ABA.png'), dpi = 500)
+            plt.close()
 
     def adjustROIdf(self, dfROI:pd.DataFrame, overlayDIMS:tuple[int,int]
                     ) -> pd.DataFrame:
@@ -277,7 +334,8 @@ class Areas:
 
         return adjM    
 
-#%% Analyses by areas
+#%%--------- Analyses by areas -------------
+# TODO: Change to account for V, A, M neurons
 def by_areas_VENN(svg:bool=False,
                   pre_post: Literal['pre', 'post', 'both'] = 'both'):
     AVs : tuple[AUDVIS] = load_in_data(pre_post=pre_post)

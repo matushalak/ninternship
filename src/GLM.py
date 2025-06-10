@@ -824,7 +824,8 @@ def quantify_encoding_models(gXY,
                     #     session_results = worker_pool.starmap(batch_worker, worker_args)
                     
                     # Joblib parallel
-                    session_results = Parallel(n_jobs=MP.cpu_count())(delayed(batch_worker)(*args) for args in worker_args)
+                    session_results = Parallel(n_jobs=MP.cpu_count(), backend='threading'
+                                               )(delayed(batch_worker)(*args) for args in worker_args)
                     
                     # 1 core
                     # session_results = [batch_worker(*args) for args in worker_args]
@@ -984,7 +985,8 @@ def clean_group_signal(group_name:str,
             
             # Multicore
             # Joblib parallel
-            session_results = Parallel(n_jobs=MP.cpu_count())(delayed(batch_worker)(*args) for args in worker_args)
+            session_results = Parallel(n_jobs=MP.cpu_count(), backend='threading'
+                                       )(delayed(batch_worker)(*args) for args in worker_args)
             
             # 1 core
             # session_results = [batch_worker(*args) for args in worker_args]

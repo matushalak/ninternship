@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import sem, norm, _result_classes
 from matplotlib import artist
+from collections import defaultdict
 from typing import Literal
 
 
@@ -150,6 +151,23 @@ def general_separate_signal(sig:np.ndarray,
 
     return separated_signal
     
+
+def group_separated_signal(trial_type_combinations:list[tuple],
+                           separation_labels:list[str],
+                           tt_separated_signal:dict[int:np.ndarray]):
+    '''
+    Interface to group trial-types of dictionary created by src.AUDVIS.separate_signal_by_trial_types
+    '''
+    oldTTs = list(tt_separated_signal)
+    out = defaultdict(list)
+
+    assert len(trial_type_combinations) == len(separation_labels)
+    for newTT, newTTCOMBO in zip(separation_labels, trial_type_combinations):
+        newARRs = [tt_separated_signal[tt] for tt in oldTTs if tt in newTTCOMBO]
+        out[newTT] = np.vstack(newARRs)
+    
+    return out
+
 
 def calc_avrg_trace(trace:np.ndarray, time:np.ndarray, PLOT:bool = True
                     )->tuple[np.ndarray, np.ndarray, np.ndarray]:

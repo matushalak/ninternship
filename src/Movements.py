@@ -1,18 +1,22 @@
 import numpy as np
+from pandas import DataFrame
 import seaborn as sns
 import scipy.stats as stats
 import matplotlib.pyplot as plt
+from statannotations.Annotator import Annotator
 import os
-
 from collections import defaultdict
-from src.AUDVIS import AUDVIS, Behavior, load_in_data
-from src.analysis_utils import general_separate_signal
 from typing import Literal
+from tqdm import tqdm
+import pickle as pkl
+from joblib import Parallel, delayed, cpu_count
+
+from src.AUDVIS import AUDVIS, Behavior, load_in_data
+from src.analysis_utils import general_separate_signal, group_separated_signal, fluorescence_response
+from src.VisualAreas import Areas
 
 from src import PYDATA, PLOTSDIR
 
-# TODO: correlation with signal across time bins all neurons (between groups)
-# TODO: quantify differences
 class Movements:
     '''
     Figure 1: Stimulus-evoked neural activity correlates with stimulus-evoked movement across visuo-cortical regions
@@ -30,62 +34,68 @@ class Movements:
         self.tt_col_lstl = {
             6:('dodgerblue', '-'),
             7:('dodgerblue', '--'),
+            'V':('dodgerblue', '-'),
             0:('red','-'),
             3:('red', '--'),
+            'A':('red','-'),
             1:('goldenrod', '-'),
             5:('goldenrod', '--'),
             2:('goldenrod', '-.'),
-            4:('goldenrod', ':')}
+            4:('goldenrod', ':'),
+            'AV':('goldenrod', '-')}
 
         self.tt_col_lstl2 = {
             6:('lightskyblue', '-'),
             7:('lightskyblue', '--'),
+            'V':('lightskyblue', '--'),
             0:('lightsalmon','-'),
             3:('lightsalmon', '--'),
+            'A':('lightsalmon', '--'),
             1:('palegoldenrod', '-'),
             5:('palegoldenrod', '--'),
             2:('palegoldenrod', '-.'),
-            4:('palegoldenrod', ':')}
+            4:('palegoldenrod', ':'),
+            'AV':('palegoldenrod', '--')}
         
         # Perform intividual analyses
         # 0) behavior by group sessions (self.BBGSs)
-        self.BBGSs = self.get_behaviors_by_session()
+        self.BBGSs:list[dict[str:dict]] = self.get_behaviors_by_session()
         print('0) Behavior by Group, Session, and Trial-type DONE')
         
         # 1) first plot average behavior (over trials) per session per trial type (overlaid)
         self.aggregated_behavior, self.pltdir = self.aggregate_trial_type_behavior_by_session(
-            plot=True)
+            plot=False
+            )
         print('1) Behavior by Group, Trial-type and Session DONE')
         
         # 2) second plot comparing average behavior (over trials and sessions) per trial type between DR and NR (overlaid)
-        self.behaviors_DR_vs_NR(show=True)
-        # print('2) Averaged comparison between DR and NR DONE')
-
+        self.DRNR_QUANT = self.behaviors_DR_vs_NR(show=False)
+        self.quantify()
+        print('2) Averaged comparison between DR and NR DONE')
+        
         # 3) third series of plots is per session raw signal during each trial type and corresponding behaviors
         # separate plot per trial type
-        self.raw_signals()
+        # self.raw_signals()
 
         # 4) separate plot per session (random chunk from session of consecutive trials of all trial types)
-        self.raw_signals(all_TT_together=True, N_example_trials=100)
+        # self.raw_signals(all_TT_together=True, N_example_trials=100)
 
-        # TODO: Correlation Behavior (choose Whisker) and signal throughout trial (47 bins)
+        # Correlation Behavior (Whisker, Running and Pulil) and signal throughout trial (47 bins)
         # In each time bin, take correlation between 90 values from signal and 90 values from behavior [or 180 if combining LR]
         # **(calculate seperately for each neuron** and **each trial type**, then show average over all neurons of a given brain area (4 columns)
         # across 3 types of stimuli) (V / A / AV) - 3 lines
         # for DR and NR separately (2 rows)
+        self.CORR, self.singleCORR = self.signal_correlations()
+        
+        # Heatmap, Lineplot, Brain map
+        self.analyze_correlations()
 
-        # TODO: Supplementary - same figure for Running and Pupil
-
-        # TODO: Heatmap / snakeplot
-
+        # BONUS
         # TODO: Direction selectivity in whisker movements / running / pupil vs Neuronal activity!
 
-        # TODO: contourplot across brain regions (on top of ABA) with color indicating correlation with whisker, run, pupil
-        # (overall of one per trial type)
-        # can place neurons with np.meshgrid(neuron_xs, neuron_ys)
     
-    
-    def get_behaviors_by_session(self, addTT:bool = True)->dict:
+    def get_behaviors_by_session(self, addTT:bool = True
+                                 )->list[dict[str:dict]]:
         BBGSs = []
         for AV in self.AVs:
             behavior_by_session = {
@@ -93,6 +103,8 @@ class Movements:
                 'whisker':dict(),
                 'pupil':dict()}
 
+            TTs = ['V', 'A', 'AV'] #np.unique(AV.trials)
+            ttsizes = [180, 180, 360]
             for isess in list(AV.sessions):
                 beh = AV.sessions[isess]['behavior']
                 for attr in list(behavior_by_session):
@@ -100,14 +112,18 @@ class Movements:
                         beh_sig = getattr(beh, attr)
                         if addTT:
                             behavior_by_session[attr][f'sess{isess}'] = general_separate_signal(
-                                sig=beh_sig, trial_types=AV.sessions[isess]['trialIDs'])
+                                sig=beh_sig, trial_types=AV.sessions[isess]['trialIDs'],
+                                # comment out if want RAW trial_types
+                                trial_type_combinations=[('Vr', 'Vl'), ('Al', "Ar"), ('AlVl', 'ArVr', 'AlVr', 'ArVl')],
+                                separation_labels= ['V', 'A', 'AV']
+                                )
                         else:
                             behavior_by_session[attr][f'sess{isess}'] = beh_sig
                     else:
                         print(f'Session{isess}, {attr} missing')
                         if addTT:
-                            behavior_by_session[attr][f'sess{isess}'] = {tt:np.full((90, self.n_ts), np.nan) 
-                                                                         for tt in np.unique(AV.trials)}
+                            behavior_by_session[attr][f'sess{isess}'] = {tt:np.full((ttsize, self.n_ts), np.nan) 
+                                                                         for tt, ttsize in zip(TTs, ttsizes)}
                         else:
                             behavior_by_session[attr][f'sess{isess}'] = np.full((720, self.n_ts), np.nan)
 
@@ -142,7 +158,7 @@ class Movements:
                     for itt, ttBeh in TT_beh_dict.items():
                         aggregated_behavior[f'g{ig+1}'][beh_name][itt].append(ttBeh)
                         if plot:
-                            if itt == 0:
+                            if itt == list(TT_beh_dict)[0]:
                                 axs[ib, iss].axvline(0)
                                 axs[ib, iss].axvline(1)
                                 axs[ib, iss].set_xlabel('self.time (s)')
@@ -155,7 +171,7 @@ class Movements:
                                                     alpha = 0.1, color = col, linestyle = lnstl )
                             axs[ib, iss].plot(self.time, avrg,color=col, linestyle = lnstl)
 
-            if not os.path.exists(pltdir:=PLOTSDIR):
+            if not os.path.exists(pltdir:=os.path.join(PLOTSDIR, 'MOVEMENT')):
                 os.makedirs(pltdir)
             
             if plot:
@@ -167,23 +183,29 @@ class Movements:
         
         return aggregated_behavior, pltdir
 
-
-    def behaviors_DR_vs_NR(self,show:bool = True):
+    def behaviors_DR_vs_NR(self,show:bool = True
+                           )->DataFrame:
         # to plot averages over sessions and compare DR vs NR
-        f2, ax2 = plt.subplots(nrows=3, ncols=8, figsize = (2.5*8, 9), 
+        f2, ax2 = plt.subplots(nrows=3, 
+                               #TODO: change automatically based on group (3) vs non-grouped (8) trials 
+                               ncols=3,#8, 
+                               figsize = (2.5*3, 
+                                          9), 
                             sharex='col', sharey='row')
         
+        quantres = {'Group':[], 'Behavior':[], 'Trial':[], 'Signal':[]}
+
         for gnum, (gname, Gdict) in enumerate(self.aggregated_behavior.items()):
 
             for ibeh, (bname, Bdict) in enumerate(Gdict.items()):
-                for it, all_sess_behaviors in Bdict.items():
+                for it, (TT, all_sess_behaviors) in enumerate(Bdict.items()):
                     if it == 0:
                         ax2[ibeh, it].set_ylabel(f'Z-{bname}')
                     if ibeh == len(Gdict) - 1:
-                        ax2[ibeh, it].set_xlabel('self.time (s)')
+                        ax2[ibeh, it].set_xlabel('Time (s)')
                     
                     all_sessions = np.concat(all_sess_behaviors)
-                    col, lnstl = self.tt_col_lstl2[it] if '2' in gname else self.tt_col_lstl[it]
+                    col, lnstl = self.tt_col_lstl2[TT] if '2' in gname else self.tt_col_lstl[TT]
                     alpha = 0.8 if '2' in gname else 1
                     
                     if '1' in gname:
@@ -191,8 +213,21 @@ class Movements:
                         ax2[ibeh, it].axvline(1, color = 'k', alpha = 0.5, linestyle = '--')
                         
                         if ibeh == 0:
-                            ax2[ibeh, it].set_title(self.tnames[it], color = col)
+                            if TT not in ('V', 'A', 'AV'):
+                                ax2[ibeh, it].set_title(self.tnames[it], color = col)
+                            else:
+                                ax2[ibeh, it].set_title(TT, color = col)
+                    # quantification
+                    avrbeh = fluorescence_response(np.dstack(all_sess_behaviors), window=self.AVs[gnum].trial_frames, 
+                                                   returnF=True, 
+                                                #    retMEAN_only=True # taking session-average: underpowered
+                                                   ).squeeze().flatten().tolist()
+                    quantres['Signal'] += avrbeh
+                    quantres['Group'] += [gname] * len(avrbeh)
+                    quantres['Behavior'] += [bname] * len(avrbeh)
+                    quantres['Trial'] += [TT] * len(avrbeh)
                     
+                    # plot
                     avrg = np.nanmean(all_sessions, axis=0)
                     sem = stats.sem(all_sessions, axis = 0, nan_policy='omit')
                     ax2[ibeh, it].fill_between(self.time, avrg - sem, avrg + sem,
@@ -204,10 +239,15 @@ class Movements:
                         ax2[ibeh, it].legend(loc = 2, fontsize = 8)
 
         f2.tight_layout()
-        f2.savefig(os.path.join(self.pltdir, f'behavior_exploration(group_comparison).png'), dpi = 500)
+        f2.savefig(os.path.join(self.pltdir, f'behavior_exploration(group_comparison).svg'), 
+                #    dpi = 500
+                   )
         if show:
             plt.show()
         plt.close()
+
+        out = DataFrame(quantres).dropna()
+        return out
 
     
     def raw_signals(self,
@@ -335,19 +375,269 @@ class Movements:
                         print(f'Group {ig} Session {isess} raw_SIGS_{self.tnames[itt]} saved!')
 
 
-    # TODO:
-    def signal_correlations(self):
-        pass
+    def signal_correlations(self)->tuple[dict, dict]:
+        '''
+        extracts signal correlations for each neuron for each trial-type for each behavior
+        in a dict: group -> behavior -> TT -> corr_matrix (ts x ts x neurons)
+        '''
+        if os.path.exists(
+            CORRsavepath := os.path.join(PYDATA, 'MovementCORRts.pkl')
+                          ) and os.path.exists(
+            SINGLECORRsavepath := os.path.join(PYDATA, 'MovementCORRsingle.pkl')):
+            # Load files
+            with open(CORRsavepath, 'rb') as CORR_f:
+                correlations = pkl.load(CORR_f)
+            with open(SINGLECORRsavepath, 'rb') as SINGLECORR_f:
+                singlevalcorrelations = pkl.load(SINGLECORR_f)
+            
+            return correlations, singlevalcorrelations
+        
+        # different brain areas
+        self.ARs:list[Areas] = [Areas(av) for av in self.AVs]
+
+        # Visual trials
+        groupedTTnames = ['V', 'A', 'AV']
+        groupedTTgroups = [(6, 7), (0, 3), (1, 2, 4, 5)]
+
+        correlations = defaultdict(lambda:defaultdict(dict))
+        singlevalcorrelations = defaultdict(lambda:defaultdict(dict))
+        for ig, (g, gdict) in enumerate(self.aggregated_behavior.items()):
+            AV = self.AVs[ig]
+            # get raw group signals separated by trial type
+            groupsig = AV.separate_signal_by_trial_types(
+                signal=AV.zsig)
+            
+            # only divided into V, A and AV trials
+            groupsig = group_separated_signal(trial_type_combinations=groupedTTgroups,
+                                              separation_labels=groupedTTnames,
+                                              tt_separated_signal=groupsig)
+            
+            # get neuron boundaries between each session
+            sess_neur = AV.session_neurons
+
+            for ib, (b, bTTdict) in enumerate(gdict.items()):
+                for tt, ttlist in tqdm(bTTdict.items()):
+                    ttsig = groupsig[tt]
+
+                    # prepare parallel args
+                    corr_worker_args = []
+                    tt_all_neur = []
+                    for isess, sessARR in enumerate(ttlist):
+                        neurons_slice = slice(*sess_neur[isess])
+                        # ntrials (of trial type tt), nts, nneurons (of session isess)
+                        sessDFF = ttsig[:,:,neurons_slice]
+
+                        corr_worker_args.append((neurons_slice, sessDFF, sessARR))
+                        tt_all_neur.append(corr_worker(neurons_slice, sessDFF, sessARR))
+                    
+                    timewise, singlevals = [t for t, _ in tt_all_neur], [s for _, s in tt_all_neur]
+                    temporal_corr_all_neur = np.dstack(timewise)
+                    singlevals_all_neur = np.concatenate(singlevals)
+                    
+                    # add to results array
+                    correlations[g][b][tt] = temporal_corr_all_neur
+                    singlevalcorrelations[g][b][tt] = singlevals_all_neur
+        
+        # save files
+        with open(CORRsavepath, 'wb') as CORR_f:
+            pkl.dump(dict(correlations), CORR_f)
     
-    def Quantify(self):
+        with open(SINGLECORRsavepath, 'wb') as SINGLECORR_f:
+            pkl.dump(dict(singlevalcorrelations), SINGLECORR_f)
+        
+        return self.signal_correlations()
+        
+    
+    def analyze_correlations(self):
+        # 0) Heatmap (3 x 2 [DR vs NR]) - neurons from all areas all sessions combined
+        # one for each behavior
+        heatmap_artists =  [plt.subplots(nrows=2, ncols=3, figsize = (7, 4), sharex='all', sharey='all') for _ in range(3)]
+        
+        # 1) Basic correlation lineplot 
+        # (3 colors - TT, dashed control, solid DR), 1 per area
+        # one row per behavior (3)
+        lfig, laxs = plt.subplots(nrows=3, ncols=4, sharex='all', sharey='all')
+        for ig, (g, gdict) in enumerate(self.CORR.items()):
+            av = self.AVs[ig]
+            AR = Areas(av)
+            collstl = self.tt_col_lstl if '1' in g else self.tt_col_lstl2
+
+            for ib, (b, bdict) in enumerate(gdict.items()):
+                
+                single_neuron_beh_corrs = []
+                
+                for itt, (tt, ttARR) in enumerate(bdict.items()):
+                    col, lstl = collstl[tt]
+                    nansessions = np.isnan(ttARR[0,0,:]) # boolean array
+                    goodindices = np.nonzero(~nansessions) # integer indexing array
+                    # ttGOOD = ttARR[:,:, ~nansessions]
+                    
+                    # for brainmap
+                    single_neuron_beh_corrs.append(self.singleCORR[g][b][tt])
+
+                    # mean over sessions first before overall mean
+                    sessmeans = []
+                    for st, en in av.session_neurons:
+                        if np.isnan(ttARR[0,0,st]):
+                            continue
+                        sessmeans.append(np.mean(ttARR[:,:,st:en], axis = 2))
+                    sessmeans = np.dstack(sessmeans)
+
+                    # get heatmap artists for this behavior
+                    hf, haxs = heatmap_artists[ib]
+                    hm = sns.heatmap(data = np.mean(sessmeans, axis = 2), ax = haxs[ig, itt],
+                                     vmin = -0.02, vmax = 0.02, 
+                                     square=True,
+                                     cmap='rocket' if ig == 1 else 'mako',
+                                     cbar=(itt == 2), 
+                                     )
+                    haxs[ig, itt].set_xticks((0, 15, 32, 47), (-1,0,1,2), rotation = 'horizontal')
+                    haxs[ig, itt].set_yticks((0, 15, 32, 47), (-1,0,1,2))
+                    if ig ==1:
+                        haxs[ig, itt].set_xlabel('∆F/F time (s)')
+                    else:
+                        haxs[ig, itt].set_title(f'{tt} trials')
+                    if itt ==0:
+                        haxs[ig, itt].set_ylabel(f'{b} time (s)')
+
+                    for iarea, (area_name, area_indices) in enumerate(AR.region_indices.items()):
+                        lax = laxs[ib, iarea]
+
+                        areagood = np.mean(ttARR[:,:,
+                                                   np.intersect1d(area_indices, goodindices)], 
+                                            axis = 2).diagonal()
+                        lax.axvspan(0,1, color = 'k', alpha = 0.15)
+                        lax.plot(self.time, areagood, color = col, linestyle = lstl, label = f'{tt} ({self.gname_map[g]})')
+                        lax.set_xlim(self.time.min(), self.time.max())
+                        
+                        if ib == 0:
+                            lax.set_title(area_name)
+                        if iarea == 0:
+                            lax.set_ylabel(f'r({b}-∆F/F)')
+                        if ib == 2:
+                            lax.set_xticks((-1,0,1,2))
+                            lax.set_xlabel('Time (s)')
+            
+                single_neuron_beh_corrs = np.column_stack(single_neuron_beh_corrs)
+                colnames = ['V', 'A', 'AV']
+                self.corrBrainmap(AR=AR, single_neuron_corrs=single_neuron_beh_corrs, 
+                                behavior_name=b, group = g, groupname=self.gname_map[g],
+                                colnames=colnames, indices=goodindices)
+        
+        lfig.tight_layout()
+        lfig.savefig(os.path.join(self.pltdir, 'Correlations_AREA_tsplot.png'), dpi = 300)
+        
+        for (hf, _), b in zip(heatmap_artists, gdict.keys()):
+            hf.tight_layout()
+            hf.savefig(os.path.join(self.pltdir, f'{b}_correlations_heatmap.png'), dpi = 300)
+
+
+    def corrBrainmap(self, AR:Areas, single_neuron_corrs:np.ndarray, 
+                     behavior_name:str, group:str,  groupname:str,
+                     colnames:list[str], indices:np.ndarray):
+        abscorrs = single_neuron_corrs.__abs__()
+        argmaxes = np.argmax(abscorrs, axis = 1)
+        # just take the max correlation for each neuron for given behavior
+        maxcorrs = np.take_along_axis(single_neuron_corrs, indices=argmaxes[:,np.newaxis], axis = 1).squeeze()
+
+        # to separate V, A, AV
+        # indices = [np.where(argmaxes == i)[0] for i in range(abscorrs.shape[1])]
+        # indcolors = ['dodgerblue', 'red', 'goldenrod']
+        # assert maxcorrs.size == indices[0].size
+        assert group in AR.NAME, f'Print {group} is not the same as {AR.NAME}'
+        AR.show_neurons(indices=indices, ONLY_indices=True, ZOOM=True, CONTOURS=True, 
+                        title=f'{groupname}_{behavior_name}', svg=True, values=maxcorrs, colorbar = f'r({behavior_name}-∆F/F)',
+                        suppressAreaColors=True, interpolate_vals=True)
+
+    
+    def quantify(self):
         '''
         Quantifies differences in movements (& movement characteristics)
         between DR and NR animals across trial types
         '''
-        raise NotImplementedError
-    
+        between_pairs = [
+            (("V", "g1"), ("V", "g2")),
+            (("A", "g1"), ("A", "g2")),
+            (("AV", "g1"), ("AV", "g2")),
+        ]
+        within_pairs = [
+            (("V", "g1"), ("A", "g1")),
+            (("V", "g2"), ("A", "g2")),
+        ]
+        # breakpoint()
+        for b in self.DRNR_QUANT.Behavior.unique():
+            data = self.DRNR_QUANT.loc[self.DRNR_QUANT['Behavior'] == b]
+            cp = sns.catplot(data = data, x = 'Trial', y = 'Signal', hue = 'Group',
+                            kind = 'bar', legend=False)
+            # first: between‑group comparisons
+            annot_bw = Annotator(
+                cp.ax,
+                between_pairs,
+                data=data,
+                x='Trial',
+                y='Signal',
+                hue='Group',
+            )
+            annot_bw.configure(
+                test='t-test_ind',
+                comparisons_correction='Bonferroni',
+                text_format='star',
+                loc='outside',
+                hide_non_significant = True,
+                correction_format="replace"
+            )
+            annot_bw.apply_and_annotate()
+
+            # second: within-group comparison
+            annot_wi = Annotator(
+            cp.ax, within_pairs,
+            data=data, x='Trial', y='Signal', hue='Group'
+            )
+            annot_wi.configure(
+                test='t-test_paired',#'Wilcoxon',
+                comparisons_correction='Bonferroni',
+                text_format='star',
+                loc='outside',
+                hide_non_significant = True,
+                correction_format="replace"
+            )
+            annot_wi.apply_and_annotate()
+            
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.pltdir, f'MovementsDRNRQuant({b}).svg'))
     
 # -------------- Helpers ----------------
+def corr_worker(neurons_slice:slice, 
+                sessDFF:np.ndarray, 
+                sessARR:np.ndarray
+                )->np.ndarray:
+    ntrials, nts, nneur = sessDFF.shape
+    
+    # 3D array nts x nts x nneurons
+    # average correlations of each timebin of signal - behavior over trials for each neuron
+    neuron_corrs = np.empty(shape=(nts, nts, nneur))
+    # 1D array (nneurons) holding the average overall correlation of signal w behavior (over trials)
+    single_val_corrs = np.empty(shape = nneur)
+    for ineur in range(nneur):
+        # part of a bigger matrix that includes corr of behavior w itself [:nts, :nts] and
+        # corr of signal w itself [nts:, :nts]
+        neuron_corrs[:,:, ineur] = np.corrcoef(sessARR, sessDFF[:,:,ineur], rowvar = False)[:nts, nts:]
+        # now includes nans for sessions without facemap
+        
+        # diagonal of trial-wise correlation matrix contains correlations of behavior and signal 
+        # in each trial, the mean of that diagonal contains the average correlation of neuron's
+        # trial signal with trial behavior of the mouse
+        single_val_corrs[ineur] = np.nanmean(np.corrcoef(sessARR, sessDFF[:,:,ineur], 
+                                                         rowvar = True
+                                                         )[:ntrials, ntrials:].diagonal())
+
+    # average relationship of signal (xaxis) with given behavior (yaxis)
+    # over all neurons in the session for given TT
+
+    # diagonal here is the "line-plot" correlation / time-bin relationship
+    # sns.heatmap(neuron_corrs.mean(axis = 2))
+    return neuron_corrs, single_val_corrs
+
 def find_session_tt_indices(sess_idx:int, AV:AUDVIS
                     )->np.ndarray:
     tt_indices = []

@@ -18,6 +18,7 @@ import os
 
 ### --- Optimizer utils ---
 # TODO: consider also convolution and continuous optimization
+# try correlation of w with each neuron’s dF/F
 def loss_func(ypred:np.ndarray, y:np.ndarray,
               EPSILON:float = 1e-7, FIRING_penalty:float = .5
               )->float:
@@ -456,7 +457,9 @@ def upsample_memory_optimized(sig: np.ndarray,
     ]
     
     # Try different multiprocessing backends
-    for backend in ['loky', 'threading', 'multiprocessing']:
+    for backend in ['threading'
+                    # , 'loky',  'multiprocessing'
+                    ]:
         try:
             print(f"Trying backend: {backend}")
             outList = Parallel(n_jobs=n_workers, verbose=10, backend=backend)(
