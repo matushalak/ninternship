@@ -1,5 +1,5 @@
 import numpy as np
-from pandas import DataFrame
+import pandas as pd
 import seaborn as sns
 import scipy.stats as stats
 import matplotlib.pyplot as plt
@@ -70,7 +70,7 @@ class Movements:
         
         # 2) second plot comparing average behavior (over trials and sessions) per trial type between DR and NR (overlaid)
         self.DRNR_QUANT = self.behaviors_DR_vs_NR(show=False)
-        self.quantify()
+        # self.quantify()
         print('2) Averaged comparison between DR and NR DONE')
         
         # 3) third series of plots is per session raw signal during each trial type and corresponding behaviors
@@ -184,7 +184,7 @@ class Movements:
         return aggregated_behavior, pltdir
 
     def behaviors_DR_vs_NR(self,show:bool = True
-                           )->DataFrame:
+                           )->pd.DataFrame:
         # to plot averages over sessions and compare DR vs NR
         f2, ax2 = plt.subplots(nrows=3, 
                                #TODO: change automatically based on group (3) vs non-grouped (8) trials 
@@ -246,7 +246,7 @@ class Movements:
             plt.show()
         plt.close()
 
-        out = DataFrame(quantres).dropna()
+        out = pd.DataFrame(quantres).dropna()
         return out
 
     
@@ -457,6 +457,10 @@ class Movements:
         # (3 colors - TT, dashed control, solid DR), 1 per area
         # one row per behavior (3)
         lfig, laxs = plt.subplots(nrows=3, ncols=4, sharex='all', sharey='all')
+
+        # collect dataframes for each group-behavior combination
+        overallQuantDF = []
+
         for ig, (g, gdict) in enumerate(self.CORR.items()):
             av = self.AVs[ig]
             AR = Areas(av)
@@ -520,16 +524,59 @@ class Movements:
             
                 single_neuron_beh_corrs = np.column_stack(single_neuron_beh_corrs)
                 colnames = ['V', 'A', 'AV']
+                
+                regions = AR.dfROI['Region'].tolist()
+                
+                # add correlations for each trial-type
+                TT, Correlations = [], []
+                for icolnm, colnm in enumerate(colnames):
+                    Correlations += single_neuron_beh_corrs[:,icolnm].tolist()
+                    TT += [colnm] * len(regions)
+                
+                regions = regions * len(colnames)
+                assert len(regions) == len(TT) == len(Correlations)
+                
+                # add group number
+                group = [g] * len(regions)
+                # add behavior
+                behavior = [b] * len(regions)
+
+                GroupBehaviorDf = pd.DataFrame({'Group':group,
+                                         'Region':regions,
+                                         'Behavior':behavior,
+                                         'Stimulus':TT,
+                                         'Correlation':Correlations})
+                
+                overallQuantDF.append(GroupBehaviorDf)
                 self.corrBrainmap(AR=AR, single_neuron_corrs=single_neuron_beh_corrs, 
                                 behavior_name=b, group = g, groupname=self.gname_map[g],
                                 colnames=colnames, indices=goodindices)
-        
+
+        # Lineplot
         lfig.tight_layout()
         lfig.savefig(os.path.join(self.pltdir, 'Correlations_AREA_tsplot.png'), dpi = 300)
         
+        # Heatmap plot
         for (hf, _), b in zip(heatmap_artists, gdict.keys()):
             hf.tight_layout()
             hf.savefig(os.path.join(self.pltdir, f'{b}_correlations_heatmap.png'), dpi = 300)
+        plt.close()
+
+        # Quantification plot
+        # assemble dataframe
+        QuantDF = pd.concat(overallQuantDF, ignore_index=True)
+        QuantDF['R2'] = QuantDF['Correlation']**2
+        QuantDF['|r|'] = QuantDF['Correlation'].abs()
+        # Filter out neurons not in Visual Areas
+        QuantDF = QuantDF.loc[QuantDF['Region'] != '']
+        quantplot = sns.catplot(data = QuantDF, x = 'Stimulus', 
+                                y = 'R2', # |r| or R2 makes sense here
+                                hue = 'Group', 
+                                row = 'Behavior', col='Region',
+                                col_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                                kind = 'point', dodge = True, estimator='mean')
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.pltdir, f'BehaviorCorrelations_Quant.svg'))
 
 
     def corrBrainmap(self, AR:Areas, single_neuron_corrs:np.ndarray, 
@@ -537,17 +584,18 @@ class Movements:
                      colnames:list[str], indices:np.ndarray):
         abscorrs = single_neuron_corrs.__abs__()
         argmaxes = np.argmax(abscorrs, axis = 1)
-        # just take the max correlation for each neuron for given behavior
+        # just take the max correlation (across trial types) for each neuron for given behavior
         maxcorrs = np.take_along_axis(single_neuron_corrs, indices=argmaxes[:,np.newaxis], axis = 1).squeeze()
-
+        
         # to separate V, A, AV
         # indices = [np.where(argmaxes == i)[0] for i in range(abscorrs.shape[1])]
         # indcolors = ['dodgerblue', 'red', 'goldenrod']
         # assert maxcorrs.size == indices[0].size
         assert group in AR.NAME, f'Print {group} is not the same as {AR.NAME}'
         AR.show_neurons(indices=indices, ONLY_indices=True, ZOOM=True, CONTOURS=True, 
-                        title=f'{groupname}_{behavior_name}', svg=True, values=maxcorrs, colorbar = f'r({behavior_name}-∆F/F)',
-                        suppressAreaColors=True, interpolate_vals=True)
+                        title=f'{groupname}_{behavior_name}', svg=True, 
+                        values=maxcorrs, colorbar = f'r({behavior_name}-∆F/F)',
+                        suppressAreaColors=False, interpolate_vals=False)
 
     
     def quantify(self):

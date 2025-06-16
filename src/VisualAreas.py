@@ -194,7 +194,7 @@ class Areas:
                 thr = np.percentile(max_edge, 99.5)
                 mask = max_edge > thr
                 triang.set_mask(mask)
-                cf = ax.tricontourf(triang, z, levels = 10, cmap = cmap)
+                cf = ax.tricontourf(triang, z, levels = 4, cmap = cmap)
 
             if CONTOURS:
                 for i in inds:

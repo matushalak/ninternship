@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import os
 import atexit
 
@@ -18,7 +19,7 @@ from typing import Literal
 from dataclasses import dataclass
 from collections import defaultdict
 
-from src import PYDATA
+from src import PYDATA, PLOTSDIR
 
 # ----------------------- Encoding model ---------------------------
 # NOTE: Fairly general encoding model for disentangling behavioral confounds from neural activity
@@ -317,8 +318,21 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                                                         plot_bases=show)
         # Stimulus design matrix
         if show:
-            plt.imshow(stim_kernels[:180, :, 0])
+            vcols = [i for i in range(len(stim_col_names)) if 'V' in stim_col_names[i]]
+            vhm = sns.heatmap(stim_kernels[47:235, vcols, 7], cbar=False, xticklabels=False, yticklabels=False,
+                        cmap = 'Blues')
+            plt.tight_layout()
+            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', f'Xvis_{AV.NAME}.png'), dpi = 300)
             plt.show()
+            plt.close()
+
+            acols = [i for i in range(len(stim_col_names)) if 'A' in stim_col_names[i]]
+            ahm = sns.heatmap(stim_kernels[47:235, acols, 7], cbar=False, xticklabels=False, yticklabels=False,
+                        cmap = 'Reds')
+            plt.tight_layout()
+            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', f'Xaud_{AV.NAME}.png'), dpi = 300)
+            plt.show()
+            plt.close()
 
         # Behavior kernels - only for sessions with behavioral information [SESSION-level]
         behav_kernels, beh_col_names = behavior_kernels(sessions=AV.sessions,
@@ -331,8 +345,12 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                                                         plot_bases=show)
         # Behavioral design matrix
         if show:
-            plt.imshow(behav_kernels[:180, :, 7])
+            bhm = sns.heatmap(behav_kernels[47:235, :, 7], cbar=False,xticklabels=False, yticklabels=False,
+                              cmap = 'Greens')
+            plt.tight_layout()
+            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', f'Xmotor_{AV.NAME}.png'), dpi = 300)
             plt.show()
+            plt.close()
 
         # TODO? [NEURON-level]
         # Spike history
@@ -353,13 +371,23 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                      ['trial'] + stim_col_names + beh_col_names)
         assert len(Xcolnames) == X.shape[1], f'Mismatch between number of column names:{len(Xcolnames)} and X columns:{X.shape[1]}'
         
-        # Full design matrix
-        if show:
-            plt.imshow(X[:180, :, 7])
-            plt.show()
         
         # 3D - trial, ts, neuron
         y = AV.baseline_correct_signal(AV.zsig)
+        
+        # Full design matrix
+        if show:
+            # plt.imshow(X[:180, :, 7])
+            f, ax = plt.subplots(ncols=2,gridspec_kw={'width_ratios': [1, 0.2]})
+            # Design matrix
+            sns.heatmap(X[47:235, :, 7], ax=ax[0], cbar=False)
+            # Target neural activity
+            ax[1].plot(y.reshape((-1, y.shape[2]))[47:235, 7], np.arange(47,235), color = 'k')
+            plt.tight_layout()
+            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', f'Xfull_{AV.NAME}.png'), dpi = 300)
+            plt.show()
+            plt.close()
+        
         # 4D - (trial, ts, neuron), session
         y = [y[:,:,start:stop]
              for start, stop in AV.session_neurons]
@@ -621,6 +649,7 @@ def rcb(n_basis:int,
     width  = width_s/dt
 
     if plot:
+        plotLags = np.arange(int(np.round(t_min/dt)), int(np.round(t_max/dt))+1, 0.01)
         fg, ax = plt.subplots()
 
     B = [] # collects cosine bases
@@ -630,10 +659,21 @@ def rcb(n_basis:int,
         phi[np.abs(x) > 1] = 0
         B.append(phi)
         if plot:
-            ax.plot(np.linspace(t_min, t_max, len(lags)), phi)
+            plotx        = (plotLags - c) / width
+            plotphi      = 0.5*(1 + np.cos(np.pi*plotx))
+            plotphi[np.abs(plotx) > 1] = 0
+
+            plotpoints = np.linspace(t_min, t_max, len(plotLags))
+            ax.plot(plotpoints, plotphi, linewidth = 3, alpha = 0.6)
+            
+            realplotpoints = plotpoints[::len(plotpoints)//len(lags)]
+            assert len(realplotpoints) == len(lags)
+            ax.plot(realplotpoints, phi, 
+                    linestyle = '--', color = 'k')
 
     if plot:
         plt.tight_layout()
+        plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', f'{n_basis}_bases({window_s} range, {width_s} s width).svg'))
         print(lags)
         plt.show() 
 
@@ -1370,22 +1410,22 @@ def explained_variance(target_trial_locked:np.ndarray,
 # ----------- Running as a script ---------------
 if __name__ == '__main__':
     # get cleaned signals
-    res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=True, 
-                              redo=True
-                              )
-    res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=True, 
-                              redo=True
-                              )
-    # if time
-    res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=True, redo = True)
-    res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=True, redo = True)
+    # res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=True, 
+    #                           redo=True
+    #                           )
+    # res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=True, 
+    #                           redo=True
+    #                           )
+    # # if time
+    # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=True, redo = True)
+    # res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=True, redo = True)
     
     gXY = design_matrix(pre_post='pre', group='both', show=False)
     EV_res = quantify_encoding_models(
         gXY=gXY, yTYPE='neuron', 
-        plot=False, 
+        plot=True, 
         EV=True,
-        rerun=True
+        rerun=False
         )
     
     
