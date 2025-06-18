@@ -5,7 +5,7 @@
 from matplotlib_venn import venn3
 from src.AUDVIS import AUDVIS, Behavior, load_in_data
 from src.Analyze import Analyze, neuron_typesVENN_analysis
-from src.analysis_utils import calc_avrg_trace, plot_avrg_trace, snake_plot
+import src.analysis_utils as anut
 from typing import Literal
 from scipy.io.matlab import loadmat
 
@@ -15,9 +15,11 @@ import matplotlib.tri as tri
 from matplotlib.colors import Normalize
 from matplotlib.cm     import ScalarMappable
 from matplotlib.patches import Polygon
+from joblib import delayed, Parallel, cpu_count
 
 from statannotations.Annotator import Annotator
 import seaborn as sns
+import seaborn.objects as so
 import skimage as ski
 import numpy as np
 import pandas as pd
@@ -106,6 +108,7 @@ class Areas:
                      values: np.ndarray | None = None, # continuous values, one per ROI
                      cmap: str | plt.Colormap = 'viridis', # any matplotlib colormap
                      colorbar: str | None = None, # colorbar label,
+                     areasalpha:float = 0.3,
                      suppressAreaColors:bool = False,
                      interpolate_vals:bool = False # only works with values
                      ):
@@ -126,7 +129,7 @@ class Areas:
             ind_colors: list[str] = ['mediumseagreen', 'coral', 'rosybrown', 'orchid']
             ind_labels = list(self.region_indices.keys())
         
-        alpha = 0.3 if not suppressAreaColors else 0
+        alpha = areasalpha if not suppressAreaColors else 0
         outlines = ski.segmentation.find_boundaries(self.overlay.astype(int), connectivity=1, mode='thick')
         # dilate outline mask (thicker)
         outlines = ndimage.binary_dilation(outlines, iterations=7)
@@ -335,15 +338,21 @@ class Areas:
         return adjM    
 
 #%%--------- Analyses by areas -------------
-# TODO: Change to account for V, A, M neurons
 def by_areas_VENN(svg:bool=False,
-                  pre_post: Literal['pre', 'post', 'both'] = 'both'):
+                  pre_post: Literal['pre', 'post', 'both'] = 'both'
+                  )->pd.DataFrame:
     AVs : tuple[AUDVIS] = load_in_data(pre_post=pre_post)
     ANs : tuple[Analyze] = [Analyze(av) for av in AVs]
     
+    proportion_df = {'Group':[], 'Area':[], 'Type':[], 
+                     'x':[], 'y':[], 'NeuronID':[]}
+    areasDict:dict[str:Areas] = {}
     for i, (AV, AN) in enumerate(zip(AVs, ANs)):
+        g = 'DR' if 'g1' in AV.NAME else 'NR'
+        gname = AV.NAME.replace(AV.NAME[:2], g)
         responsive_all_areas = AN.TT_RES[-1]
         AR : Areas = Areas(AV)
+        areasDict[gname] = AR
          # venn diagram figure
         VennRegfig, VennRegaxs = plt.subplots(nrows = 1, ncols = 4, figsize = (16, 4))
         for iarea, (area_name, area_ax) in enumerate(zip(AR.region_indices, VennRegaxs.flatten())):
@@ -352,6 +361,24 @@ def by_areas_VENN(svg:bool=False,
             # now ready to group neurons based on responsiveness
             neuron_groups_this_area = AN.neuron_groups(responsive_this_area)
             
+            for nt in ['VIS', 'AUD', 'MST']:
+                neurtype = nt[0]
+                # neuron type indices in this area
+                ntindices = neuron_groups_this_area[nt]
+                nneur = len(ntindices)
+
+                # neuron specific
+                # x axis is medio-lateral 0 is medial, max is lateral
+                proportion_df['x'] += AR.dfROI.ABAx.iloc[ntindices].tolist()
+                # y axis is rostro-causal 0 is caudal, max is rostral
+                proportion_df['y'] += AR.dfROI.ABAy.iloc[ntindices].tolist()
+
+                proportion_df['Group'] += [gname] * nneur
+                proportion_df['Area'] += [area_name] * nneur
+                proportion_df['Type'] += [neurtype] * nneur
+
+                proportion_df['NeuronID'] += ntindices.tolist()
+
             # prep for venn diagram
             plot_args = neuron_groups_this_area['diagram_setup']
             total_responsive_this_area = len(neuron_groups_this_area['TOTAL'])
@@ -363,11 +390,37 @@ def by_areas_VENN(svg:bool=False,
         VennRegfig.suptitle(f'{AV.NAME}')
         VennRegfig.tight_layout()
         if not svg:
-            VennRegfig.savefig(f'{AV.NAME}_VennDiagramAREAS.png', dpi = 300)
+            VennRegfig.savefig(os.path.join(PLOTSDIR, f'{AV.NAME}_VennDiagramAREAS.png'), 
+                               dpi = 300)
         else:
-            VennRegfig.savefig(f'{AV.NAME}_VennDiagramAREAS.svg')
+            VennRegfig.savefig(os.path.join(PLOTSDIR, f'{AV.NAME}_VennDiagramAREAS.svg'))
         plt.close()
     print('Done with venn diagrams!')
+
+    propDF = pd.DataFrame(proportion_df)
+    counts = (propDF
+              .groupby(['Group', 'Area', 'Type'])
+              .size()
+              .reset_index(name="n"))
+    
+    counts["Proportion"] = ( counts
+                    .groupby(["Group","Area"])["n"]
+                    .transform(lambda x: x / x.sum()) )
+    
+    prop = (
+        so.Plot(counts, x = 'Group', y = 'Proportion', color = 'Type')
+        .facet('Area', order = ['V1', 'AM/PM', 'A/RL/AL', 'LM'])
+        .add(so.Bars(), so.Stack())
+        .scale(color = {'V':'dodgerblue', 'A':'red', 'M':'goldenrod'})
+    )
+    plot = prop.plot(pyplot=True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(PLOTSDIR, 'neuron_groupsAREAS.svg'))
+    plt.close()
+    print('Done with neuron groups proportion plots diagrams!')
+
+    # control counts
+    return propDF, areasDict
 
 
 def by_areas_TSPLOT(GROUP_type:Literal['modulated', 
@@ -495,7 +548,7 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                 # different Trial Types for each of which we want a separate subplot in each figure
                 COL = colors[group][icond] if GROUP_type != 'TOTAL' else colors[area_name][icond]
                 for itt, (avr, sem) in enumerate(TT_info):
-                    plot_avrg_trace(time = AN.time, avrg=avr, SEM = sem, 
+                    anut.plot_avrg_trace(time = AN.time, avrg=avr, SEM = sem, 
                                     Axis=ts_ax[ig, itt] if GROUP_type != 'TOTAL' else ts_ax[iarea, itt],
                                     title = trials[itt] if (
                                         ig == 0 if GROUP_type != 'TOTAL' else iarea == 0) else False,
@@ -517,14 +570,14 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                             ts_ax[iarea, itt].tick_params(axis='y', left=False, labelleft=False, right=False)
 
                     if add_CASCADE:
-                        plot_avrg_trace(time = AN.time, avrg=CASCADE_TT_info[itt][0], SEM = None, 
+                        anut.plot_avrg_trace(time = AN.time, avrg=CASCADE_TT_info[itt][0], SEM = None, 
                                         Axis=ts_ax[ig, itt] if GROUP_type != 'TOTAL' else ts_ax[iarea, itt],
                                         label = 'Est. FR' if itt == len(list(TT_info)) - 1 else None, 
                                         col = COL, lnstl=linestyles[icond], alph=.5, vspan=False)
                         
                     # Add snake plot - of already the significant neurons in the region
                     if GROUP_type == 'all' or GROUP_type == 'TOTAL':
-                        snake_plot(ind_neuron_traces[itt], 
+                        anut.snake_plot(ind_neuron_traces[itt], 
                                 stats = ind_neuron_pvals[itt],
                                 trial_window_frames=AV.TRIAL, 
                                 time=AN.time,
@@ -615,14 +668,11 @@ def Quantification(df: pd.DataFrame,
             'A/RL/AL':{'g1pre':'saddlebrown', 'g2pre':'rosybrown'},
             'LM':{'g1pre':'darkmagenta', 'g2pre':'orchid'}}
     
-    # TODO:
-    import statsmodels.formula.api as smf
-    # smf.ols()
-    
     for ar, arDF in df_long.groupby('BRAIN_AREA'):
         bp = sns.catplot(arDF, x = 'TT', y='F', hue = 'Group', 
                     kind = 'violin', split = True,
                     inner = 'quart', palette=colors[ar], legend=False)
+        
         ax = bp.ax
         fg = bp.figure
         hue_order = arDF['Group'].unique().tolist()       # e.g. ['g1pre','g2pre']
@@ -691,30 +741,218 @@ def recordedNeurons(pre_post: Literal['pre', 'post', 'both'] = 'pre',
 
     for av, ar in zip(AVs, ARs):
         AN = Analyze(av)
-        # Responsive
-        Total_RESP = AN.NEURON_groups['TOTAL']
-        Total_RESP_color = 'gold'
         # not responsive
-        Total_NOT_RESP = np.where(~np.isin(np.arange(AN.sess_neur[-1][-1]), Total_RESP))[0]
+        Total_NOT_RESP = np.where(~np.isin(np.arange(AN.sess_neur[-1][-1]), AN.NEURON_groups['TOTAL']))[0]
         Total_NOT_RESP_color = 'dimgray'
         
         ar.show_neurons(title=av.NAME, 
-                        indices=[Total_NOT_RESP, Total_RESP], 
-                        ind_colors=[Total_NOT_RESP_color], ind_labels=['Unresponsive'], svg=svg,
+                        indices=[AN.NEURON_groups['VIS'], AN.NEURON_groups['AUD'], AN.NEURON_groups['MST'], Total_NOT_RESP], 
+                        ind_colors=['dodgerblue', 'red', 'goldenrod', Total_NOT_RESP_color], 
+                        ind_labels=['V', 'A', 'M', 'Unresponsive'], 
+                        svg=svg,
+                        areasalpha=0.1,
+                        ZOOM=False,
                         CONTOURS=True)
+
+class Architecture:
+    def __init__(self,
+                 df:pd.DataFrame,
+                 ARdict:dict[str:Areas]):
+        self.df = df
+        self.areas = ARdict
+
+        # normalize within each area to 0-1
+        self.df = self.normalizeXY()
+    
+    def normalizeXY(self)->pd.DataFrame:
+        '''
+        Normalizes x, y across areas and groups
+        '''
+        # for x traditional min-max is fine (0: medial, 1:lateral)
+        self.df['Medio-Lateral'] = (self.df['x'] - self.df['x'].min()
+                                    ) / (self.df['x'].max() - self.df['x'].min())
+        
+        # for y, need to flip the 1 - (min-max); max - x / max - min to get (0: caudal, 1: rostral)
+        self.df['Caudo-Rostral'] = (self.df['y'].max() - self.df['y']
+                                    ) / (self.df['y'].max() - self.df['y'].min())
+        return self.df
+    
+    def spatial_distribution(self):
+        '''
+        Makes sense to compare WITHIN group and INTERACTION effects Group x Type
+        NOT absolute positions between groups
+        '''
+        ml = sns.catplot(data = self.df, y = 'Type', x = 'Medio-Lateral', hue = 'Group',
+                         kind = 'box', showfliers = False)
+        plt.savefig(os.path.join(PLOTSDIR, 'mediolateral.svg'))
+        plt.close()
+
+        # Control - the overall ML
+        controlml = sns.catplot(data = self.df, y = 'Group', x = 'Medio-Lateral',
+                                kind = 'box', showfliers = False)
+        plt.savefig(os.path.join(PLOTSDIR, 'CONTROLmediolateral.svg'))
+        plt.close()
+
+        rc = sns.catplot(data = self.df, x = 'Type', y = 'Caudo-Rostral', hue = 'Group',
+                         kind = 'box', showfliers = False)
+        plt.savefig(os.path.join(PLOTSDIR, 'rostrocaudal.svg'))
+        plt.close()
+
+        # Control - the overall RC
+        controlrc = sns.catplot(data = self.df, x = 'Group', y = 'Caudo-Rostral',
+                                kind = 'box', showfliers = False)
+        plt.savefig(os.path.join(PLOTSDIR, 'CONTROLrostrocaudal.svg'))
+        plt.close()
+    
+    def neighbors(self):
+        neighborDFs = []
+        for g in self.df.Group.unique():
+            groupDF = self.df.loc[self.df['Group'] == g,:]
+            groupAR = self.areas[g]            
+            # neighbor identity and distance analysis
+            nbDF = neighbor_analysis(groupDF, groupAR)
+            NULLRES = null_distributions(groupDF, groupAR, niter=1000)
+            neighborDFs.append(nbDF)
+        
+        # for probability of nearest neighbor analyses
+        DF = pd.concat(neighborDFs,ignore_index=True)
+        # for distance to nearest neighbor of given type analysis
+        DISTDF = pd.melt(DF, id_vars=['Group', 'Area', 'Type', 'NeuronID'], 
+                        value_vars=['Vneighbor','Aneighbor','Mneighbor'],
+                        var_name='NNtype', value_name='Distance')
+        
+        ## PROBABILITY of being Nearest Neighbor
+        # everything per-area
+        anut.catplot_proportions(DF = DF,
+                                countgroupby=['Group', 'Type', 'Area', 'NeighborTYPE'],
+                                propgroupby=['Group', 'Type', 'Area'],
+                                row = 'Type', col = 'Area',
+                                x = 'NeighborTYPE',
+                                hue = 'Group',
+                                col_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                                row_order=['V','A','M'],
+                                order=['V','A','M'],
+                                show=False,
+                                plotname='byAreaNeighbors')
+
+        # overall across areas together
+        anut.catplot_proportions(DF = DF,
+                                countgroupby=['Group', 'Type', 'NeighborTYPE'],
+                                propgroupby=['Group', 'Type'],
+                                row = 'Type', 
+                                x = 'NeighborTYPE',
+                                hue = 'Group',
+                                row_order=['V','A','M'],
+                                order=['V','A','M'],
+                                show=False,
+                                plotname='overallNeighbors')
+        
+        ## DISTANCE to closest neighbor of different TYPES
+        # per area
+        perarea = sns.catplot(data = DISTDF, x = 'NNtype', y = 'Distance',
+                    row = 'Type', col = 'Area', hue='Group',
+                    kind='point', dodge = True,
+                    row_order=['V','A','M'], order=['Vneighbor','Aneighbor','Mneighbor'],
+                    col_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'])
+        plt.savefig(os.path.join(PLOTSDIR, 'byAreaNNdistance.svg'))
+        plt.close()
+
+        # overall across visual cortex
+        overall_dist = sns.catplot(data = DISTDF, x = 'NNtype', y = 'Distance',
+                    row = 'Type', hue='Group',
+                    kind='point', dodge = True,
+                    row_order=['V','A','M'], order=['Vneighbor','Aneighbor','Mneighbor'])
+        plt.savefig(os.path.join(PLOTSDIR, 'overallNNdistance.svg'))
+        plt.close()
+
+        ## K-NN (also interesting)
+
+
+def neighbor_analysis(groupDF:pd.DataFrame, groupAR:Areas):
+    '''
+    Nearest neighbor analysis and distance to nearest neighbor analysis
+    '''
+    signeurons:list = groupDF.NeuronID.tolist()
+    sigV = groupDF.loc[groupDF['Type'] == 'V', 'NeuronID'].to_list()
+    sigA = groupDF.loc[groupDF['Type'] == 'A', 'NeuronID'].to_list()
+    sigM = groupDF.loc[groupDF['Type'] == 'M', 'NeuronID'].to_list()
+    
+    # adjacency matrix with pairwise distances
+    adj:np.ndarray = groupAR.adjacencyMATRIX()
+    # set main diagonal (distance to oneself is 0) to high number
+    adj += np.eye(*adj.shape) * 2 * adj.max()
+    
+    # set all nonsignificant neurons to high number
+    nonsigneurons = np.isin(np.arange(adj.shape[0]), signeurons , invert=True)
+    adj[:, nonsigneurons] = np.full((adj.shape[0], nonsigneurons.sum()), 2 * adj.max())
+    signeurontypes = np.full(adj.shape[0], 'n', dtype=str)
+    # 'n' is nonsignificant
+    signeurontypes[signeurons] = groupDF.Type.to_numpy(dtype=str)
+
+    # get the nearest neighbor index
+    nearest_neighbor = np.argmin(adj, axis = 1)
+    nearest_neighbor_dist = np.min(adj, axis = 1)
+    
+    nearest_V_neighbor_dist = np.min(adj[:, sigV], axis = 1)
+    nearest_A_neighbor_dist = np.min(adj[:, sigA], axis = 1)
+    nearest_M_neighbor_dist = np.min(adj[:, sigM], axis = 1)
+
+    # get labels for nearest neighbors for significantly responding neurons
+    nnforsigneurons = nearest_neighbor[signeurons]
+    # nearest neighbor types
+    nntype = signeurontypes[nnforsigneurons]
+
+
+    groupDF['NeighborTYPE'] = nntype
+    groupDF['NeighborDIST'] = nearest_neighbor_dist[signeurons]
+    groupDF['Vneighbor'] = nearest_V_neighbor_dist[signeurons]
+    groupDF['Aneighbor'] = nearest_A_neighbor_dist[signeurons]
+    groupDF['Mneighbor'] = nearest_M_neighbor_dist[signeurons]
+
+    return groupDF
+
+def null_distributions(gDF:pd.DataFrame, gAR:Areas, niter:int = 10000):
+    cpus = cpu_count()
+    # shuffle niter times
+    res = Parallel(n_jobs=cpus, backend='threading')(delayed(null_dist_worker)(gDF, gAR, i) for i in range(niter))
+
+def null_dist_worker(gDF:pd.DataFrame, gAR:Areas, iter:int):
+    if iter % 20 == 0:
+        print(iter)
+    neur_types = gDF.Type.to_numpy()
+    np.random.shuffle(neur_types)
+    DF = neighbor_analysis(gDF, gAR)
+    DISTDF = pd.melt(DF, id_vars=['Group', 'Area', 'Type', 'NeuronID'], 
+                        value_vars=['Vneighbor','Aneighbor','Mneighbor'],
+                        var_name='NNtype', value_name='Distance')
+    props = anut.get_proportionsDF(DF, 
+                                   countgroupby=['Group', 'Type', 'Area', 'NeighborTYPE'],
+                                   propgroupby=['Group', 'Type', 'Area'])
+    
+    dists = anut.get_distancesDF(DISTDF, groupbyVAR='NNtype', valueVAR='Distance')
+
+    return props, dists
+
 
 if __name__ == '__main__':
     ### Venn diagram of neuron classes in in the 4 different regions
-    by_areas_VENN(svg=False, pre_post='pre')
+    NGDF, ARdict = by_areas_VENN(svg=True, pre_post='pre')
+
+    # Architecture analysis
+    Arch = Architecture(NGDF, ARdict)
+    # Arch.spatial_distribution()
+    Arch.neighbors()
 
     ### Timeseries plots for neurons from different regions
-    by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=False)
+    # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=False)
     # by_areas_TSPLOT(GROUP_type = 'modality_specific', add_CASCADE=False)
-    by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=False)
+    
+    # this is the one that makes sense for V /A /M neuron groups
+    # by_areas_TSPLOT(GROUP_type = 'all', add_CASCADE=False)
 
     ### TOTAL timeseries plot and quantification
-    QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
-    Quantification(QuantDF, svg=False)
+    # QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
+    # Quantification(QuantDF, svg=False)
 
-    # Recorded neurons plot
-    recordedNeurons(svg=True)
+    # # Recorded neurons plot
+    # recordedNeurons(svg=False)

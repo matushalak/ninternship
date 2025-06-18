@@ -213,7 +213,7 @@ class Analyze:
                 responsive =  where((neurons[:,0] < p_criterion) & (EXC_thresh | INH_thresh))[0] 
                 return responsive, neurons
 
-
+    # TODO: CHANGE!
     @staticmethod
     def neuron_groups(responsive:list[ndarray]) -> dict[str : np.ndarray]:
         '''
@@ -237,15 +237,20 @@ class Analyze:
         VIS_modulated = np.setdiff1d(np.intersect1d(VIS_set, MST_set), AUD_set) 
         AUD_modulated = np.setdiff1d(np.intersect1d(AUD_set, MST_set), VIS_set)
 
-        # TODO: potentially add congruent / incongruent distinction
-        return {'VIS':VIS_set,
+        # Unimodal
+        VIS_only = np.setdiff1d(VIS_set, np.union1d(MST_set, AUD_set))
+        AUD_only = np.setdiff1d(AUD_set, np.union1d(MST_set, VIS_set))
+        MST_only = np.setdiff1d(MST_set, np.union1d(VIS_set, AUD_set))
+
+        # Neuron categories under VIS, AUD, MST
+        return {'VIS':np.union1d(VIS_only, VIS_modulated),
                 'VIS_modulated':VIS_modulated,
-                'VIS_only': np.setdiff1d(VIS_set, np.union1d(MST_set, AUD_set)),
-                'AUD':AUD_set,
+                'VIS_only': VIS_only,
+                'AUD':np.union1d(AUD_only, AUD_modulated),
                 'AUD_modulated':AUD_modulated,
-                'AUD_only':np.setdiff1d(AUD_set, np.union1d(MST_set, VIS_set)),
-                'MST':MST_set,
-                'MST_only': np.setdiff1d(MST_set, np.union1d(AUD_set, VIS_set)),
+                'AUD_only':AUD_only,
+                'MST':np.union1d(MST_only, ALWAYS_responding),
+                'MST_only': MST_only,
                 'ALWAYS_responding' : ALWAYS_responding,
                 'TOTAL': reduce(np.union1d, (MST_set, AUD_set, VIS_set)),
                 'diagram_setup' : [(set(VIS_set), set(AUD_set), set(MST_set)), ('VIS', 'AUD', 'MST'), ('dodgerblue', 'r', 'goldenrod')]}

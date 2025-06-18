@@ -307,7 +307,7 @@ class EvAnalysis:
         bp.figure.legend()
         bp.figure.suptitle(f'EV comparison [EV on {dataset} {calc} data for {tt} trials]')
         plt.tight_layout()
-        plt.savefig(f'EV_region_group_comparison_{calc}_{dataset}_TT({tt}).svg', 
+        plt.savefig(os.path.join(self.saveDIR, f'EV_region_group_comparison_{calc}_{dataset}_TT({tt}).svg'), 
                     # dpi = 300
                     )
         plt.show()
@@ -337,13 +337,13 @@ class EvAnalysis:
         # 1) count
         # wideprop = wide.loc[wide['STATLabel'] != 'Nonsignificant']
         counts = ( wide
-                .groupby(["Region","group_id","STATLabel"])
+                .groupby(["group_id","Region", "STATLabel"])
                 .size()
                 .reset_index(name="n") )
 
         # 2) fraction within each Region × group_id
         counts["prop"] = ( counts
-                        .groupby(["Region","group_id"])["n"]
+                        .groupby(["group_id", "Region"])["n"]
                         .transform(lambda x: x / x.sum()) )
 
         # 3) plot
@@ -387,7 +387,7 @@ class EvAnalysis:
                 plt.show()
 
     def cluster_neurons(self):
-        skClust.KMeans()
+        raise NotImplementedError
 
     
     def well_modelled(self, 
@@ -517,10 +517,10 @@ if __name__ == '__main__':
     # for AV trials (that's where all 3 components can come through)
     # TODO: separately for running / whisker / pupil
     # main
-    # EVa.preditor_comparison(tt='AV', calc='averaged', dataset='held_out')
+    EVa.preditor_comparison(tt='AV', calc='averaged', dataset='held_out')
     # supplementary
-    # EVa.preditor_comparison(tt='V', calc='averaged', dataset='held_out')
-    # EVa.preditor_comparison(tt='A', calc='averaged', dataset='held_out')
+    EVa.preditor_comparison(tt='V', calc='averaged', dataset='held_out')
+    EVa.preditor_comparison(tt='A', calc='averaged', dataset='held_out')
     # EVa.preditor_comparison(tt = 'AV', calc='trial', dataset='held_out')
 
     # Analysis 2) Distribution of neurons based on explained variance
@@ -531,7 +531,7 @@ if __name__ == '__main__':
     # average_clean_plot(AVs=AVs, well_modelled_neurons=EVa.well_modelled(calc='averaged'), savedir=EVa.saveDIR)
 
     # Plot
-    driveQuantPlot(savedir=EVa.saveDIR)
+    # driveQuantPlot(savedir=EVa.saveDIR)
     
 
     

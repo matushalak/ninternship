@@ -3,13 +3,84 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from pandas import DataFrame
 from scipy.stats import sem, norm, _result_classes
 from matplotlib import artist
 from collections import defaultdict
-from typing import Literal
+from typing import Literal, Iterable
+import os
 
+from src import PYDATA, PLOTSDIR
 
 ###-------------------------------- GENERAL Helper functions --------------------------------
+def get_proportionsDF(nbDF:DataFrame,
+                      countgroupby:list[str],
+                      propgroupby:list[str],)->DataFrame:
+    # 1. Compute raw counts per countgroupby variable combination block
+    counts = (
+        nbDF
+        .groupby(countgroupby)
+        .size()
+        .reset_index(name='count')
+    )
+
+    # 2. Turn counts into probabilities *within* each (propgroupby) block
+    counts['prob'] = (
+        counts
+        .groupby(propgroupby)['count']
+        .transform(lambda x: x / x.sum())
+    )
+    return counts
+
+def get_distancesDF(distDF:DataFrame,
+                    groupbyVAR:str, valueVAR:str):
+    dist = (distDF
+            .groupby([groupbyVAR])[valueVAR]
+            .mean()
+            .reset_index(name='mean_dist'))
+    return dist
+
+def catplot_proportions(DF:DataFrame, 
+                        countgroupby:list[str],
+                        propgroupby:list[str],
+                        plotname:str = 'catplot',
+                        svg:bool = False,
+                        show:bool = False,
+                        x: str | None = None,
+                        hue: str | None = None,
+                        row: str | None = None,
+                        col: str | None = None,
+                        kind: Literal['strip', 'swarm', 'box', 'violin', 
+                                      'boxen', 'point', 'bar', 'count'] = "point",
+                        estimator: str = "mean",
+                        order: Iterable[str] | None = None,
+                        hue_order: Iterable[str] | None = None,
+                        row_order: Iterable[str] | None = None,
+                        col_order: Iterable[str] | None = None,):
+    savedir = os.path.join(PLOTSDIR, plotname)
+    
+    counts = get_proportionsDF(DF, countgroupby, propgroupby)
+
+    # 3. Draw a bar plot of those probs
+    g = sns.catplot(
+        data = counts,
+        row =row, col = col,
+        x=x, y='prob',
+        hue=hue, hue_order=hue_order,
+        kind=kind,
+        estimator=estimator,
+        order=order, row_order=row_order, col_order=col_order,
+        dodge = True
+    )
+    g.set_axis_labels(x,"Probability")
+    g.set(ylim=(0,1))
+
+    extension = '.png' if not svg else '.svg'
+    plt.savefig(savedir+extension, dpi = 300 if not svg else 'figure')
+    if show:
+        plt.show()
+    plt.close()
+
 # for baseline - distribution not necessary
 def tt_fluoro_func(sig:np.ndarray,
                    fluoro_kwargs:dict,
