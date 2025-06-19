@@ -807,14 +807,22 @@ class Architecture:
     
     def neighbors(self):
         neighborDFs = []
+        nullAreas = []
+        nullOverall = []
+
         for g in self.df.Group.unique():
             groupDF = self.df.loc[self.df['Group'] == g,:].copy()
             groupAR:Areas = self.areas[g]   
             adjacencyMatrix = groupAR.adjacencyMATRIX() # pairwise distances of all recorded neurons
             # neighbor identity and distance analysis
             nbDF = neighbor_analysis(groupDF, adjacencyMatrix)
-            NULLRES = null_distributions(groupDF, adjacencyMatrix, niter=1000)
+            NULLdistAreas = null_distributions(groupDF.copy(), adjacencyMatrix, perArea=True, 
+                                               niter=10000)
+            NULLdistOverall = null_distributions(groupDF.copy(), adjacencyMatrix, perArea=False, 
+                                               niter=10000)
             neighborDFs.append(nbDF)
+            nullAreas.append(NULLdistAreas)
+            nullOverall.append(NULLdistOverall)
         
         # for probability of nearest neighbor analyses
         DF = pd.concat(neighborDFs,ignore_index=True)
@@ -823,9 +831,13 @@ class Architecture:
                         value_vars=['Vneighbor','Aneighbor','Mneighbor'],
                         var_name='NNtype', value_name='Distance')
         
+        NULLareas = pd.concat(nullAreas, ignore_index=True)
+        NULLoverall = pd.concat(nullOverall, ignore_index=True)
+        
         ## PROBABILITY of being Nearest Neighbor
         # everything per-area
         anut.catplot_proportions(DF = DF,
+                                 NULLDF=NULLareas,
                                 countgroupby=['Group', 'Type', 'Area', 'NeighborTYPE'],
                                 propgroupby=['Group', 'Type', 'Area'],
                                 row = 'Type', col = 'Area',
@@ -839,6 +851,7 @@ class Architecture:
 
         # overall across areas together
         anut.catplot_proportions(DF = DF,
+                                 NULLDF=NULLoverall,
                                 countgroupby=['Group', 'Type', 'NeighborTYPE'],
                                 propgroupby=['Group', 'Type'],
                                 row = 'Type', 
@@ -851,21 +864,23 @@ class Architecture:
         
         ## DISTANCE to closest neighbor of different TYPES
         # per area
-        perarea = sns.catplot(data = DISTDF, x = 'NNtype', y = 'Distance',
-                    row = 'Type', col = 'Area', hue='Group',
-                    kind='point', dodge = True,
-                    row_order=['V','A','M'], order=['Vneighbor','Aneighbor','Mneighbor'],
-                    col_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'])
-        plt.savefig(os.path.join(PLOTSDIR, 'byAreaNNdistance.svg'))
-        plt.close()
+        anut.catplot_distanc(DF = DISTDF,
+                             NULLDF=NULLareas,
+                             plotname='byAreaDistances',
+                             x =  'NeighborTYPE', y = 'Distance',
+                             hue = 'Group', row = 'Type', col = 'Area',
+                             row_order=['V','A','M'], order=['V','A','M'],
+                             col_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                             )
 
         # overall across visual cortex
-        overall_dist = sns.catplot(data = DISTDF, x = 'NNtype', y = 'Distance',
-                    row = 'Type', hue='Group',
-                    kind='point', dodge = True,
-                    row_order=['V','A','M'], order=['Vneighbor','Aneighbor','Mneighbor'])
-        plt.savefig(os.path.join(PLOTSDIR, 'overallNNdistance.svg'))
-        plt.close()
+        anut.catplot_distanc(DF = DISTDF,
+                             NULLDF=NULLoverall,
+                             plotname='overallDistances',
+                             x =  'NeighborTYPE', y = 'Distance',
+                             hue = 'Group', row = 'Type',
+                             row_order=['V','A','M'], order=['V','A','M'],
+                             )
 
         ## K-NN (also interesting)
 
@@ -913,27 +928,36 @@ def neighbor_analysis(groupDF:pd.DataFrame, adj:np.ndarray):
 
 def null_distributions(gDF:pd.DataFrame, adj:np.ndarray, 
                        perArea:bool = True,
-                       niter:int = 1000):
+                       niter:int = 10000
+                       )->pd.DataFrame:
+    assert len(gDF.Group.unique()) == 1
+    if os.path.exists(nulldistpath := os.path.join(PYDATA, 
+                                                   f'{gDF.Group.unique()}_neighbornull_area{perArea}.csv')):
+        return pd.read_csv(nulldistpath, index_col=0)
+    
     cpus = cpu_count()
     # shuffle niter times
     # parallel (fast)
-    # res = Parallel(n_jobs=cpus, backend='threading')(delayed(null_dist_worker)(gDF, adj, perArea) 
-    #                                                  for _ in tqdm(range(niter)))
+    res = Parallel(n_jobs=cpus, backend='threading')(delayed(null_dist_worker)(gDF.copy(), adj.copy(), perArea) 
+                                                     for _ in tqdm(range(niter)))
     # single-core (debugging)
-    res = [null_dist_worker(gDF, adj, perArea) for _ in range(niter)]
-    breakpoint()
+    # res = [null_dist_worker(gDF, adj, perArea) for _ in range(niter)]
+    NULLdist:pd.DataFrame = pd.concat(res, ignore_index=True)
+    NULLdist.to_csv(os.path.join(PYDATA, f'{gDF.Group.unique()}_neighbornull_area{perArea}.csv'))
+
+    return NULLdist
 
 def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool):
     ''''
     shuffle the labels to create null distribution
     '''
-    gDF = gDF.copy()
+    nullgDF = gDF.copy()
     if not perArea:
-        gDF.loc[:,'Type'] = gDF['Type'].sample(frac=1).to_numpy()
+        nullgDF.loc[:,'Type'] = nullgDF['Type'].sample(frac=1).to_numpy()
     else:
-       gDF.loc[:,'Type'] = gDF.groupby(['Area'])['Type'].sample(frac = 1).to_numpy()
+       nullgDF.loc[:,'Type'] = nullgDF.groupby(['Area'])['Type'].sample(frac = 1).to_numpy()
 
-    DF = neighbor_analysis(gDF, adj)
+    DF = neighbor_analysis(nullgDF, adj)
     DISTDF = pd.melt(DF, id_vars=['Group', 'Area', 'Type', 'NeuronID'], 
                         value_vars=['Vneighbor','Aneighbor','Mneighbor'],
                         var_name='NNtype', value_name='Distance')
@@ -955,7 +979,6 @@ def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool):
     dists.loc[:, 'NeighborTYPE'] = dists['NNtype'].transform(lambda x : x[0])
     dists['NeighborTYPE'] = dists['NeighborTYPE'].astype(str)
     dists.drop(columns = ['NNtype'], inplace=True)
-    breakpoint()
     out  = pd.merge(props, dists)
     return out
 

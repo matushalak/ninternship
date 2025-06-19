@@ -3,11 +3,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from pandas import DataFrame
+from pandas import DataFrame, Categorical
+import pandas as pd
 from scipy.stats import sem, norm, _result_classes
 from matplotlib import artist
 from collections import defaultdict
-from typing import Literal, Iterable
+from typing import Literal, Iterable, Callable
 import os
 
 from src import PYDATA, PLOTSDIR
@@ -16,15 +17,21 @@ from src import PYDATA, PLOTSDIR
 def get_proportionsDF(nbDF:DataFrame,
                       countgroupby:list[str],
                       propgroupby:list[str],)->DataFrame:
-    # 1. Compute raw counts per countgroupby variable combination block
+    # 0) force all three neighbor‐types to appear
+    nbDF = nbDF.copy()
+    nbDF['NeighborTYPE'] = Categorical(
+        nbDF['NeighborTYPE'],
+        categories=['V','A','M'],
+        ordered=False
+    )
+    # 1) count
     counts = (
         nbDF
-        .groupby(countgroupby)
+        .groupby(countgroupby, observed=True)
         .size()
         .reset_index(name='count')
     )
-
-    # 2. Turn counts into probabilities *within* each (propgroupby) block
+    # 2) within‐block normalization
     counts['prob'] = (
         counts
         .groupby(propgroupby)['count']
@@ -40,11 +47,16 @@ def get_distancesDF(distDF:DataFrame,
             .reset_index(name='mean_dist'))
     return dist
 
+def local_plotter(data:DataFrame, plot_func:Callable, whichframe:str, 
+                      **kwargs):
+        plot_func(data = data.loc[data['frame']==whichframe,:], **kwargs)
+
 def catplot_proportions(DF:DataFrame, 
                         countgroupby:list[str],
                         propgroupby:list[str],
+                        NULLDF:DataFrame | None = None,
                         plotname:str = 'catplot',
-                        svg:bool = False,
+                        svg:bool = True,
                         show:bool = False,
                         x: str | None = None,
                         hue: str | None = None,
@@ -60,20 +72,103 @@ def catplot_proportions(DF:DataFrame,
     savedir = os.path.join(PLOTSDIR, plotname)
     
     counts = get_proportionsDF(DF, countgroupby, propgroupby)
+    null = NULLDF.drop(columns=['mean_dist']).copy()
 
+    data = pd.concat([counts.assign(frame = 'counts'),
+                      null.assign(frame = 'null')], ignore_index=True)
+    
+    g = sns.FacetGrid(data, row = row, col = col, 
+                      row_order=row_order, col_order=col_order)
+
+    if NULLDF is not None:
+        g.map_dataframe(local_plotter,
+                        plot_func = sns.pointplot,
+                        whichframe = 'null',
+                        x = x, y = 'prob',
+                        palette='dark:#1f77b4',
+                        hue = hue,
+                        errorbar = 'pi', # percentile interval (2.5 - 97.5)
+                        capsize = .3,
+                        dodge = 0.3,
+                        marker = "", linestyle = "none",
+                        order = order)
+        
     # 3. Draw a bar plot of those probs
-    g = sns.catplot(
-        data = counts,
-        row =row, col = col,
-        x=x, y='prob',
-        hue=hue, hue_order=hue_order,
-        kind=kind,
-        estimator=estimator,
-        order=order, row_order=row_order, col_order=col_order,
-        dodge = True
-    )
+    g.map_dataframe(local_plotter,
+                    plot_func = sns.pointplot,
+                    whichframe = 'counts',
+                    x =x, y = 'prob',
+                    palette='dark:#1f77b4',
+                    hue = hue,
+                    dodge = 0.3,
+                    order = order)
+    
     g.set_axis_labels(x,"Probability")
-    g.set(ylim=(0,1))
+    g.add_legend()
+    g.set(ylim=(-0.2,1))
+
+    extension = '.png' if not svg else '.svg'
+    plt.savefig(savedir+extension, dpi = 300 if not svg else 'figure')
+    if show:
+        plt.show()
+    plt.close()
+
+# TODO: combine into one function with above
+def catplot_distanc(DF:DataFrame, 
+                    NULLDF:DataFrame | None = None,
+                    plotname:str = 'catplotDIST',
+                    svg:bool = True,
+                    show:bool = False,
+                    x: str | None = None,
+                    y: str | None = None,
+                    hue: str | None = None,
+                    row: str | None = None,
+                    col: str | None = None,
+                    kind: Literal['strip', 'swarm', 'box', 'violin', 
+                                    'boxen', 'point', 'bar', 'count'] = "point",
+                    estimator: str = "mean",
+                    order: Iterable[str] | None = None,
+                    hue_order: Iterable[str] | None = None,
+                    row_order: Iterable[str] | None = None,
+                    col_order: Iterable[str] | None = None):
+    savedir = os.path.join(PLOTSDIR, plotname)
+    null = NULLDF.drop(columns=['prob', 'count']).copy()
+    null.rename(columns={'mean_dist':'Distance'}, inplace=True)
+    
+    dist = DF.drop(columns=['NeuronID']).copy()
+    dist.loc[:, 'NeighborTYPE'] = dist['NNtype'].transform(lambda x: x[0]).to_numpy().astype(str)
+    dist.drop(columns=['NNtype'], inplace=True)
+
+    data = pd.concat([dist.assign(frame = 'dist'),
+                      null.assign(frame = 'null')], ignore_index=True)
+    
+    g = sns.FacetGrid(data, row = row, col = col, 
+                      row_order=row_order, col_order=col_order)
+
+    if NULLDF is not None:
+        g.map_dataframe(local_plotter,
+                        plot_func = sns.pointplot,
+                        whichframe = 'null',
+                        x = x, y = y,
+                        palette='dark:#1f77b4',
+                        hue = hue,
+                        errorbar = 'pi', # percentile interval (2.5 - 97.5)
+                        capsize = .3,
+                        dodge = 0.3,
+                        marker = "", linestyle = "none",
+                        order = order)
+        
+    # 3. Draw a bar plot of those probs
+    g.map_dataframe(local_plotter,
+                    plot_func = sns.pointplot,
+                    whichframe = 'dist',
+                    x =x, y = y,
+                    palette='dark:#1f77b4',
+                    hue = hue,
+                    dodge = 0.3,
+                    order = order)
+    
+    g.add_legend()
 
     extension = '.png' if not svg else '.svg'
     plt.savefig(savedir+extension, dpi = 300 if not svg else 'figure')
