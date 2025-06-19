@@ -8,6 +8,7 @@ from src.Analyze import Analyze, neuron_typesVENN_analysis
 import src.analysis_utils as anut
 from typing import Literal
 from scipy.io.matlab import loadmat
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 from matplotlib import artist, colors
@@ -807,11 +808,12 @@ class Architecture:
     def neighbors(self):
         neighborDFs = []
         for g in self.df.Group.unique():
-            groupDF = self.df.loc[self.df['Group'] == g,:]
-            groupAR = self.areas[g]            
+            groupDF = self.df.loc[self.df['Group'] == g,:].copy()
+            groupAR:Areas = self.areas[g]   
+            adjacencyMatrix = groupAR.adjacencyMATRIX() # pairwise distances of all recorded neurons
             # neighbor identity and distance analysis
-            nbDF = neighbor_analysis(groupDF, groupAR)
-            NULLRES = null_distributions(groupDF, groupAR, niter=1000)
+            nbDF = neighbor_analysis(groupDF, adjacencyMatrix)
+            NULLRES = null_distributions(groupDF, adjacencyMatrix, niter=1000)
             neighborDFs.append(nbDF)
         
         # for probability of nearest neighbor analyses
@@ -868,7 +870,7 @@ class Architecture:
         ## K-NN (also interesting)
 
 
-def neighbor_analysis(groupDF:pd.DataFrame, groupAR:Areas):
+def neighbor_analysis(groupDF:pd.DataFrame, adj:np.ndarray):
     '''
     Nearest neighbor analysis and distance to nearest neighbor analysis
     '''
@@ -878,7 +880,6 @@ def neighbor_analysis(groupDF:pd.DataFrame, groupAR:Areas):
     sigM = groupDF.loc[groupDF['Type'] == 'M', 'NeuronID'].to_list()
     
     # adjacency matrix with pairwise distances
-    adj:np.ndarray = groupAR.adjacencyMATRIX()
     # set main diagonal (distance to oneself is 0) to high number
     adj += np.eye(*adj.shape) * 2 * adj.max()
     
@@ -902,36 +903,61 @@ def neighbor_analysis(groupDF:pd.DataFrame, groupAR:Areas):
     # nearest neighbor types
     nntype = signeurontypes[nnforsigneurons]
 
-
-    groupDF['NeighborTYPE'] = nntype
-    groupDF['NeighborDIST'] = nearest_neighbor_dist[signeurons]
-    groupDF['Vneighbor'] = nearest_V_neighbor_dist[signeurons]
-    groupDF['Aneighbor'] = nearest_A_neighbor_dist[signeurons]
-    groupDF['Mneighbor'] = nearest_M_neighbor_dist[signeurons]
+    groupDF.loc[:,'NeighborTYPE'] = nntype
+    groupDF.loc[:, 'NeighborDIST'] = nearest_neighbor_dist[signeurons]
+    groupDF.loc[:, 'Vneighbor'] = nearest_V_neighbor_dist[signeurons]
+    groupDF.loc[:, 'Aneighbor'] = nearest_A_neighbor_dist[signeurons]
+    groupDF.loc[:, 'Mneighbor'] = nearest_M_neighbor_dist[signeurons]
 
     return groupDF
 
-def null_distributions(gDF:pd.DataFrame, gAR:Areas, niter:int = 10000):
+def null_distributions(gDF:pd.DataFrame, adj:np.ndarray, 
+                       perArea:bool = True,
+                       niter:int = 1000):
     cpus = cpu_count()
     # shuffle niter times
-    res = Parallel(n_jobs=cpus, backend='threading')(delayed(null_dist_worker)(gDF, gAR, i) for i in range(niter))
+    # parallel (fast)
+    # res = Parallel(n_jobs=cpus, backend='threading')(delayed(null_dist_worker)(gDF, adj, perArea) 
+    #                                                  for _ in tqdm(range(niter)))
+    # single-core (debugging)
+    res = [null_dist_worker(gDF, adj, perArea) for _ in range(niter)]
+    breakpoint()
 
-def null_dist_worker(gDF:pd.DataFrame, gAR:Areas, iter:int):
-    if iter % 20 == 0:
-        print(iter)
-    neur_types = gDF.Type.to_numpy()
-    np.random.shuffle(neur_types)
-    DF = neighbor_analysis(gDF, gAR)
+def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool):
+    ''''
+    shuffle the labels to create null distribution
+    '''
+    gDF = gDF.copy()
+    if not perArea:
+        gDF.loc[:,'Type'] = gDF['Type'].sample(frac=1).to_numpy()
+    else:
+       gDF.loc[:,'Type'] = gDF.groupby(['Area'])['Type'].sample(frac = 1).to_numpy()
+
+    DF = neighbor_analysis(gDF, adj)
     DISTDF = pd.melt(DF, id_vars=['Group', 'Area', 'Type', 'NeuronID'], 
                         value_vars=['Vneighbor','Aneighbor','Mneighbor'],
                         var_name='NNtype', value_name='Distance')
-    props = anut.get_proportionsDF(DF, 
-                                   countgroupby=['Group', 'Type', 'Area', 'NeighborTYPE'],
-                                   propgroupby=['Group', 'Type', 'Area'])
     
-    dists = anut.get_distancesDF(DISTDF, groupbyVAR='NNtype', valueVAR='Distance')
-
-    return props, dists
+    if perArea:
+        props = anut.get_proportionsDF(DF, 
+                                    countgroupby=['Group', 'Type', 'Area', 'NeighborTYPE'],
+                                    propgroupby=['Group', 'Type', 'Area'])
+        
+        dists = anut.get_distancesDF(DISTDF, groupbyVAR=['Group', 'Type', 'Area','NNtype'], 
+                                     valueVAR='Distance')
+    else:
+        props = anut.get_proportionsDF(DF, 
+                                    countgroupby=['Group', 'Type', 'NeighborTYPE'],
+                                    propgroupby=['Group', 'Type'])
+        
+        dists = anut.get_distancesDF(DISTDF, groupbyVAR=['Group', 'Type', 'NNtype'], 
+                                     valueVAR='Distance')
+    dists.loc[:, 'NeighborTYPE'] = dists['NNtype'].transform(lambda x : x[0])
+    dists['NeighborTYPE'] = dists['NeighborTYPE'].astype(str)
+    dists.drop(columns = ['NNtype'], inplace=True)
+    breakpoint()
+    out  = pd.merge(props, dists)
+    return out
 
 
 if __name__ == '__main__':

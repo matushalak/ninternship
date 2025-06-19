@@ -33,9 +33,9 @@ def get_proportionsDF(nbDF:DataFrame,
     return counts
 
 def get_distancesDF(distDF:DataFrame,
-                    groupbyVAR:str, valueVAR:str):
+                    groupbyVAR:list[str], valueVAR:str):
     dist = (distDF
-            .groupby([groupbyVAR])[valueVAR]
+            .groupby(groupbyVAR)[valueVAR]
             .mean()
             .reset_index(name='mean_dist'))
     return dist
