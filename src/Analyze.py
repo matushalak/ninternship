@@ -72,9 +72,6 @@ class Analyze:
         
         # Analyze by trial type
         self.TT_RES, self.TT_STATS, self.byTTS_blc, self.byTTS, self.NEURON_groups = self.tt_average(av, method = 'shuffle')
-        # _, _, _, _, self.NEURON_groups2 = self.tt_average(av, signal_to_use = self.signal_type, method='shuffle')
-        # _, _, self.CASCADE, _, _ = self.tt_average(av, signal_to_use = 'spike_prob') # for debugging
-
 
     # Analyze average response to trial type
     def tt_average(self, av:AUDVIS,
@@ -392,11 +389,6 @@ class Analyze:
                     4:('goldenrod', ':')}
         
         nG = self.NEURON_groups[neuron_group]
-        nGshuffle = self.NEURON_groups2[neuron_group]
-        print(np.setdiff1d(nG, nGshuffle).size, 'neurons not captures by shuffle!')
-        print(np.setdiff1d(nGshuffle, nG).size, 'neurons not captured by T-test!')
-
-        nG = np.setdiff1d(nG, nGshuffle)#np.setdiff1d(nGshuffle, nG)
 
         if indices is not None:
             nG = np.intersect1d(indices, nG)
@@ -430,7 +422,10 @@ class Analyze:
             ax.set_axis_off()
             f.tight_layout()
             if save:
-                plt.savefig(f'{gNAME}_EXAMPLE{iN}.svg')
+                import os
+                if not os.path.exists(examples := os.path.join(PLOTSDIR, 'example_neurons')):
+                    os.makedirs(examples)
+                plt.savefig(os.path.join(examples, f'{gNAME}_EXAMPLE{iN}.svg'))
             else:
                 plt.show()
             plt.close()
@@ -597,18 +592,26 @@ def Examples(pre_post: Literal['pre', 'post', 'both'] = 'pre', NONRESPONSIVE:boo
     AVs : list[AUDVIS] = load_in_data(pre_post=pre_post) # -> av1, av2, av3, av4
     ANs : list[Analyze] = [Analyze(av) for av in AVs]
     
-    # g1examples = [1503,1515,1360,1518,1411,1544,2214,1621,1241,1377,1520,1904,1509,1456,150,1284,1838,161, 1635, 1694, 1402, 362, 1482, 1339, 323, 1607, 1406, 1273, 346, 1427, 1612, 1473]
-    g1examples = [1509, 323, 161, 1482, 1607, 1621]
-    # g2examples = [2060,1162,1182,964,2108, 1692, 550, 2639, 305, 1977, 1047, 1906, 1139, 799, 2025, 182, 247, 1538, 2542, 528, 822, 2582, 649, 1064, 1080, 119, 1144, 1069, 2319, 1100, 2827, 
-    #               449, 1077, 27, 168, 28, 2571, 699,159, 5, 605, 696, 674, 1695, 1488, 2103, 2832]
-    g2examples = [27, 696, 674, 2571, 2025, 2832]
+    VISg1 = [1406, 1621]
+    VISg2 = [607, 948, 799, 1958, 742]
+
+    AUDg1 = [1298, 340, 1997, 1585, 2222]
+    AUDg2 = [1846, 606, 1473, 1717, 2699]
+
+    MSTg1 = [80, 1371, 1383, 1697, 1753, 1394]
+    MSTg2 = [1491, 1893, 2345]
+
+    g1examples = VISg1 + AUDg1 + MSTg1
+    g2examples = VISg2 + AUDg2 + MSTg2
+
     examples = [g1examples, g2examples]
     for ig, (AV, AN) in enumerate(zip(AVs, ANs)):
         AN.example_neurons(gNAME=AV.NAME, 
                            trange= AV.TRIAL,
-                        #    indices=examples[ig],
+                           neuron_group='TOTAL',
+                           indices=examples[ig],
                            plotNONresponsive=NONRESPONSIVE,
-                           save=False)
+                           save=True)
 
 
 ### ---------- Main block that runs the file as a script

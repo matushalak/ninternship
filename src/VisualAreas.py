@@ -16,6 +16,7 @@ import matplotlib.tri as tri
 from matplotlib.colors import Normalize
 from matplotlib.cm     import ScalarMappable
 from matplotlib.patches import Polygon
+import matplotlib.cm as mplcm
 from joblib import delayed, Parallel, cpu_count
 
 from statannotations.Annotator import Annotator
@@ -49,6 +50,7 @@ class Areas:
         self.NAME = AV.NAME
         self.area_names = AV.ABA_regions
         self.region_indices = self.separate_areas(AV)
+        self.sessionNEURONS = AV.session_neurons
         self.overlay = self.getMask()
         # Adjust to array coordinates
         self.dfROI: pd.DataFrame = self.adjustROIdf(dfROI=AV.rois, 
@@ -335,7 +337,7 @@ class Areas:
             corrM = np.corrcoef(signal, rowvar=False)
             # add as second layer to adjacency matrix
             adjM = np.dstack((adjM, corrM))
-
+        
         return adjM    
 
 #%%--------- Analyses by areas -------------
@@ -348,12 +350,14 @@ def by_areas_VENN(svg:bool=False,
     proportion_df = {'Group':[], 'Area':[], 'Type':[], 
                      'x':[], 'y':[], 'NeuronID':[]}
     areasDict:dict[str:Areas] = {}
+    sessionsDict:dict[str:list[tuple[int,int]]] = {}
     for i, (AV, AN) in enumerate(zip(AVs, ANs)):
         g = 'DR' if 'g1' in AV.NAME else 'NR'
         gname = AV.NAME.replace(AV.NAME[:2], g)
         responsive_all_areas = AN.TT_RES[-1]
         AR : Areas = Areas(AV)
         areasDict[gname] = AR
+        sessionsDict[gname] = AV.session_neurons
          # venn diagram figure
         VennRegfig, VennRegaxs = plt.subplots(nrows = 1, ncols = 4, figsize = (16, 4))
         for iarea, (area_name, area_ax) in enumerate(zip(AR.region_indices, VennRegaxs.flatten())):
@@ -421,7 +425,7 @@ def by_areas_VENN(svg:bool=False,
     print('Done with neuron groups proportion plots diagrams!')
 
     # control counts
-    return propDF, areasDict
+    return propDF, areasDict, sessionsDict
 
 
 def by_areas_TSPLOT(GROUP_type:Literal['modulated', 
@@ -745,8 +749,22 @@ def recordedNeurons(pre_post: Literal['pre', 'post', 'both'] = 'pre',
         # not responsive
         Total_NOT_RESP = np.where(~np.isin(np.arange(AN.sess_neur[-1][-1]), AN.NEURON_groups['TOTAL']))[0]
         Total_NOT_RESP_color = 'dimgray'
+
+        sessneurs = [np.arange(s0, sE) for s0, sE in av.session_neurons]
+        print(sessneurs[-1])
         
-        ar.show_neurons(title=av.NAME, 
+        # session neurons
+        ar.show_neurons(title=av.NAME + '_sessions', 
+                        indices=sessneurs, 
+                        ind_colors=mplcm.tab20(range(len(sessneurs))),
+                        ind_labels=[f'{i}' for i in range(len(sessneurs))], 
+                        svg=svg,
+                        areasalpha=0.025,
+                        ZOOM=False,
+                        CONTOURS=True)
+        
+        # significant neurons of different types
+        ar.show_neurons(title=av.NAME + '_neuronTYPES', 
                         indices=[AN.NEURON_groups['VIS'], AN.NEURON_groups['AUD'], AN.NEURON_groups['MST'], Total_NOT_RESP], 
                         ind_colors=['dodgerblue', 'red', 'goldenrod', Total_NOT_RESP_color], 
                         ind_labels=['V', 'A', 'M', 'Unresponsive'], 
@@ -758,9 +776,11 @@ def recordedNeurons(pre_post: Literal['pre', 'post', 'both'] = 'pre',
 class Architecture:
     def __init__(self,
                  df:pd.DataFrame,
-                 ARdict:dict[str:Areas]):
+                 ARdict:dict[str:Areas],
+                 SESSdict:dict[str:list[tuple[int,int]]]):
         self.df = df
         self.areas = ARdict
+        self.session_neurons = SESSdict
 
         # normalize within each area to 0-1
         self.df = self.normalizeXY()
@@ -813,13 +833,13 @@ class Architecture:
         for g in self.df.Group.unique():
             groupDF = self.df.loc[self.df['Group'] == g,:].copy()
             groupAR:Areas = self.areas[g]   
-            adjacencyMatrix = groupAR.adjacencyMATRIX() # pairwise distances of all recorded neurons
+            adjacencyMatrix:np.ndarray = groupAR.adjacencyMATRIX() # pairwise distances of all recorded neurons
             # neighbor identity and distance analysis
-            nbDF = neighbor_analysis(groupDF, adjacencyMatrix)
-            NULLdistAreas = null_distributions(groupDF.copy(), adjacencyMatrix, perArea=True, 
-                                               niter=10000)
-            NULLdistOverall = null_distributions(groupDF.copy(), adjacencyMatrix, perArea=False, 
-                                               niter=10000)
+            nbDF = neighbor_analysis(groupDF, adjacencyMatrix, self.session_neurons[g])
+            NULLdistAreas = null_distributions(groupDF.copy(), adjacencyMatrix, session_neurons=self.session_neurons[g],
+                                               perArea=True, niter=10000)
+            NULLdistOverall = null_distributions(groupDF.copy(), adjacencyMatrix, session_neurons=self.session_neurons[g], 
+                                                 perArea=False, niter=10000)
             neighborDFs.append(nbDF)
             nullAreas.append(NULLdistAreas)
             nullOverall.append(NULLdistOverall)
@@ -885,7 +905,8 @@ class Architecture:
         ## K-NN (also interesting)
 
 
-def neighbor_analysis(groupDF:pd.DataFrame, adj:np.ndarray):
+def neighbor_analysis(groupDF:pd.DataFrame, adjM:np.ndarray, 
+                      session_neurons:list[tuple[int, int]]):
     '''
     Nearest neighbor analysis and distance to nearest neighbor analysis
     '''
@@ -896,58 +917,86 @@ def neighbor_analysis(groupDF:pd.DataFrame, adj:np.ndarray):
     
     # adjacency matrix with pairwise distances
     # set main diagonal (distance to oneself is 0) to high number
-    adj += np.eye(*adj.shape) * 2 * adj.max()
+    adjM += np.eye(*adjM.shape) * 2 * adjM.max()
     
-    # set all nonsignificant neurons to high number
-    nonsigneurons = np.isin(np.arange(adj.shape[0]), signeurons , invert=True)
-    adj[:, nonsigneurons] = np.full((adj.shape[0], nonsigneurons.sum()), 2 * adj.max())
-    signeurontypes = np.full(adj.shape[0], 'n', dtype=str)
+    # set all nonsignificant neurons to high number (we ignore nonsignificant neighbors)
+    allneuronIDs = np.arange(adjM.shape[0])
+    nonsigneurons = np.isin(allneuronIDs, signeurons , invert=True)
+    adjM[:, nonsigneurons] = np.full((adjM.shape[0], nonsigneurons.sum()), 2 * adjM.max())
     # 'n' is nonsignificant
+    signeurontypes = np.full(adjM.shape[0], 'n', dtype=str)
     signeurontypes[signeurons] = groupDF.Type.to_numpy(dtype=str)
-
-    # get the nearest neighbor index
-    nearest_neighbor = np.argmin(adj, axis = 1)
-    nearest_neighbor_dist = np.min(adj, axis = 1)
+    # prepare output (first full matrix size, will index to only signeurons later)
+    nntypes = np.full(adjM.shape[0], 'n', dtype=str)
+    nndists = np.full(adjM.shape[0], 2 * adjM.max(), dtype=float)
+    vdists = np.full(adjM.shape[0], 2 * adjM.max(), dtype=float)
+    adists = np.full(adjM.shape[0], 2 * adjM.max(), dtype=float)
+    mdists = np.full(adjM.shape[0], 2 * adjM.max(), dtype=float)
     
-    nearest_V_neighbor_dist = np.min(adj[:, sigV], axis = 1)
-    nearest_A_neighbor_dist = np.min(adj[:, sigA], axis = 1)
-    nearest_M_neighbor_dist = np.min(adj[:, sigM], axis = 1)
+    # go over sessions
+    for s0, sE in session_neurons:
+        sessneurons = np.arange(s0, sE)
 
-    # get labels for nearest neighbors for significantly responding neurons
-    nnforsigneurons = nearest_neighbor[signeurons]
-    # nearest neighbor types
-    nntype = signeurontypes[nnforsigneurons]
+        sesssigneurons = np.intersect1d(sessneurons, signeurons) - s0
+        sessV = np.intersect1d(sesssigneurons, sigV)
+        sessA = np.intersect1d(sesssigneurons, sigA)
+        sessM = np.intersect1d(sesssigneurons, sigM)
 
-    groupDF.loc[:,'NeighborTYPE'] = nntype
-    groupDF.loc[:, 'NeighborDIST'] = nearest_neighbor_dist[signeurons]
-    groupDF.loc[:, 'Vneighbor'] = nearest_V_neighbor_dist[signeurons]
-    groupDF.loc[:, 'Aneighbor'] = nearest_A_neighbor_dist[signeurons]
-    groupDF.loc[:, 'Mneighbor'] = nearest_M_neighbor_dist[signeurons]
+        adj = adjM[s0:sE, s0:sE, ...]
+        # TODO: fix this calculation for per-session (calculate per-session NN) and then broadcast that to the big DF
+        # get the nearest neighbor index (in session indices) + s0 to get back to overall neuronID
+        nearest_neighbor = np.argmin(adj, axis = 1) + s0
+        
+        # get nearest neighbor (within session) distances
+        nearest_neighbor_dist = np.min(adj, axis = 1)
+        nearest_V_neighbor_dist = np.min(adj[:, sessV], axis = 1)
+        nearest_A_neighbor_dist = np.min(adj[:, sessA], axis = 1)
+        nearest_M_neighbor_dist = np.min(adj[:, sessM], axis = 1)
 
+        # get indices for nearest neighbors for significantly responding neurons
+        nnforsigneurons = nearest_neighbor[sesssigneurons]
+        
+        # nearest neighbor types
+        nntypes[sesssigneurons + s0] = signeurontypes[nnforsigneurons]
+        # distances
+        nndists[sesssigneurons + s0] = nearest_neighbor_dist[sesssigneurons]
+        vdists[sesssigneurons + s0] = nearest_V_neighbor_dist[sesssigneurons]
+        adists[sesssigneurons + s0] = nearest_A_neighbor_dist[sesssigneurons]
+        mdists[sesssigneurons + s0] = nearest_M_neighbor_dist[sesssigneurons]
+    
+    groupDF.loc[:,'NeighborTYPE'] = nntypes[signeurons]
+    groupDF.loc[:, 'NeighborDIST'] = nndists[signeurons]
+    groupDF.loc[:, 'Vneighbor'] = vdists[signeurons]
+    groupDF.loc[:, 'Aneighbor'] = adists[signeurons]
+    groupDF.loc[:, 'Mneighbor'] = mdists[signeurons]
+    
     return groupDF
 
 def null_distributions(gDF:pd.DataFrame, adj:np.ndarray, 
+                       session_neurons:dict[list[tuple[int,int]]],
                        perArea:bool = True,
-                       niter:int = 10000
+                       niter:int = 1000
                        )->pd.DataFrame:
     assert len(gDF.Group.unique()) == 1
-    if os.path.exists(nulldistpath := os.path.join(PYDATA, 
-                                                   f'{gDF.Group.unique()}_neighbornull_area{perArea}.csv')):
-        return pd.read_csv(nulldistpath, index_col=0)
+    # if os.path.exists(nulldistpath := os.path.join(PYDATA, 
+    #                                                f'{gDF.Group.unique()}_neighbornull_area{perArea}.csv')):
+    #     return pd.read_csv(nulldistpath, index_col=0)
     
     cpus = cpu_count()
     # shuffle niter times
     # parallel (fast)
-    res = Parallel(n_jobs=cpus, backend='threading')(delayed(null_dist_worker)(gDF.copy(), adj.copy(), perArea) 
+    res = Parallel(n_jobs=cpus, backend='threading')(delayed(null_dist_worker)(gDF.copy(), adj.copy(), perArea, session_neurons.copy()) 
                                                      for _ in tqdm(range(niter)))
+    # breakpoint()
     # single-core (debugging)
-    # res = [null_dist_worker(gDF, adj, perArea) for _ in range(niter)]
+    # res = [null_dist_worker(gDF.copy(), adj.copy(), perArea, session_neurons.copy()) for _ in range(niter)]
     NULLdist:pd.DataFrame = pd.concat(res, ignore_index=True)
     NULLdist.to_csv(os.path.join(PYDATA, f'{gDF.Group.unique()}_neighbornull_area{perArea}.csv'))
 
     return NULLdist
 
-def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool):
+def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool, 
+                     session_neurons:dict[list[tuple[int,int]]]):
     ''''
     shuffle the labels to create null distribution
     '''
@@ -957,11 +1006,10 @@ def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool):
     else:
        nullgDF.loc[:,'Type'] = nullgDF.groupby(['Area'])['Type'].sample(frac = 1).to_numpy()
 
-    DF = neighbor_analysis(nullgDF, adj)
+    DF = neighbor_analysis(nullgDF, adj, session_neurons)
     DISTDF = pd.melt(DF, id_vars=['Group', 'Area', 'Type', 'NeuronID'], 
                         value_vars=['Vneighbor','Aneighbor','Mneighbor'],
                         var_name='NNtype', value_name='Distance')
-    
     if perArea:
         props = anut.get_proportionsDF(DF, 
                                     countgroupby=['Group', 'Type', 'Area', 'NeighborTYPE'],
@@ -985,10 +1033,10 @@ def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool):
 
 if __name__ == '__main__':
     ### Venn diagram of neuron classes in in the 4 different regions
-    NGDF, ARdict = by_areas_VENN(svg=True, pre_post='pre')
+    NGDF, ARdict, SESSdict = by_areas_VENN(svg=True, pre_post='pre')
 
     # Architecture analysis
-    Arch = Architecture(NGDF, ARdict)
+    Arch = Architecture(NGDF, ARdict, SESSdict)
     # Arch.spatial_distribution()
     Arch.neighbors()
 
@@ -1004,4 +1052,4 @@ if __name__ == '__main__':
     # Quantification(QuantDF, svg=False)
 
     # # Recorded neurons plot
-    # recordedNeurons(svg=False)
+    # recordedNeurons(svg=True)

@@ -100,6 +100,8 @@ def catplot_proportions(DF:DataFrame,
                     x =x, y = 'prob',
                     palette='dark:#1f77b4',
                     hue = hue,
+                    errorbar = None,
+                    marker = "x", linestyle = 'none',
                     dodge = 0.3,
                     order = order)
     
@@ -138,7 +140,7 @@ def catplot_distanc(DF:DataFrame,
     dist = DF.drop(columns=['NeuronID']).copy()
     dist.loc[:, 'NeighborTYPE'] = dist['NNtype'].transform(lambda x: x[0]).to_numpy().astype(str)
     dist.drop(columns=['NNtype'], inplace=True)
-
+    
     data = pd.concat([dist.assign(frame = 'dist'),
                       null.assign(frame = 'null')], ignore_index=True)
     
@@ -165,6 +167,8 @@ def catplot_distanc(DF:DataFrame,
                     x =x, y = y,
                     palette='dark:#1f77b4',
                     hue = hue,
+                    errorbar = None,
+                    marker = "x", linestyle = 'none',
                     dodge = 0.3,
                     order = order)
     
