@@ -15,7 +15,7 @@ from src import MIPLOTSDIR
 def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
        byAreas: bool = False,
        GROUP_type:Literal['modulated','modality_specific', 'all', None] = None,
-       all_RESP:bool = True):
+       all_RESP:bool = False):
     # Load in all data and perform necessary initial calculations
     AVS : list[AUDVIS] = load_in_data(pre_post=pre_post) # -> av1, av2, av3, av4
     ANS : list[Analyze] = [Analyze(av) for av in AVS]

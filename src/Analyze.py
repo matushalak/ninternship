@@ -259,22 +259,26 @@ class Analyze:
                            BrainRegionIndices : np.ndarray | None = None,
                            SIGNALS_TO_USE: dict[int : ndarray] | None = None,
                            return_single_neuron_data: bool = False,
+                           combineMST:bool = False,
                            debug:bool = False,
                            ) -> list[tuple[ndarray, ndarray]]:
         TT_blc_signal = self.byTTS_blc if SIGNALS_TO_USE is None else SIGNALS_TO_USE
         assert isinstance(TT_blc_signal, dict) & all(isinstance(TT_blc_signal[tt], np.ndarray) for tt in TT_blc_signal.keys()
                                                      ), 'Provided SIGNALS to use is not a dictionary or doesnt contain np.ndarrays with signal'
         # combine stimuli VIS trials (6, 7), AUD trials (0, 3), MST congruent (1, 5) MST incongruent trials (2, 4)
-        VIS_trials, VIS_F = self.pref_dir(sig1 = TT_blc_signal[6], tt1=6,
-                                          sig2 = TT_blc_signal[7], tt2=7) # 0
-        AUD_trials, AUD_F = self.pref_dir(sig1 = TT_blc_signal[0], tt1=0,
-                                          sig2 = TT_blc_signal[3], tt2=3) # 1
-        MST_congruent_trials, MSTcong_F = self.pref_dir(sig1 = TT_blc_signal[1], tt1=1,
-                                                        sig2 = TT_blc_signal[5], tt2=5) # 2
-        MST_incongruent_trials, MSTincong_F = self.pref_dir(sig1 = TT_blc_signal[2], tt1=2,
-                                                            sig2 = TT_blc_signal[4], tt2=4) # 3
-        
-        signals = (VIS_trials, AUD_trials, MST_congruent_trials, MST_incongruent_trials)
+        VIS_trials, VIS_F = self.pref_dir(sigs = [TT_blc_signal[6], TT_blc_signal[7]], tts=(6, 7)) # 0
+        AUD_trials, AUD_F = self.pref_dir(sigs = [TT_blc_signal[0], TT_blc_signal[3]], tts=(0,3)) # 1
+        MST_congruent_trials, MSTcong_F = self.pref_dir(sigs = [TT_blc_signal[1], TT_blc_signal[5]], tts=(1, 5)) # 2
+        MST_incongruent_trials, MSTincong_F = self.pref_dir(sigs = [TT_blc_signal[2], TT_blc_signal[4]], tts=(2, 4)) # 3
+        MST_overall_trials, MST_overall_F = self.pref_dir(sigs = [TT_blc_signal[1], TT_blc_signal[2], TT_blc_signal[4], TT_blc_signal[5]], 
+                                                          tts=(1, 2, 4, 5))
+
+        if combineMST:
+            fluorescences = (VIS_F, AUD_F, MST_overall_F)
+            signals = (VIS_trials, AUD_trials, MST_overall_trials)
+        else:
+            fluorescences = (VIS_F, AUD_F, MSTcong_F, MSTincong_F)
+            signals = (VIS_trials, AUD_trials, MST_congruent_trials, MST_incongruent_trials,)
 
         # can't use set as index for ndarray
         match GROUP_type:
@@ -333,7 +337,7 @@ class Analyze:
             return [(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
                     for trace in neurons_to_study)], len(indices)
         else:
-            FRs = [FR[indices] for FR in [VIS_F, AUD_F, MSTcong_F, MSTincong_F]]
+            FRs = [FR[indices] for FR in fluorescences]
             # for each trial type, want the traces of all neurons in indices
             return ([(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
                     for trace in neurons_to_study)], 
@@ -344,18 +348,20 @@ class Analyze:
                     FRs) # fluorescence responses of neuron per region
 
     def pref_dir(self, 
-                 sig1:ndarray, tt1:int, 
-                 sig2:ndarray, tt2:int) -> ndarray:
+                 sigs:list[np.ndarray], tts:list[int]) -> ndarray:
         '''
-        Takes in 2 (ntrials, ntimepoints, nneurons) signal arrays
+        Takes in N (ntrials, ntimepoints, nneurons) signal arrays
 
         Returns one (ntrials, ntimepoints, nneurons) signal array with
         preferred direction (based on Fluorescence response)
         '''
         # absolute mean fluorescence responses for all neurons for tts of interest
-        FR = self.FLUORO_RESP[:,0, (tt1, tt2)].__abs__()
+        FR = self.FLUORO_RESP[:,0, :].__abs__()
+        notTTs = np.arange(FR.shape[-1])
+        notTTs = notTTs[np.isin(notTTs, tts, invert=True)]
+        FR[:,notTTs] = -1 # make sure tts outside of chosen ones are not picked in argmax
         
-        outSIG = np.full_like(sig1, np.nan)
+        outSIG = np.full_like(sigs[0], np.nan)
         outF = np.full(shape = FR.shape[0], fill_value=np.nan)
         # Create a boolean mask identifying neurons that are NOT all NaN
         non_nan_mask = ~np.all(np.isnan(FR), axis=1)
@@ -363,13 +369,11 @@ class Analyze:
         tt_pref = np.zeros(FR.shape[0], dtype=int)
         # find preference 
         tt_pref[non_nan_mask] = np.nanargmax(FR[non_nan_mask], axis = 1)
-        pref1 = np.where(tt_pref == 0)[0]
-        pref2 = np.where(tt_pref == 1)[0]
+        prefs = [np.where(tt_pref == tt)[0] for tt in tts]
         # assign signals from all trials of preferred trial types to neurons
-        outSIG[:,:,pref1] = sig1[:,:,pref1]
-        outSIG[:,:,pref2] = sig2[:,:,pref2]
-        outF[pref1] = self.FLUORO_RESP[pref1, 0, tt1]
-        outF[pref2] = self.FLUORO_RESP[pref2, 0, tt2]
+        for prefMask, sig, tt in zip(prefs, sigs, tts):
+            outSIG[:,:,prefMask] = sig[:,:,prefMask]
+            outF[prefMask] = self.FLUORO_RESP[prefMask, 0, tt]
         return outSIG, outF
 
     def example_neurons(self, 

@@ -228,15 +228,29 @@ def Quantification(MIdata:pd.DataFrame,
 
 # --------- prepare plotting dataframe ---------
 def initializeMIdata()-> dict:
-    MIdata_dict = {'DSI (VIS)' : [], 'DSI (AUD)': [], # collect DSIs
-                   'Group':[],# collect group_names,
-                   'BrainRegion':[],
-                   'RCI (VIS congruent)': [], 'RCI (VIS incongruent)' : [], # collect RCIs
-                   'RCI (AUD congruent)': [], 'RCI (AUD incongruent)' : [],
-                   'pref_VIS':[], 'VIS_MST+':[], 'VIS_MST-':[],
-                   'pref_AUD':[], 'AUD_MST+':[], 'AUD_MST-':[],
-                   'pref_VIS_idx':[], 'VIS_MST+_idx':[], 'VIS_MST-_idx':[],
-                   'pref_AUD_idx':[], 'AUD_MST+_idx':[], 'AUD_MST-_idx':[],}
+    MIdata_dict = {
+        # general information
+        'NeuronID':[],
+        'Group':[],# collect group_names,
+        'BrainRegion':[], # collect which brain region
+        'NeuronType':[], # collect what type neuron is
+        # collect DSIs
+        'DSI (VIS)' : [], 'DSI (AUD)': [], 
+        # collect RCIs
+        'RCI (VISpref congruent)': [], 'RCI (VISpref incongruent)' : [],
+        'RCI (AUDpref congruent)': [], 'RCI (AUDpref incongruent)' : [],
+        'RCI (VISpref congruent)': [], 'RCI (VISpref incongruent)' : [],
+        'RCI (AUDpref congruent)': [], 'RCI (AUDpref incongruent)' : [],
+        # collect fluorescence responses
+        'pref_VIS':[], 'prefVISpref_MST+':[], 'prefVIS_MST-':[],
+        'nonpref_VIS':[], 'nonprefVISpref_MST+':[], 'nonprefVIS_MST-':[],
+        'pref_AUD':[], 'prefAUD_MST+':[], 'prefAUD_MST-':[],
+        'nonpref_AUD':[], 'nonprefAUDpref_MST+':[], 'nonprefAUD_MST-':[],
+        # collect tt indices
+        'pref_VIS_idx':[], 'prefVIS_MST+_idx':[], 'prefVIS_MST-_idx':[],
+        'pref_AUD_idx':[], 'prefAUD_MST+_idx':[], 'prefAUD_MST-_idx':[],
+        'nonpref_VIS_idx':[], 'nonprefVIS_MST+_idx':[], 'nonprefVIS_MST-_idx':[],
+        'nonpref_AUD_idx':[], 'nonprefAUD_MST+_idx':[], 'nonprefAUD_MST-_idx':[],}
     return MIdata_dict
 
 def getMIdata(FLUORO_RESP: np.ndarray, group_cond_name: str,

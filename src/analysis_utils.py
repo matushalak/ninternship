@@ -19,15 +19,13 @@ def get_proportionsDF(nbDF:DataFrame,
                       propgroupby:list[str],)->DataFrame:
     # 0) force all three neighbor‐types to appear
     nbDF = nbDF.copy()
-    nbDF['NeighborTYPE'] = Categorical(
-        nbDF['NeighborTYPE'],
-        categories=['V','A','M'],
-        ordered=False
-    )
+    for col in countgroupby:
+        nbDF[col] = nbDF[col].astype('category')
+
     # 1) count
     counts = (
         nbDF
-        .groupby(countgroupby, observed=True)
+        .groupby(countgroupby, observed=False)
         .size()
         .reset_index(name='count')
     )
@@ -48,8 +46,20 @@ def get_distancesDF(distDF:DataFrame,
     return dist
 
 def local_plotter(data:DataFrame, plot_func:Callable, whichframe:str, 
-                      **kwargs):
-        plot_func(data = data.loc[data['frame']==whichframe,:], **kwargs)
+                  **kwargs):
+        data = data.loc[data['frame']==whichframe,:]
+        kwargs['hue'] = data[[kwargs['x'], kwargs['hue']]].apply(tuple, axis = 1)
+        palette = {('V', 'DRpre'):'dodgerblue',
+                   ('A', 'DRpre'):'red',
+                   ('M', 'DRpre'):'goldenrod',
+                   ('V', 'NRpre'):'lightskyblue',
+                   ('A', 'NRpre'):'lightsalmon',
+                   ('M', 'NRpre'):'palegoldenrod'}
+        kwargs['palette'] = palette
+        kwargs['hue_order'] = (('V', 'DRpre'), ('A', 'DRpre'), ('M', 'DRpre'), 
+                               ('V', 'NRpre'),('A', 'NRpre'),('M', 'NRpre'),
+                               )
+        plot_func(data = data, **kwargs)
 
 def catplot_proportions(DF:DataFrame, 
                         countgroupby:list[str],
@@ -68,8 +78,12 @@ def catplot_proportions(DF:DataFrame,
                         order: Iterable[str] | None = None,
                         hue_order: Iterable[str] | None = None,
                         row_order: Iterable[str] | None = None,
-                        col_order: Iterable[str] | None = None,):
-    savedir = os.path.join(PLOTSDIR, plotname)
+                        col_order: Iterable[str] | None = None,
+                        savedir : str |None = None):
+    if savedir is None:
+        savedir = os.path.join(PLOTSDIR, plotname)
+    else:
+        savedir = os.path.join(savedir, plotname)
     
     counts = get_proportionsDF(DF, countgroupby, propgroupby)
     null = NULLDF.drop(columns=['mean_dist']).copy()
@@ -78,6 +92,7 @@ def catplot_proportions(DF:DataFrame,
                       null.assign(frame = 'null')], ignore_index=True)
     
     g = sns.FacetGrid(data, row = row, col = col, 
+                      aspect=2 if col is not None else 1,
                       row_order=row_order, col_order=col_order)
 
     if NULLDF is not None:
@@ -89,7 +104,7 @@ def catplot_proportions(DF:DataFrame,
                         hue = hue,
                         errorbar = 'pi', # percentile interval (2.5 - 97.5)
                         capsize = .3,
-                        dodge = 0.3,
+                        dodge = 0.5,
                         marker = "", linestyle = "none",
                         order = order)
         
@@ -102,12 +117,12 @@ def catplot_proportions(DF:DataFrame,
                     hue = hue,
                     errorbar = None,
                     marker = "x", linestyle = 'none',
-                    dodge = 0.3,
+                    dodge = 0.5,
                     order = order)
     
     g.set_axis_labels(x,"Probability")
     g.add_legend()
-    g.set(ylim=(-0.2,1))
+    g.set(ylim=(-0.05,1))
 
     extension = '.png' if not svg else '.svg'
     plt.savefig(savedir+extension, dpi = 300 if not svg else 'figure')
@@ -132,8 +147,13 @@ def catplot_distanc(DF:DataFrame,
                     order: Iterable[str] | None = None,
                     hue_order: Iterable[str] | None = None,
                     row_order: Iterable[str] | None = None,
-                    col_order: Iterable[str] | None = None):
-    savedir = os.path.join(PLOTSDIR, plotname)
+                    col_order: Iterable[str] | None = None,
+                    savedir : str |None = None):
+    if savedir is None:
+        savedir = os.path.join(PLOTSDIR, plotname)
+    else:
+        savedir = os.path.join(savedir, plotname)
+        
     null = NULLDF.drop(columns=['prob', 'count']).copy()
     null.rename(columns={'mean_dist':'Distance'}, inplace=True)
     
@@ -145,6 +165,7 @@ def catplot_distanc(DF:DataFrame,
                       null.assign(frame = 'null')], ignore_index=True)
     
     g = sns.FacetGrid(data, row = row, col = col, 
+                      aspect=2 if col is not None else 1,
                       row_order=row_order, col_order=col_order)
 
     if NULLDF is not None:
@@ -156,7 +177,7 @@ def catplot_distanc(DF:DataFrame,
                         hue = hue,
                         errorbar = 'pi', # percentile interval (2.5 - 97.5)
                         capsize = .3,
-                        dodge = 0.3,
+                        dodge = 0.5,
                         marker = "", linestyle = "none",
                         order = order)
         
@@ -169,7 +190,7 @@ def catplot_distanc(DF:DataFrame,
                     hue = hue,
                     errorbar = None,
                     marker = "x", linestyle = 'none',
-                    dodge = 0.3,
+                    dodge = 0.5,
                     order = order)
     
     g.add_legend()
