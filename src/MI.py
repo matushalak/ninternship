@@ -8,14 +8,21 @@ from src.AUDVIS import AUDVIS, Behavior, load_in_data
 from src.VisualAreas import Areas
 from src.analysis_utils import calc_avrg_trace, build_snake_grid, snake_plot, plot_avrg_trace
 from typing import Literal
-from src import MIPLOTSDIR
+from src import MIPLOTSDIR, PYDATA
 
 # TODO: traces of enhanced neurons vs inhibited neurons / area, with RCI > threshold
 # ---------------------- MULTISENSORY ENHANCEMENT ANALYSIS -----------------------------
 def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
        byAreas: bool = False,
        GROUP_type:Literal['modulated','modality_specific', 'all', None] = None,
-       all_RESP:bool = False):
+       all_RESP:bool = False,
+       LOADdf:bool = False):
+    DFPATH = os.path.join(PYDATA, 'MIdataframe.csv')
+
+    if LOADdf:
+        if os.path.exists(DFPATH):
+            return pd.read_csv(DFPATH, index_col=0)
+
     # Load in all data and perform necessary initial calculations
     AVS : list[AUDVIS] = load_in_data(pre_post=pre_post) # -> av1, av2, av3, av4
     ANS : list[Analyze] = [Analyze(av) for av in AVS]
@@ -41,12 +48,14 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
         # selecting neuron groups / subsets
         if GROUP_type is not None:
             for gt in subsets.keys():
+                # need to do this to index into the big dataframe with all different groups of mice
                 sub_set = Analys.NEURON_groups[gt] + last_n_neur # from the other analysis
                 subsets[gt] += [*sub_set]
 
         # update MIdata_dict
         MIdata_dict = MScalc.getMIdata(Analys.FLUORO_RESP, Av.NAME, MIdata_dict)
         n_neurons = Analys.FLUORO_RESP.shape[0]
+        MIdata_dict['NeuronID'] += np.arange(n_neurons).tolist()
         last_n_neur += n_neurons
         if byAreas:
             # get indices for each
@@ -60,9 +69,16 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
             MIdata_dict['BrainRegion'] += [np.nan] * n_neurons
 
     # turn into long-format dataframe for seaborn plotting!
-    MIdataFULL : pd.DataFrame = pd.DataFrame(MIdata_dict)
-    print('MIdata dataframe completed!')
-    # MScalc.distanceQuantification(MIdataFULL, 'DSI (VIS)', 'DSI (AUD)', 'Group')
+    MIdataFULL: pd.DataFrame = pd.DataFrame(MIdata_dict)
+    for sub, sub_indices in subsets.items():
+        if all_RESP:
+            if 'TOTAL' not in sub:
+                continue
+        MIdataFULL.loc[sub_indices, 'NeuronType'] = sub[0]
+    
+    MIdataFULL.to_csv(DFPATH)
+    print('MIdata dataframe completed and saved!')
+    
     # make plots!
     if not os.path.exists(saveDir := MIPLOTSDIR):
         os.makedirs(saveDir)
@@ -80,17 +96,25 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
         if GROUP_type is None:
             assert MIdata.shape == MIdataFULL.shape, 'If not splitting by groups, should use the FULL dataframe'
         else:
+            assert MIdata.isna().sum().all() == 0
             saveDir_subset = os.path.join(saveDir, sub)
             if not os.path.exists(saveDir_subset):
                 os.makedirs(saveDir_subset)
         
+        includeDict = {'VIS':(True, False),
+                       'AUD':(False, True),
+                       'MST':(True, True)}
+        
+        includeVIS, includeAUD = includeDict[sub]
+
         if byAreas: # do analysis for (Responsive) Neuron groups of interest separately for each area
             # exclude neurons outside areas of interest
             MIdata_bA = MIdata[~(MIdata['BrainRegion'] == '')]
             for region in MIdata_bA['BrainRegion'].unique():
                 print('Starting MI analysis for {} region'.format(region))
                 MIdata_region = MIdata_bA.loc[MIdata_bA['BrainRegion'] == region].copy()
-                plot_MI_data(MIdata_region, name = region.replace('/', '|'), kde=False, savedir=saveDir_subset)
+                plot_MI_data(MIdata_region, name = region.replace('/', '|'), kde=False, savedir=saveDir_subset, 
+                             includeVIS=includeVIS, includeAUD=includeAUD)
 
         else: # just do analysis for (Responsive) Neuron groups of interest across all areas
             plot_MI_data(MIdata, kde=False, savedir=saveDir_subset)
@@ -98,56 +122,113 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
     return MIdataFULL
     
 
-def plot_MI_data(MIdata:pd.DataFrame, savedir: str, name:str = 'all', kde: bool = False):
+def plot_MI_data(MIdata:pd.DataFrame, savedir: str, includeVIS:bool, includeAUD:bool, 
+                 name:str = 'all', kde: bool = False):
     # WITHIN Group RCI
-    # VIS
-    MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_vis', 
-                                X_VAR='RCI (VIS congruent)', Y_VAR='RCI (VIS incongruent)', HUE_VAR='Group',
-                                square=True, reg= False, kde=kde, savedir=savedir, statsmethod='within')
-    print(f'VIS RCI {name} plot done!')
-    # AUD
-    MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_aud', 
-                                X_VAR='RCI (AUD congruent)', Y_VAR='RCI (AUD incongruent)', HUE_VAR='Group',
-                                square=True, reg= False, kde=kde, savedir=savedir, statsmethod='within')
-    # return 0
-    # 1) Main plot!
-    MScalc.RCI_dist_plots_all(MIdata, area = name, savedir = savedir)
+    if includeVIS:
+        # VIS
+        MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_visPREF_within', 
+                                    X_VAR='RCI (VISpref congruent)', Y_VAR='RCI (VISpref incongruent)', HUE_VAR='Group',
+                                    square=True, reg= False, kde=kde, savedir=savedir, statsmethod='within')
+        MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_visNONPREF_within', 
+                                    X_VAR='RCI (VISnonpref congruent)', Y_VAR='RCI (VISnonpref incongruent)', HUE_VAR='Group',
+                                    square=True, reg= False, kde=kde, savedir=savedir, statsmethod='within')
+        print(f'VIS RCI {name} plots done!')
+    
+    if includeAUD:
+        # AUD
+        MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_audPREF_within', 
+                                    X_VAR='RCI (AUDpref congruent)', Y_VAR='RCI (AUDpref incongruent)', HUE_VAR='Group',
+                                    square=True, reg= False, kde=kde, savedir=savedir, statsmethod='within')
+        MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_audNONPREF_within', 
+                                    X_VAR='RCI (AUDnonpref congruent)', Y_VAR='RCI (AUDnonpref incongruent)', HUE_VAR='Group',
+                                    square=True, reg= False, kde=kde, savedir=savedir, statsmethod='within')
+        print(f'AUD RCI {name} plots done!')
+    
+    # 1) Proportion plot
+    includedMOD = []
+    if includeVIS:
+        includedMOD.append('VIS')
+    if includeAUD:
+        includedMOD.append('AUD')
+    
+    MScalc.RCI_dist_plots_all(MIdata, area = name, savedir = savedir, pref='pref', includedMOD=includedMOD)
+    MScalc.RCI_dist_plots_all(MIdata, area = name, savedir = savedir, pref='nonpref', includedMOD=includedMOD)
     print(f'RCI {name} distribution plots done')
 
-    # 2) Preferred against MST
-    # VIS
-    # i] Pref VIS against MST congruent
-    MScalc.scatter_hist_reg_join(MIdata, NAME=f'visPref_MS+_{name}_plot', X_VAR='pref_VIS', Y_VAR='VIS_MST+', HUE_VAR='Group',
-                                kde = False, savedir=savedir, statsmethod='within')
-    # ii] Pref VIS against MST incongruent
-    MScalc.scatter_hist_reg_join(MIdata, NAME=f'visPref_MS-_{name}_plot', X_VAR='pref_VIS', Y_VAR='VIS_MST-', HUE_VAR='Group',
-                                kde = False, savedir=savedir, statsmethod='within')
-    # AUD
-    # iii] Pref AUD against MST congruent
-    MScalc.scatter_hist_reg_join(MIdata, NAME=f'audPref_MS+_{name}_plot', X_VAR='pref_AUD', Y_VAR='AUD_MST+', HUE_VAR='Group',
-                                kde = False, savedir=savedir, statsmethod='within')
-    # iv] Pref AUD against MST incongruent
-    MScalc.scatter_hist_reg_join(MIdata, NAME=f'audPref_MS-_{name}_plot', X_VAR='pref_AUD', Y_VAR='AUD_MST-', HUE_VAR='Group',
-                                kde = False, savedir=savedir, statsmethod='within')
+    # 2) Unimodal fluorescence response against MST
+    # skip this
+    # if includeVIS:
+    #     # VIS
+    #     # i] Pref VIS against MST congruent
+    #     MScalc.scatter_hist_reg_join(MIdata, NAME=f'visPref_MS+_{name}_plot', X_VAR='pref_VIS', Y_VAR='prefVIS_MST+', HUE_VAR='Group',
+    #                                 kde = False, savedir=savedir, statsmethod='within')
+    #     # ii] Pref VIS against MST incongruent
+    #     MScalc.scatter_hist_reg_join(MIdata, NAME=f'visPref_MS-_{name}_plot', X_VAR='pref_VIS', Y_VAR='prefVIS_MST-', HUE_VAR='Group',
+    #                                 kde = False, savedir=savedir, statsmethod='within')
+    #     # i] NonPref VIS against MST congruent
+    #     MScalc.scatter_hist_reg_join(MIdata, NAME=f'visNONPref_MS+_{name}_plot', X_VAR='nonpref_VIS', Y_VAR='nonprefVIS_MST+', HUE_VAR='Group',
+    #                                 kde = False, savedir=savedir, statsmethod='within')
+    #     # ii] NonPref VIS against MST incongruent
+    #     MScalc.scatter_hist_reg_join(MIdata, NAME=f'visNONPref_MS-_{name}_plot', X_VAR='nonpref_VIS', Y_VAR='nonprefVIS_MST-', HUE_VAR='Group',
+    #                                 kde = False, savedir=savedir, statsmethod='within')
+    # if includeAUD:
+    #     # AUD
+    #     # iii] Pref AUD against MST congruent
+    #     MScalc.scatter_hist_reg_join(MIdata, NAME=f'audPref_MS+_{name}_plot', X_VAR='pref_AUD', Y_VAR='prefAUD_MST+', HUE_VAR='Group',
+    #                                 kde = False, savedir=savedir, statsmethod='within')
+    #     # iv] Pref AUD against MST incongruent
+    #     MScalc.scatter_hist_reg_join(MIdata, NAME=f'audPref_MS-_{name}_plot', X_VAR='pref_AUD', Y_VAR='prefAUD_MST-', HUE_VAR='Group',
+    #                                 kde = False, savedir=savedir, statsmethod='within')
+    #     # iii] NonPref AUD against MST congruent
+    #     MScalc.scatter_hist_reg_join(MIdata, NAME=f'audNONPref_MS+_{name}_plot', X_VAR='nonpref_AUD', Y_VAR='nonprefAUD_MST+', HUE_VAR='Group',
+    #                                 kde = False, savedir=savedir, statsmethod='within')
+    #     # iv] NonPref AUD against MST incongruent
+    #     MScalc.scatter_hist_reg_join(MIdata, NAME=f'audNONPref_MS-_{name}_plot', X_VAR='nonpref_AUD', Y_VAR='nonprefAUD_MST-', HUE_VAR='Group',
+    #                                 kde = False, savedir=savedir, statsmethod='within')
 
     # 3) Direction Selectivity Index Plot
     MScalc.scatter_hist_reg_join(MIdata, NAME=f'DSI_{name}_plot', X_VAR='DSI (VIS)', Y_VAR='DSI (AUD)', HUE_VAR='Group',
                                 kde = kde, reg = False, savedir=savedir, statsmethod='between')
     print(f'DSI {name} plot done!')
 
-    # 4) Response change index plots
-    # VIS
-    MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_vis', 
-                                X_VAR='RCI (VIS congruent)', Y_VAR='RCI (VIS incongruent)', HUE_VAR='Group',
-                                square=True, reg= False, kde=kde, savedir=savedir, statsmethod='between')
-    print(f'VIS RCI {name} plot done!')
-    # AUD
-    MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_aud', 
-                                X_VAR='RCI (AUD congruent)', Y_VAR='RCI (AUD incongruent)', HUE_VAR='Group',
-                                square=True, reg= False, kde=kde, savedir=savedir, statsmethod='between')
-    print(f'AUD RCI {name} plot done!')
+    # 4) Response change index plots (between group comparisons)
+    if includeVIS:
+        # VIS
+        MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_visPREF_betweem', 
+                                    X_VAR='RCI (VISpref congruent)', Y_VAR='RCI (VISpref incongruent)', HUE_VAR='Group',
+                                    square=True, reg= False, kde=kde, savedir=savedir, statsmethod='between')
+        MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_visNONPREF_between', 
+                                    X_VAR='RCI (VISnonpref congruent)', Y_VAR='RCI (VISnonpref incongruent)', HUE_VAR='Group',
+                                    square=True, reg= False, kde=kde, savedir=savedir, statsmethod='between')
+        print(f'VIS RCI {name} plots done!')
+    
+    if includeAUD:
+        # AUD
+        MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_audPREF_between', 
+                                    X_VAR='RCI (AUDpref congruent)', Y_VAR='RCI (AUDpref incongruent)', HUE_VAR='Group',
+                                    square=True, reg= False, kde=kde, savedir=savedir, statsmethod='between')
+        MScalc.scatter_hist_reg_join(MIdata, NAME=f'RCI_{name}_audNONPREF_between', 
+                                    X_VAR='RCI (AUDnonpref congruent)', Y_VAR='RCI (AUDnonpref incongruent)', HUE_VAR='Group',
+                                    square=True, reg= False, kde=kde, savedir=savedir, statsmethod='between')
+        
+        print(f'AUD RCI {name} plot done!')
+
+
+# New cleaner analysis
+def MIanalysis(MIDF:pd.DataFrame):
+    # preprocess into long DF
+    longMIDF:pd.DataFrame = MScalc.processFULLDFintoLONG(MIDF)
+
+    # to look at DSI: filter on DSIdf (one where DSI is not None / NaN)
+
+    # to look at RCI: filter on RCIdf (where RCI is not NaN)
+
+    # to look at FR: filter on FRdf (where FR is not NaN)
 
 
 ### ---------- Main block that runs the file as a script
 if __name__ == '__main__':
-    MIdata = MI(byAreas=True, GROUP_type='all')
+    MIdata = MI(byAreas=True, GROUP_type='all', LOADdf=True)
+    MIanalysis(MIdata)
+
