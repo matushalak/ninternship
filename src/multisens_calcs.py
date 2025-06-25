@@ -628,9 +628,9 @@ def RCI_dist_plots_all(MIdata: pd.DataFrame,
     
     # Quantification
     RCIQuantDF = pd.concat(rci_DFlist)
-    RCI_proportions(RCIQuantDF, area = area, savedir=savedir)
+    RCI_proportions(RCIQuantDF, area = area, savedir=savedir, pref=pref)
 
-def RCI_proportions(RCIs:pd.DataFrame, area:str, savedir:str):
+def RCI_proportions(RCIs:pd.DataFrame, area:str, savedir:str, pref:str):
     colors = {'+':'green', '-':'red'}
     # separate plots & stats for each modality
     for mod, modDF in RCIs.groupby('modality'):
@@ -734,4 +734,4 @@ def RCI_proportions(RCIs:pd.DataFrame, area:str, savedir:str):
         ax.spines['right'].set_visible(False)
         
         plt.tight_layout()
-        plt.savefig(os.path.join(savedir, f'RCI_proportions_{area}_{mod}'))
+        plt.savefig(os.path.join(savedir, f'RCI_proportions_{area}_{mod}{pref}.svg'))

@@ -2,14 +2,17 @@
 import numpy as np
 import pandas as pd
 import os
+import seaborn as sns
+import matplotlib.pyplot as plt
+from statannotations import Annotator
 import src.multisens_calcs as MScalc
 from src.Analyze import Analyze
 from src.AUDVIS import AUDVIS, Behavior, load_in_data
 from src.VisualAreas import Areas
 from src.analysis_utils import calc_avrg_trace, build_snake_grid, snake_plot, plot_avrg_trace
 from typing import Literal
-from src import MIPLOTSDIR, PYDATA
-
+from src import MIPLOTSDIR, PYDATA, PLOTSDIR
+NEWMIPLOTS = os.path.join(PLOTSDIR, 'MInewplots')
 # TODO: traces of enhanced neurons vs inhibited neurons / area, with RCI > threshold
 # ---------------------- MULTISENSORY ENHANCEMENT ANALYSIS -----------------------------
 def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
@@ -217,18 +220,101 @@ def plot_MI_data(MIdata:pd.DataFrame, savedir: str, includeVIS:bool, includeAUD:
 
 # New cleaner analysis
 def MIanalysis(MIDF:pd.DataFrame):
+    groupmapper = {'g1':'DR', 'g2':'NR'}
+    palette = {('V', 'DRpre'):'dodgerblue',
+                ('A', 'DRpre'):'red',
+                ('M', 'DRpre'):'goldenrod',
+                ('V', 'NRpre'):'lightskyblue',
+                ('A', 'NRpre'):'lightsalmon',
+                ('M', 'NRpre'):'palegoldenrod'}
+    hue_order = (('V', 'DRpre'), ('A', 'DRpre'), ('M', 'DRpre'), 
+                ('V', 'NRpre'),('A', 'NRpre'),('M', 'NRpre'))
+    if not os.path.exists(NEWMIPLOTS):
+        os.makedirs(NEWMIPLOTS)
+
     # preprocess into long DF
     longMIDF:pd.DataFrame = MScalc.processFULLDFintoLONG(MIDF)
+    longMIDF.loc[:, 'Group'] = longMIDF.loc[:, 'Group'].transform(lambda x: groupmapper[x[:2]]+x[2:])
 
-    # to look at DSI: filter on DSIdf (one where DSI is not None / NaN)
+    # direction selectivity for different neuron types
+    DSIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
 
     # to look at RCI: filter on RCIdf (where RCI is not NaN)
+    RCIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
 
     # to look at FR: filter on FRdf (where FR is not NaN)
+
+def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
+    # to look at DSI: filter on DSIdf (one where DSI is not None / NaN)
+    DSIdf = longMIDF.loc[~longMIDF['DSI'].isna()].iloc[:,[0,1,2,3,4,7]].copy()
+    hue = DSIdf[['NeuronType', 'Group']].apply(tuple, axis = 1)
+    dsi = sns.catplot(data = DSIdf, y = 'DSI', 
+                      x = 'BrainRegion', order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                      hue = hue, hue_order=hue_order, palette=palette, 
+                      row = 'Modality', row_order=['VIS', 'AUD'],
+                      col = 'NeuronType', col_order=['V', 'A', 'M'],
+                      kind = 'point', dodge=True, legend=False)
+    plt.tight_layout()
+    plt.savefig(os.path.join(NEWMIPLOTS, 'DSIareasNeuronTypes.svg'))
+    plt.show()
+    plt.close()
+
+def RCIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
+    ''''
+    Does RCI proportions as well as RCI comparisons between congruent & incongruent etc.
+    '''
+    # to look at RCI: filter on RCIdf (one where RCI is not NaN)
+    RCIdf = longMIDF.loc[~longMIDF['RCI'].isna()].iloc[:,[0,1,2,3,4,5, 6, 8]].copy()
+    pos = np.where(RCIdf['RCI'] > 0)[0]
+    neg = np.where(RCIdf['RCI'] < 0)[0]
+    sign = np.empty_like(RCIdf['RCI'], dtype=str)
+    sign[pos] = '+'
+    sign[neg] = '-'
+    RCIdf['Sign'] = sign
+
+    # TODO: RCI +- proportions (maybe treat just proportion enhanced - automatically the rest is suppressed)
+    # XXX (compare also between V & A neurons; V 50/50 enhanced A more supressed)
+    # XXX (also compare between preferred and non-preferred WITHIN group)
+    multisens_proportions(RCIdf=RCIdf)
+    # RCI magnitude MAIN
+    RCImag(RCIdf, hue_order, palette)
+
+def RCImag(RCIdf:pd.DataFrame, hue_order:list, palette:dict):
+    for TYPE in ['V', 'A', 'M']:
+        RCI_within_Type(Type=TYPE, RCIdf=RCIdf, hue_order=hue_order, palette=palette)
+
+def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict):
+    '''
+    Not really different if we split by sign of enhanced vs suppressed
+    '''
+    typeToMod = {'V':['VIS'], 'A':['AUD'], 'M':['VIS', 'AUD']}
+    for mod in typeToMod[Type]:
+        TypeDF = RCIdf.loc[(RCIdf['NeuronType'] == Type) & (RCIdf['Modality'] == mod)].copy()
+        TypeDF.loc[:, 'RCI'] = TypeDF.loc[:, 'RCI'].abs()
+        hue = TypeDF[['NeuronType', 'Group']].apply(tuple, axis = 1)
+        rcitype = sns.catplot(data = TypeDF, y = 'RCI',
+                            x = 'BrainRegion', order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                            col = 'Congruency', col_order=['congruent', 'incongruent'],
+                            row = 'Preference', row_order=['pref', 'nonpref'],
+                            hue = hue, hue_order=hue_order, palette=palette,
+                            kind = 'point', dodge=True, legend=False)
+        plt.tight_layout()
+        if Type == 'M':
+            plt.savefig(os.path.join(NEWMIPLOTS, f'RCIareas{Type}_{mod}.svg'))
+        else:
+            plt.savefig(os.path.join(NEWMIPLOTS, f'RCIareas{Type}.svg'))
+        plt.show()
+        plt.close()
+
+
+def multisens_proportions(RCIdf:pd.DataFrame):
+    pass
 
 
 ### ---------- Main block that runs the file as a script
 if __name__ == '__main__':
-    MIdata = MI(byAreas=True, GROUP_type='all', LOADdf=True)
+    MIdata = MI(byAreas=True, GROUP_type='all', 
+                LOADdf=True
+                )
     MIanalysis(MIdata)
 
