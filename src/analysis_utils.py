@@ -29,10 +29,11 @@ def get_proportionsDF(nbDF:DataFrame,
         .size()
         .reset_index(name='count')
     )
+
     # 2) within‐block normalization
     counts['prob'] = (
         counts
-        .groupby(propgroupby)['count']
+        .groupby(propgroupby, observed=True)['count']
         .transform(lambda x: x / x.sum())
     )
     return counts
@@ -40,7 +41,7 @@ def get_proportionsDF(nbDF:DataFrame,
 def get_distancesDF(distDF:DataFrame,
                     groupbyVAR:list[str], valueVAR:str):
     dist = (distDF
-            .groupby(groupbyVAR)[valueVAR]
+            .groupby(groupbyVAR, observed=False)[valueVAR]
             .mean()
             .reset_index(name='mean_dist'))
     return dist
@@ -60,6 +61,12 @@ def local_plotter(data:DataFrame, plot_func:Callable, whichframe:str,
                                ('V', 'NRpre'),('A', 'NRpre'),('M', 'NRpre'),
                                )
         plot_func(data = data, **kwargs)
+
+def local_plotter2(data:DataFrame, plot_func:Callable, whichframe:str, 
+                  **kwargs):
+        data = data.loc[data['frame']==whichframe,:]
+        plot_func(data = data, **kwargs)
+
 
 def catplot_proportions(DF:DataFrame, 
                         countgroupby:list[str],
@@ -100,7 +107,6 @@ def catplot_proportions(DF:DataFrame,
                         plot_func = sns.pointplot,
                         whichframe = 'null',
                         x = x, y = 'prob',
-                        palette='dark:#1f77b4',
                         hue = hue,
                         errorbar = 'pi', # percentile interval (2.5 - 97.5)
                         capsize = .3,
@@ -113,7 +119,6 @@ def catplot_proportions(DF:DataFrame,
                     plot_func = sns.pointplot,
                     whichframe = 'counts',
                     x =x, y = 'prob',
-                    palette='dark:#1f77b4',
                     hue = hue,
                     errorbar = None,
                     marker = "x", linestyle = 'none',
@@ -158,8 +163,7 @@ def catplot_distanc(DF:DataFrame,
     null.rename(columns={'mean_dist':'Distance'}, inplace=True)
     
     dist = DF.drop(columns=['NeuronID']).copy()
-    dist.loc[:, 'NeighborTYPE'] = dist['NNtype'].transform(lambda x: x[0]).to_numpy().astype(str)
-    dist.drop(columns=['NNtype'], inplace=True)
+    dist.loc[:, x] = dist[x].transform(lambda x: x[0]).to_numpy().astype(str)
     
     data = pd.concat([dist.assign(frame = 'dist'),
                       null.assign(frame = 'null')], ignore_index=True)
@@ -173,7 +177,6 @@ def catplot_distanc(DF:DataFrame,
                         plot_func = sns.pointplot,
                         whichframe = 'null',
                         x = x, y = y,
-                        palette='dark:#1f77b4',
                         hue = hue,
                         errorbar = 'pi', # percentile interval (2.5 - 97.5)
                         capsize = .3,
@@ -186,7 +189,6 @@ def catplot_distanc(DF:DataFrame,
                     plot_func = sns.pointplot,
                     whichframe = 'dist',
                     x =x, y = y,
-                    palette='dark:#1f77b4',
                     hue = hue,
                     errorbar = None,
                     marker = "x", linestyle = 'none',

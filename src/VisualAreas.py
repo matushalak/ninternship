@@ -138,6 +138,13 @@ class Areas:
         outlines = ndimage.binary_dilation(outlines, iterations=7)
         overlay = self.overlay.copy()
         overlay[outlines] = 255
+
+        # SIDEQUEST: find out center of V1
+        # v1 = np.where(overlay == 6)
+        # # rows = y, cols = x
+        # # V1cY = np.float64(2372.725249665462), V1cX = np.float64(1711.7525966108533)
+        # v1centerY , v1centerX  = v1[0].mean(), v1[1].mean()
+
         # Add black outlines
         areaColors = {6:colors.to_rgba('mediumseagreen', alpha=alpha),#V1
                       0:colors.to_rgba('coral', alpha=alpha), # PM
@@ -797,36 +804,92 @@ class Architecture:
         # for y, need to flip the 1 - (min-max); max - x / max - min to get (0: caudal, 1: rostral)
         self.df['Caudo-Rostral'] = (self.df['y'].max() - self.df['y']
                                     ) / (self.df['y'].max() - self.df['y'].min())
+        
+        # HARDCODED 
+        # V1cX = np.float64(1711.7525966108533), V1cY = np.float64(2372.725249665462)
+        v1center = np.array((1711.7525966108533, 2372.725249665462))[np.newaxis,:]
+        positions = np.column_stack((self.df.x.to_numpy(), self.df.y.to_numpy()))
+        # distances
+        distfromV1C = np.linalg.norm(positions - v1center, axis=1)
+        # minmax distances
+        self.df['V1-center-dist'] = (distfromV1C.max() - distfromV1C
+                                     ) / (distfromV1C.max() - distfromV1C.min())
         return self.df
-    
-    def spatial_distribution(self):
+
+    def spatial_distribution(self, nbins:int = 10, nshuffles:int = 1000, 
+                             vars:list[str] = ['Medio-Lateral', 'Caudo-Rostral','V1-center-dist']):
         '''
         Makes sense to compare WITHIN group and INTERACTION effects Group x Type
         NOT absolute positions between groups
         '''
-        ml = sns.catplot(data = self.df, y = 'Type', x = 'Medio-Lateral', hue = 'Group',
-                         kind = 'box', showfliers = False)
-        plt.savefig(os.path.join(self.SAVEDIR, 'mediolateral.svg'))
-        plt.close()
+        # get real data
+        realDATA:pd.DataFrame = get_histogramDF(spatialDF=self.df, 
+                                                vars = vars, 
+                                                nbins=nbins)
+        # get null distributions
+        if os.path.exists(nulldistpath := os.path.join(PYDATA, 
+                                                       f'SPATIAL_NULL(bins={nbins}).csv')):
+            NULL =  pd.read_csv(nulldistpath, index_col=0)
+        else:
+            shuffled = Parallel(n_jobs=cpu_count(), backend='threading')(delayed(get_histogramDF)(
+                self.df.copy(), vars, nbins, True)
+                for _ in tqdm(range(nshuffles)))
+            NULL = pd.concat(shuffled, ignore_index=True)
+            NULL.to_csv(nulldistpath)
 
-        # Control - the overall ML
-        controlml = sns.catplot(data = self.df, y = 'Group', x = 'Medio-Lateral',
-                                kind = 'box', showfliers = False)
-        plt.savefig(os.path.join(self.SAVEDIR, 'CONTROLmediolateral.svg'))
-        plt.close()
+        # combine real and null data
+        data = pd.concat([realDATA.assign(frame = 'real'),
+                          NULL.assign(frame = 'null')], 
+                          ignore_index=True)
 
-        rc = sns.catplot(data = self.df, x = 'Type', y = 'Caudo-Rostral', hue = 'Group',
-                         kind = 'box', showfliers = False)
-        plt.savefig(os.path.join(self.SAVEDIR, 'rostrocaudal.svg'))
-        plt.close()
+        savenames = {'Medio-Lateral':'mediolateral.svg', 
+                     'Caudo-Rostral':'rostrocaudal.svg',
+                     'V1-center-dist':'v1centerdist.svg'}
+        palette = {'V':'dodgerblue', 'A':'red', 'M':'goldenrod'}
 
-        # Control - the overall RC
-        controlrc = sns.catplot(data = self.df, x = 'Group', y = 'Caudo-Rostral',
-                                kind = 'box', showfliers = False)
-        plt.savefig(os.path.join(self.SAVEDIR, 'CONTROLrostrocaudal.svg'))
-        plt.close()
+        data.loc[:, 'bins'] = data.loc[:, 'bins'].astype(str)
+
+        for var in vars:
+            varDF = data.loc[data['Metric'] == var, :].copy()
+            g = sns.FacetGrid(data = varDF, row = 'Group', row_order=['NRpre','DRpre'])
+            
+            if var == 'Medio-Lateral':
+                x, y = 'bins', 'Proportion'
+                order = varDF.bins.unique()
+            else:
+                x, y = 'Proportion', 'bins'
+                order = varDF.bins.unique()[::-1]
+
+            # Null confidence intervals
+            g.map_dataframe(anut.local_plotter2,
+                        plot_func = sns.pointplot,
+                        whichframe = 'null',
+                        x = x, y = y,
+                        order = order,
+                        hue = 'Type',
+                        palette = palette,
+                        errorbar = 'pi', # percentile interval (2.5 - 97.5)
+                        capsize = .3,
+                        dodge = 0.5,
+                        marker = "", linestyle = "none")
+            # Real data
+            g.map_dataframe(anut.local_plotter2,
+                    plot_func = sns.pointplot,
+                    whichframe = 'real',
+                    x =x, y = y,
+                    order = order,
+                    hue = 'Type',
+                    palette = palette,
+                    errorbar = None,
+                    marker = "x",
+                    dodge = 0.5)
+            
+            g.add_legend()
+            plt.savefig(os.path.join(self.SAVEDIR, savenames[var]))
+            plt.close()
+
     
-    def neighbors(self):
+    def neighbors(self, K:int | None = None):
         neighborDFs = []
         nullAreas = []
         nullOverall = []
@@ -835,89 +898,117 @@ class Architecture:
             groupDF = self.df.loc[self.df['Group'] == g,:].copy()
             groupAR:Areas = self.areas[g]   
             adjacencyMatrix:np.ndarray = groupAR.adjacencyMATRIX() # pairwise distances of all recorded neurons
+            
+            # explore K-NN for optimal K (turns out to be 5)
+            # K = explore_KNN(groupDF, adjacencyMatrix, self.session_neurons[g], savedir=self.SAVEDIR)
+            
             # neighbor identity and distance analysis
-            nbDF = neighbor_analysis(groupDF, adjacencyMatrix, self.session_neurons[g])
+            nbDF = neighbor_analysis(groupDF, adjacencyMatrix, self.session_neurons[g], k = K)
             NULLdistAreas = null_distributions(groupDF.copy(), adjacencyMatrix, session_neurons=self.session_neurons[g],
-                                               perArea=True, niter=10000)
+                                               perArea=True, niter=1000, k=K)
             NULLdistOverall = null_distributions(groupDF.copy(), adjacencyMatrix, session_neurons=self.session_neurons[g], 
-                                                 perArea=False, niter=10000)
+                                                 perArea=False, niter=1000, k=K)
             neighborDFs.append(nbDF)
             nullAreas.append(NULLdistAreas)
             nullOverall.append(NULLdistOverall)
         
         # for probability of nearest neighbor analyses
+        probVAR = 'NeighborTYPE' if K is None else 'Neighborhood'
+        kname = 1 if K is None else K
         DF = pd.concat(neighborDFs,ignore_index=True)
         # for distance to nearest neighbor of given type analysis
         DISTDF = pd.melt(DF, id_vars=['Group', 'Area', 'Type', 'NeuronID'], 
                         value_vars=['Vneighbor','Aneighbor','Mneighbor'],
-                        var_name='NNtype', value_name='Distance')
+                        var_name=probVAR, value_name='Distance')
         
         NULLareas = pd.concat(nullAreas, ignore_index=True)
         NULLoverall = pd.concat(nullOverall, ignore_index=True)
         
-        ## PROBABILITY of being Nearest Neighbor
+        # PROBABILITY of being Nearest Neighbor
         # everything per-area
         anut.catplot_proportions(DF = DF,
                                  NULLDF=NULLareas,
-                                countgroupby=['Group', 'Type', 'Area', 'NeighborTYPE'],
+                                countgroupby=['Group', 'Type', 'Area', probVAR],
                                 propgroupby=['Group', 'Type', 'Area'],
                                 row = 'Type', col = 'Area',
-                                x = 'NeighborTYPE',
+                                x = probVAR,
                                 hue = 'Group',
                                 col_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
                                 row_order=['V','A','M'],
                                 order=['V','A','M'],
                                 show=False,
-                                plotname='byAreaNeighbors',
+                                plotname=f'byAreaNeighbors(k = {kname})',
                                 savedir=self.SAVEDIR)
 
         # overall across areas together
         anut.catplot_proportions(DF = DF,
                                  NULLDF=NULLoverall,
-                                countgroupby=['Group', 'Type', 'NeighborTYPE'],
+                                countgroupby=['Group', 'Type', probVAR],
                                 propgroupby=['Group', 'Type'],
                                 row = 'Type', 
-                                x = 'NeighborTYPE',
+                                x = probVAR,
                                 hue = 'Group',
                                 row_order=['V','A','M'],
                                 order=['V','A','M'],
                                 show=False,
-                                plotname='overallNeighbors',
+                                plotname=f'overallNeighbors(k = {kname})',
                                 savedir=self.SAVEDIR)
         
         ## DISTANCE to closest neighbor of different TYPES
         # per area
         anut.catplot_distanc(DF = DISTDF,
                              NULLDF=NULLareas,
-                             x =  'NeighborTYPE', y = 'Distance',
+                             x =  probVAR, y = 'Distance',
                              hue = 'Group', row = 'Type', col = 'Area',
                              row_order=['V','A','M'], order=['V','A','M'],
                              col_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
-                             plotname='byAreaDistances',
+                             plotname=f'byAreaDistances(k = {kname})',
                              savedir=self.SAVEDIR)
 
         # overall across visual cortex
         anut.catplot_distanc(DF = DISTDF,
                              NULLDF=NULLoverall,
-                             x =  'NeighborTYPE', y = 'Distance',
+                             x =  probVAR, y = 'Distance',
                              hue = 'Group', row = 'Type',
                              row_order=['V','A','M'], order=['V','A','M'],
-                             plotname='overallDistances',
+                             plotname=f'overallDistances(k = {kname})',
                              savedir=self.SAVEDIR)
 
-        ## XXX: K-NN (also interesting)
+        # XXX: K-NN with probability (also interesting)
+        print('Done with neighborhood analysis!')
+
+def explore_KNN(groupDF:pd.DataFrame, adjM:np.ndarray, 
+                session_neurons:list[tuple[int, int]], savedir:str
+                )->int:
+    knns = []
+    for k in range(1, 51):
+        knntest = neighbor_analysis(groupDF, adjM, session_neurons, k = k, testK=True)
+        knn = knntest.loc[:, ('Group', 'Area', 'Type','KNNdist')].copy()
+        knn['K'] = np.full(knn.shape[0], k)
+        knns.append(knn)
+    
+    Knns = pd.concat(knns ,ignore_index=True)
+    Knns['1/D'] = Knns['KNNdist'].transform(lambda x: 1/x).to_numpy()
+    plot = sns.catplot(Knns, x = 'K', y = '1/D', kind = 'point', hue = 'Type')
+    plt.tight_layout()
+    plt.savefig(os.path.join(savedir, f'KNNdistanceElbow{Knns.Group.unique()[0]}.svg'))
+    # visually determined
+    return 5
 
 def neighbor_analysis(groupDF:pd.DataFrame, adjM:np.ndarray, 
-                      session_neurons:list[tuple[int, int]]):
+                      session_neurons:list[tuple[int, int]],
+                      k:int | None = None, testK:bool = False):
     '''
     Nearest neighbor analysis and distance to nearest neighbor analysis
+    If K is provided, assigns neighborHOOD based on distance-weighed voting of K-nearest neighbors
     '''
+    # neuron IDs / indices (on between-session level)
     signeurons:list = groupDF.NeuronID.tolist()
     sigV = groupDF.loc[groupDF['Type'] == 'V', 'NeuronID'].to_list()
     sigA = groupDF.loc[groupDF['Type'] == 'A', 'NeuronID'].to_list()
     sigM = groupDF.loc[groupDF['Type'] == 'M', 'NeuronID'].to_list()
     
-    # adjacency matrix with pairwise distances
+    # adjacency matrix with pairwise distances (all neurons across sessions)
     # set main diagonal (distance to oneself is 0) to high number
     adjM += np.eye(*adjM.shape) * 2 * adjM.max()
     
@@ -928,80 +1019,154 @@ def neighbor_analysis(groupDF:pd.DataFrame, adjM:np.ndarray,
     # 'n' is nonsignificant
     signeurontypes = np.full(adjM.shape[0], 'n', dtype=str)
     signeurontypes[signeurons] = groupDF.Type.to_numpy(dtype=str)
-    # prepare output (first full matrix size, will index to only signeurons later)
+    # prepare output (first full matrix size, will index to only significant neurons later)
+    # nearest neighbor types
     nntypes = np.full(adjM.shape[0], 'n', dtype=str)
+    if k is not None:
+        # neighborhood types
+        nbhtypes = np.full(adjM.shape[0], 'n', dtype=str)
+        types = ['V', 'A', 'M']
+        types_lookup = np.array(types)
+
+    # Prepare to collect Distances (across sessions)
     nndists = np.full(adjM.shape[0], 2 * adjM.max(), dtype=float)
     vdists = np.full(adjM.shape[0], 2 * adjM.max(), dtype=float)
     adists = np.full(adjM.shape[0], 2 * adjM.max(), dtype=float)
     mdists = np.full(adjM.shape[0], 2 * adjM.max(), dtype=float)
+    if testK:
+        knndists = np.full(adjM.shape[0], 2 * adjM.max(), dtype=float)
     
-    # go over sessions
+    # go over individual sessions sessions
     for s0, sE in session_neurons:
-        sessneurons = np.arange(s0, sE)
+        sessneurons = np.arange(s0, sE) # between session level (overall neuron IDs)
 
-        sesssigneurons = np.intersect1d(sessneurons, signeurons) - s0
-        sessV = np.intersect1d(sesssigneurons, sigV)
-        sessA = np.intersect1d(sesssigneurons, sigA)
-        sessM = np.intersect1d(sesssigneurons, sigM)
+        # start at between session level (to allow comparison with sigV/A/M)
+        sesssigneurons = np.intersect1d(sessneurons, signeurons) 
 
-        adj = adjM[s0:sE, s0:sE, ...]
-        # TODO: fix this calculation for per-session (calculate per-session NN) and then broadcast that to the big DF
+        # we want this to be on WITHIN session level (neuron 0 - neuron N), that is why - s0
+        sessV = np.intersect1d(sesssigneurons, sigV) - s0
+        sessA = np.intersect1d(sesssigneurons, sigA) - s0
+        sessM = np.intersect1d(sesssigneurons, sigM) - s0
+        sesssigneurons -= s0 # correct to WITHIN session level
+
+        adj = adjM[s0:sE, s0:sE, ...] # session slice of adjM (to be indexed with within-session indices)
+
+        # this calculation is per-session (calculate per-session Nearest neighbors) and then broadcast that to 
+        # the big DF across sessions
         # get the nearest neighbor index (in session indices) + s0 to get back to overall neuronID
         nearest_neighbor = np.argmin(adj, axis = 1) + s0
-        
+
         # get nearest neighbor (within session) distances
         nearest_neighbor_dist = np.min(adj, axis = 1)
         nearest_V_neighbor_dist = np.min(adj[:, sessV], axis = 1)
         nearest_A_neighbor_dist = np.min(adj[:, sessA], axis = 1)
         nearest_M_neighbor_dist = np.min(adj[:, sessM], axis = 1)
 
+        # Looking at 1 nearest neighbor (K-NN = 1)
         # get indices for nearest neighbors for significantly responding neurons
         nnforsigneurons = nearest_neighbor[sesssigneurons]
-        
         # nearest neighbor types
         nntypes[sesssigneurons + s0] = signeurontypes[nnforsigneurons]
-        # distances
+        
+        # K-NN + Distance-weighed voting
+        if k is not None:
+            # within session indexing
+            KNN = max(k-1, 0) if testK else slice(k)
+            # get neuron ID's of K nearest significant neighbors
+            k_nearest_neighbors = np.argsort(adj, axis = 1)[:,KNN]
+            if testK:
+                k_nearest_dists = np.take_along_axis(arr=adj, indices=k_nearest_neighbors[:, np.newaxis], axis=1).squeeze()
+                knndists[sesssigneurons + s0] = k_nearest_dists[sesssigneurons]
+            else:
+                k_nearest_dists = np.take_along_axis(arr=adj, indices=k_nearest_neighbors, axis=1)
+            # k_nearest_neighbors += s0 # to but back on across-session indexing
+            # Distance-weighed voting for neighborhood type (w = 1/d)
+            k_nn_types = np.full_like(k_nearest_neighbors, 'n', dtype=str)
+            Vknn, Aknn, Mknn = (np.where(np.isin(k_nearest_neighbors, sessV)), 
+                                np.where(np.isin(k_nearest_neighbors, sessA)), 
+                                np.where(np.isin(k_nearest_neighbors, sessM)))
+            
+            k_nn_types[Vknn], k_nn_types[Aknn], k_nn_types[Mknn] = types
+            # XXX not working
+            # higher weight the closer it is (if using 1/dist)
+            weights = 1 / k_nearest_dists
+            
+            # sum of weights for each neighborhood category per neuron
+            WSUMS = np.column_stack([
+                (weights * (k_nn_types == t)).sum(axis = 1)
+                for t in types
+            ])
+            row_sums = WSUMS.sum(axis=1, keepdims=True)
+            # if s0 == 369:
+            #     breakpoint()
+            assert 0 not in row_sums, f'There should be no 0s in row_sums, and there are in rows {np.where((row_sums==0))[0]}(corresponding to neurons {np.where((row_sums==0))[0] + s0}) for session neurons {s0}:{sE} with signeurons {sesssigneurons+s0}'
+
+            propWEIGHT = WSUMS / row_sums
+
+
+            # neighborhood probabilities as distances
+            vdists[sesssigneurons + s0] = propWEIGHT[sesssigneurons, 0]
+            adists[sesssigneurons + s0] = propWEIGHT[sesssigneurons, 1]
+            mdists[sesssigneurons + s0] = propWEIGHT[sesssigneurons, 2]
+            # how much weight you draw from each neighbor type
+
+            KNNneighborhoods = np.argmax(WSUMS, axis=1)
+
+            # use lookup table
+            Neighborhoods = types_lookup[KNNneighborhoods]
+            nbhtypes[sesssigneurons + s0] = Neighborhoods[sesssigneurons] # only take significant neurons
+
+        # regular distances
+        else:
+            vdists[sesssigneurons + s0] = nearest_V_neighbor_dist[sesssigneurons]
+            adists[sesssigneurons + s0] = nearest_A_neighbor_dist[sesssigneurons]
+            mdists[sesssigneurons + s0] = nearest_M_neighbor_dist[sesssigneurons]
+        
         nndists[sesssigneurons + s0] = nearest_neighbor_dist[sesssigneurons]
-        vdists[sesssigneurons + s0] = nearest_V_neighbor_dist[sesssigneurons]
-        adists[sesssigneurons + s0] = nearest_A_neighbor_dist[sesssigneurons]
-        mdists[sesssigneurons + s0] = nearest_M_neighbor_dist[sesssigneurons]
     
-    groupDF.loc[:,'NeighborTYPE'] = nntypes[signeurons]
+    groupDF.loc[:, 'NeighborTYPE'] = nntypes[signeurons]
     groupDF.loc[:, 'NeighborDIST'] = nndists[signeurons]
     groupDF.loc[:, 'Vneighbor'] = vdists[signeurons]
     groupDF.loc[:, 'Aneighbor'] = adists[signeurons]
     groupDF.loc[:, 'Mneighbor'] = mdists[signeurons]
+    if k is not None: 
+        groupDF.loc[:,'Neighborhood'] = nbhtypes[signeurons]
+    if testK:
+        groupDF.loc[:, 'KNNdist'] = knndists[signeurons]
     
     return groupDF
 
 def null_distributions(gDF:pd.DataFrame, adj:np.ndarray, 
                        session_neurons:dict[list[tuple[int,int]]],
                        perArea:bool = True,
-                       niter:int = 1000
+                       niter:int = 1000,
+                       k: int | None = None
                        )->pd.DataFrame:
     ''''
     “Null distributions are generated by shuffling cell-type labels within each imaging session, 
     preserving session-specific spatial layout and cell-type count
     '''
     assert len(gDF.Group.unique()) == 1
+    kname = 1 if k is None else k
     if os.path.exists(nulldistpath := os.path.join(PYDATA, 
-                                                   f'{gDF.Group.unique()}_neighbornull_area{perArea}.csv')):
+                                                   f'{gDF.Group.unique()}_neighbornull_area{perArea}(k={kname}).csv')):
         return pd.read_csv(nulldistpath, index_col=0)
     
     cpus = cpu_count()
     # shuffle niter times
     # parallel (fast)
-    res = Parallel(n_jobs=cpus, backend='threading')(delayed(null_dist_worker)(gDF.copy(), adj.copy(), perArea, session_neurons.copy()) 
+    res = Parallel(n_jobs=cpus, backend='threading')(delayed(null_dist_worker)(gDF.copy(), adj.copy(), perArea, session_neurons.copy(), k) 
                                                      for _ in tqdm(range(niter)))
     # single-core (debugging)
-    # res = [null_dist_worker(gDF.copy(), adj.copy(), perArea, session_neurons.copy()) for _ in range(niter)]
+    # res = [null_dist_worker(gDF.copy(), adj.copy(), perArea, session_neurons.copy(),k) for _ in range(niter)]
     NULLdist:pd.DataFrame = pd.concat(res, ignore_index=True)
-    NULLdist.to_csv(os.path.join(PYDATA, f'{gDF.Group.unique()}_neighbornull_area{perArea}.csv'))
+    NULLdist.to_csv(nulldistpath)
 
     return NULLdist
 
 def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool, 
-                     session_neurons:dict[list[tuple[int,int]]]):
+                     session_neurons:dict[list[tuple[int,int]]],
+                     k:int | None = None):
     ''''
     shuffle the labels to create null distribution
     '''
@@ -1010,7 +1175,8 @@ def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool,
     # if not perArea:
     #     nullgDF.loc[:,'Type'] = nullgDF['Type'].sample(frac=1).to_numpy()
     # else:
-    # shuffle only per-session
+    # shuffle only per-session, while maintaining the proportions 
+    # of each neuron type within session
     nullgDF.loc[:,'Session'] = np.full(nullgDF.shape[0], -1)
     for indS, (s0, sE) in enumerate(session_neurons):
         sessneurons = np.arange(s0, sE)
@@ -1019,30 +1185,71 @@ def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool,
     
     assert -1 not in nullgDF.Session
 
+    # within session shuffle to preserve per-session proportions of neuron types
     nullgDF.loc[:,'Type'] = nullgDF.groupby(['Session'])['Type'].sample(frac = 1).to_numpy()
-
-    DF = neighbor_analysis(nullgDF, adj, session_neurons)
+    
+    DF = neighbor_analysis(nullgDF, adj, session_neurons, k=k)
+    propVAR = 'NeighborTYPE' if k is None else 'Neighborhood'
     DISTDF = pd.melt(DF, id_vars=['Group', 'Area', 'Type', 'NeuronID'], 
                         value_vars=['Vneighbor','Aneighbor','Mneighbor'],
                         var_name='NNtype', value_name='Distance')
     if perArea:
         props = anut.get_proportionsDF(DF, 
-                                    countgroupby=['Group', 'Type', 'Area', 'NeighborTYPE'],
+                                    countgroupby=['Group', 'Type', 'Area', propVAR],
                                     propgroupby=['Group', 'Type', 'Area'])
         
         dists = anut.get_distancesDF(DISTDF, groupbyVAR=['Group', 'Type', 'Area','NNtype'], 
                                      valueVAR='Distance')
     else:
         props = anut.get_proportionsDF(DF, 
-                                    countgroupby=['Group', 'Type', 'NeighborTYPE'],
+                                    countgroupby=['Group', 'Type', propVAR],
                                     propgroupby=['Group', 'Type'])
         
         dists = anut.get_distancesDF(DISTDF, groupbyVAR=['Group', 'Type', 'NNtype'], 
                                      valueVAR='Distance')
-    dists.loc[:, 'NeighborTYPE'] = dists['NNtype'].transform(lambda x : x[0])
-    dists['NeighborTYPE'] = dists['NeighborTYPE'].astype(str)
+    dists.loc[:, propVAR] = dists['NNtype'].transform(lambda x : x[0])
+    dists[propVAR] = dists[propVAR].astype(str)
     dists.drop(columns = ['NNtype'], inplace=True)
     out  = pd.merge(props, dists)
+    return out
+
+# for spatial distribution analysis
+def get_histogramDF(spatialDF:pd.DataFrame, vars:list[str], nbins:int,
+                    shuffle:bool = False)->pd.DataFrame:
+    bigdfs = []
+    edges = np.linspace(0, 1, nbins+1).round(decimals=5)
+    for g, gdf in spatialDF.groupby('Group'):
+        if shuffle:
+            gdf.loc[:, 'Type'] = gdf['Type'].sample(frac=1).to_numpy()
+        dfs = []
+        for var in vars:
+            countsoverall, _ = np.histogram(gdf.loc[:, var], bins = edges)
+            countsV, _ = np.histogram(gdf.loc[(gdf['Type'] == 'V'), var], bins = edges)
+            countsA, _ = np.histogram(gdf.loc[(gdf['Type'] == 'A'), var], bins = edges)
+            countsM, _ = np.histogram(gdf.loc[(gdf['Type'] == 'M'), var], bins = edges)
+            # nbins x 3 (V,A,M) dimensions
+            proportions = np.column_stack((countsV, countsA, countsM)) / countsoverall[:,np.newaxis]
+
+            # create DF
+            dfdict = {'bins':edges[1:],
+                      'Metric':[var]*len(countsoverall),
+                      'Group':[g]*len(countsoverall),
+                      'V':proportions[:,0], 'A':proportions[:,1],'M':proportions[:,2]}
+            df = pd.DataFrame(dfdict)
+
+            # melt df to long-format
+            df2 = pd.melt(df, 
+                        id_vars=['bins', 'Metric', 'Group'],
+                        value_vars=['V', 'A', 'M'],
+                        value_name='Proportion',
+                        var_name='Type')
+            
+            dfs.append(df2)
+        bigdf = pd.concat(dfs, ignore_index=True)
+        bigdfs.append(bigdf)
+
+    # join the dataframes from 2 groups
+    out = pd.concat(bigdfs, ignore_index=True)
     return out
 
 
@@ -1050,19 +1257,21 @@ if __name__ == '__main__':
     ### Venn diagram of neuron classes in in the 4 different regions
     NGDF, ARdict, SESSdict = by_areas_VENN(svg=True, pre_post='pre')
 
-    # Architecture analysis
-    # Arch = Architecture(NGDF, ARdict, SESSdict)
-    # Arch.spatial_distribution()
+    # # Architecture analysis
+    Arch = Architecture(NGDF, ARdict, SESSdict)
+    Arch.spatial_distribution(nbins=10)
     # Arch.neighbors()
+    # Arch.neighbors(K = 3)
+    # Arch.neighbors(K = 5)
 
     ### Timeseries plots for neurons from different regions
     # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=False)
     # by_areas_TSPLOT(GROUP_type = 'modality_specific', add_CASCADE=False)
     
     # this is the one that makes sense for V /A /M neuron groups
-    QuantDF = by_areas_TSPLOT(GROUP_type = 'all', pre_post='pre',
-                              svg=True)
-    Quantification(QuantDF, svg=True)
+    # QuantDF = by_areas_TSPLOT(GROUP_type = 'all', pre_post='pre',
+    #                           svg=True)
+    # Quantification(QuantDF, svg=True)
     
     ### TOTAL timeseries plot and quantification
     # QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)

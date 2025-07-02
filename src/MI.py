@@ -244,7 +244,8 @@ def MIanalysis(MIDF:pd.DataFrame):
 
     # to look at FR: filter on FRdf (where FR is not NaN)
 
-def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
+def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict,
+           show:bool = False):
     # to look at DSI: filter on DSIdf (one where DSI is not None / NaN)
     DSIdf = longMIDF.loc[~longMIDF['DSI'].isna()].iloc[:,[0,1,2,3,4,7]].copy()
     hue = DSIdf[['NeuronType', 'Group']].apply(tuple, axis = 1)
@@ -256,7 +257,8 @@ def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
                       kind = 'point', dodge=True, legend=False)
     plt.tight_layout()
     plt.savefig(os.path.join(NEWMIPLOTS, 'DSIareasNeuronTypes.svg'))
-    plt.show()
+    if show:
+        plt.show()
     plt.close()
 
 def RCIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
@@ -283,7 +285,8 @@ def RCImag(RCIdf:pd.DataFrame, hue_order:list, palette:dict):
     for TYPE in ['V', 'A', 'M']:
         RCI_within_Type(Type=TYPE, RCIdf=RCIdf, hue_order=hue_order, palette=palette)
 
-def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict):
+def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict,
+                    show:bool = False):
     '''
     Not really different if we split by sign of enhanced vs suppressed
     '''
@@ -303,12 +306,14 @@ def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict):
             plt.savefig(os.path.join(NEWMIPLOTS, f'RCIareas{Type}_{mod}.svg'))
         else:
             plt.savefig(os.path.join(NEWMIPLOTS, f'RCIareas{Type}.svg'))
-        plt.show()
+        if show:
+            plt.show()
         plt.close()
 
-
 def multisens_proportions(RCIdf:pd.DataFrame):
-    pass
+    # get proportion DF
+    RCIdf.groupby(['Group', 'BrainRegion', 'NeuronType', 'Modality', 'Preference', 'Congruency'])
+    breakpoint()
 
 
 ### ---------- Main block that runs the file as a script
