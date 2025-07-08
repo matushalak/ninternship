@@ -4,6 +4,7 @@ import seaborn as sns
 import scipy.stats as stats
 import matplotlib.pyplot as plt
 from statannotations.Annotator import Annotator
+from sklearn import decomposition
 import os
 from collections import defaultdict
 from typing import Literal
@@ -70,7 +71,7 @@ class Movements:
         
         # 2) second plot comparing average behavior (over trials and sessions) per trial type between DR and NR (overlaid)
         self.DRNR_QUANT = self.behaviors_DR_vs_NR(show=False)
-        # self.quantify()
+        self.quantify()
         print('2) Averaged comparison between DR and NR DONE')
         
         # 3) third series of plots is per session raw signal during each trial type and corresponding behaviors
@@ -78,7 +79,10 @@ class Movements:
         # self.raw_signals()
 
         # 4) separate plot per session (random chunk from session of consecutive trials of all trial types)
-        # self.raw_signals(all_TT_together=True, N_example_trials=100)
+        self.raw_signals(all_TT_together=True, 
+                         N_example_trials=15,
+                         averaged=False,
+                         )
 
         # Correlation Behavior (Whisker, Running and Pulil) and signal throughout trial (47 bins)
         # In each time bin, take correlation between 90 values from signal and 90 values from behavior [or 180 if combining LR]
@@ -191,7 +195,7 @@ class Movements:
                                ncols=3,#8, 
                                figsize = (2.5*3, 
                                           9), 
-                            sharex='col', sharey='row')
+                            sharex='col', sharey='all')
         
         quantres = {'Group':[], 'Behavior':[], 'Trial':[], 'Signal':[]}
 
@@ -237,6 +241,8 @@ class Movements:
                     
                     if '2' in gname:
                         ax2[ibeh, it].legend(loc = 2, fontsize = 8)
+                    
+                    ax2[ibeh, it].axis('off')
 
         f2.tight_layout()
         f2.savefig(os.path.join(self.pltdir, f'behavior_exploration(group_comparison).svg'), 
@@ -252,7 +258,9 @@ class Movements:
     
     def raw_signals(self,
                     all_TT_together:bool = False,
-                    N_example_trials:int = 135):
+                    N_example_trials:int = 135,
+                    averaged:bool = True,
+                    ):
         if all_TT_together:
             Group_Beh_by_sess = self.get_behaviors_by_session(addTT=False)
             print('Full behavior by session done')
@@ -270,11 +278,20 @@ class Movements:
                     os.makedirs(sess_dir)
 
                 averaged_neurons = AV.session_average_zsig[isess]
+                if averaged:
+                    nrows = 4
+                    figsize = (20,9)
+                else:
+                    # pick 3 random neurons
+                    random_chosen = np.random.choice(np.arange(*AV.session_neurons[isess]), size=3)
+                    nrows = 6
+                    figsize = (12, 9)
+
                 # one plot per session with all trial types
                 if all_TT_together:
                     sess_TT_indices = find_session_tt_indices(isess, AV)
                     Beh_by_sess = Group_Beh_by_sess[ig]
-                    f4, a4 = plt.subplots(nrows=4, figsize = (20, 9), sharex='col')    
+                    f4, a4 = plt.subplots(nrows=nrows, figsize = figsize, sharex='col')    
                     row = 0
                     ntrials = averaged_neurons.shape[0]
                     avsig_flat_full = averaged_neurons.flatten()
@@ -285,25 +302,43 @@ class Movements:
                     # can finetune how big example want
                     example_trials = np.array([full_flat_time[random_segment], full_flat_time[random_segment] + (N_example_trials*self.n_ts*1/AV.SF)])
                     
-                    # plot population average signal for whole session
-                    a4[row].plot(full_flat_time, avsig_flat_full, color = 'k')
-                    # stimulus onsets
-                    yrange = (np.nanmin(avsig_flat_full), np.nanmax(avsig_flat_full))
-                    ymin = yrange[1] - 0.2 * (yrange[1] - yrange[0])
-                    add_TT_onsets(ax = a4[row], session_ttindices=sess_TT_indices, SF = AV.SF,
-                                  ymin=ymin, ymax = yrange[1], tt_col_lstl=self.tt_col_lstl,
-                                  full_sig_size=avsig_flat_full.size,
-                                  stim_start_idx_within_trial=AV.TRIAL[0])
-                    a4[row].legend(loc = 1)
-                    a4[row].set_ylabel('Z-dF/F')
-                    a4[row].set_xlim(example_trials)
+                    if averaged:
+                        # plot population average signal for whole session
+                        a4[row].plot(full_flat_time, avsig_flat_full, color = 'k')
+                        # stimulus onsets
+                        yrange = (np.nanmin(avsig_flat_full), np.nanmax(avsig_flat_full))
+                        ymin = yrange[1] - 0.2 * (yrange[1] - yrange[0])
+                        add_TT_onsets(ax = a4[row], session_ttindices=sess_TT_indices, SF = AV.SF,
+                                    ymin=ymin, ymax = yrange[1], tt_col_lstl=self.tt_col_lstl,
+                                    full_sig_size=avsig_flat_full.size,
+                                    stim_start_idx_within_trial=AV.TRIAL[0])
+                        a4[row].set_ylabel('Z-dF/F')
+                        a4[row].set_xlim(example_trials)
+                        row +=1
+                    
+                    # plot 3 randomly chosen neurons
+                    else:
+                        for chosen in random_chosen:
+                            dff_full = AV.zsig[:, :, chosen].flatten()
+                            a4[row].plot(full_flat_time, dff_full, color = 'k')
+                            a4[row].axis('off')
+                            yrange = (np.nanmin(dff_full), np.nanmax(dff_full))
+                            ymin = yrange[1] - 0.2 * (yrange[1] - yrange[0])
+                            add_TT_onsets(ax = a4[row], session_ttindices=sess_TT_indices, SF = AV.SF,
+                                        ymin=ymin, ymax = yrange[1], tt_col_lstl=self.tt_col_lstl,
+                                        full_sig_size=dff_full.size,
+                                        stim_start_idx_within_trial=AV.TRIAL[0])
+                            a4[row].set_ylabel('z-∆F/F')
+                            a4[row].set_xlim(example_trials)
+                            row += 1
+
 
                     # add behaviors
                     for beh_name, allsessbeh in Beh_by_sess.items():
-                        row +=1
                         behsess = allsessbeh[f'sess{isess}']
                         beh_flat = behsess.flatten()
                         a4[row].plot(full_flat_time, beh_flat, color = 'k')
+                        a4[row].axis('off')
                         # stimulus onsets
                         yrange = (np.nanmin(beh_flat), np.nanmax(beh_flat))
                         ymin = yrange[1] - 0.2 * (yrange[1] - yrange[0])
@@ -311,15 +346,16 @@ class Movements:
                                       ymin=ymin, ymax = yrange[1], tt_col_lstl=self.tt_col_lstl,
                                       full_sig_size=avsig_flat_full.size,
                                       stim_start_idx_within_trial=AV.TRIAL[0])
-                        a4[row].legend(loc = 1)
                         a4[row].set_ylabel(f'Z-{beh_name}')
                         a4[row].set_xlim(example_trials)
                         if row == 3:
                             a4[row].set_xlabel(f'Time (s)')
+                        
+                        row +=1
                     
                     
                     f4.tight_layout()
-                    f4.savefig(os.path.join(sess_dir, f'raw_SIGS_allTT(ntrials:{N_example_trials}).png'), dpi = 300)
+                    f4.savefig(os.path.join(sess_dir, f'raw_SIGS_allTT(ntrials:{N_example_trials}).svg'), dpi = 300)
                     plt.close()
                     print(f'Group {ig} Session {isess} raw_SIGS_allTT(ntrials:{N_example_trials}) saved!')
                     
@@ -380,17 +416,17 @@ class Movements:
         extracts signal correlations for each neuron for each trial-type for each behavior
         in a dict: group -> behavior -> TT -> corr_matrix (ts x ts x neurons)
         '''
-        if os.path.exists(
-            CORRsavepath := os.path.join(PYDATA, 'MovementCORRts.pkl')
-                          ) and os.path.exists(
-            SINGLECORRsavepath := os.path.join(PYDATA, 'MovementCORRsingle.pkl')):
-            # Load files
-            with open(CORRsavepath, 'rb') as CORR_f:
-                correlations = pkl.load(CORR_f)
-            with open(SINGLECORRsavepath, 'rb') as SINGLECORR_f:
-                singlevalcorrelations = pkl.load(SINGLECORR_f)
+        # if os.path.exists(
+        #     CORRsavepath := os.path.join(PYDATA, 'MovementCORRts.pkl')
+        #                   ) and os.path.exists(
+        #     SINGLECORRsavepath := os.path.join(PYDATA, 'MovementCORRsingle.pkl')):
+        #     # Load files
+        #     with open(CORRsavepath, 'rb') as CORR_f:
+        #         correlations = pkl.load(CORR_f)
+        #     with open(SINGLECORRsavepath, 'rb') as SINGLECORR_f:
+        #         singlevalcorrelations = pkl.load(SINGLECORR_f)
             
-            return correlations, singlevalcorrelations
+        #     return correlations, singlevalcorrelations
         
         # different brain areas
         self.ARs:list[Areas] = [Areas(av) for av in self.AVs]
@@ -427,8 +463,8 @@ class Movements:
                         # ntrials (of trial type tt), nts, nneurons (of session isess)
                         sessDFF = ttsig[:,:,neurons_slice]
 
-                        corr_worker_args.append((neurons_slice, sessDFF, sessARR))
-                        tt_all_neur.append(corr_worker(neurons_slice, sessDFF, sessARR))
+                        corr_worker_args.append((sessDFF, sessARR, AV.TRIAL))
+                        tt_all_neur.append(corr_worker(sessDFF, sessARR, AV.TRIAL))
                     
                     timewise, singlevals = [t for t, _ in tt_all_neur], [s for _, s in tt_all_neur]
                     temporal_corr_all_neur = np.dstack(timewise)
@@ -439,14 +475,14 @@ class Movements:
                     singlevalcorrelations[g][b][tt] = singlevals_all_neur
         
         # save files
-        with open(CORRsavepath, 'wb') as CORR_f:
-            pkl.dump(dict(correlations), CORR_f)
+        # with open(CORRsavepath, 'wb') as CORR_f:
+        #     pkl.dump(dict(correlations), CORR_f)
     
-        with open(SINGLECORRsavepath, 'wb') as SINGLECORR_f:
-            pkl.dump(dict(singlevalcorrelations), SINGLECORR_f)
+        # with open(SINGLECORRsavepath, 'wb') as SINGLECORR_f:
+        #     pkl.dump(dict(singlevalcorrelations), SINGLECORR_f)
         
-        return self.signal_correlations()
-        
+        # return self.signal_correlations()
+        return correlations, singlevalcorrelations
     
     def analyze_correlations(self):
         # 0) Heatmap (3 x 2 [DR vs NR]) - neurons from all areas all sessions combined
@@ -570,7 +606,7 @@ class Movements:
         # Filter out neurons not in Visual Areas
         QuantDF = QuantDF.loc[QuantDF['Region'] != '']
         quantplot = sns.catplot(data = QuantDF, x = 'Stimulus', 
-                                y = 'R2', # |r| or R2 makes sense here
+                                y = '|r|', # |r| or R2 makes sense here
                                 hue = 'Group', 
                                 row = 'Behavior', col='Region',
                                 col_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
@@ -612,26 +648,40 @@ class Movements:
             (("V", "g1"), ("A", "g1")),
             (("V", "g2"), ("A", "g2")),
         ]
-        # breakpoint()
+        # palette = {('V', 'g1'):'dodgerblue',
+        #         ('A', 'g1'):'red',
+        #         ('AV', 'g1'):'goldenrod',
+        #         ('V', 'g2'):'lightskyblue',
+        #         ('A', 'g2'):'lightsalmon',
+        #         ('AV', 'g2'):'palegoldenrod'}
+        palette = {'g1':'darkorange', 'g2':'grey'}
+        
         for b in self.DRNR_QUANT.Behavior.unique():
-            data = self.DRNR_QUANT.loc[self.DRNR_QUANT['Behavior'] == b]
-            cp = sns.catplot(data = data, x = 'Trial', y = 'Signal', hue = 'Group',
-                            kind = 'bar', legend=False)
+            sigcol = f'Z-{b}'
+            data = self.DRNR_QUANT.loc[self.DRNR_QUANT['Behavior'] == b].copy()
+            data.rename(columns = {'Signal':sigcol}, inplace = True)
+            cp = sns.catplot(data = data, x = 'Trial', y = sigcol, 
+                             hue = 'Group', #data[['Trial','Group']].apply(tuple, axis = 1),
+                             hue_order=['g2', 'g1'],
+                            #  (('V', 'g2'),('A', 'g2'),('AV', 'g2'),('V', 'g1'), ('A', 'g1'), ('AV', 'g1')),
+                            palette=palette,
+                            kind = 'point', dodge = .3, capsize = .2, 
+                            legend=True)
             # first: between‑group comparisons
             annot_bw = Annotator(
                 cp.ax,
                 between_pairs,
                 data=data,
                 x='Trial',
-                y='Signal',
+                y=sigcol,
                 hue='Group',
             )
             annot_bw.configure(
-                test='t-test_ind',
+                test='Mann-Whitney',#'t-test_ind', 'Mann-Whitney',
                 comparisons_correction='Bonferroni',
                 text_format='star',
                 loc='outside',
-                hide_non_significant = True,
+                # hide_non_significant = True,
                 correction_format="replace"
             )
             annot_bw.apply_and_annotate()
@@ -639,26 +689,35 @@ class Movements:
             # second: within-group comparison
             annot_wi = Annotator(
             cp.ax, within_pairs,
-            data=data, x='Trial', y='Signal', hue='Group'
+            data=data, x='Trial', y=sigcol, hue='Group'
             )
             annot_wi.configure(
-                test='t-test_paired',#'Wilcoxon',
+                test='Wilcoxon',#'t-test_paired', 'Wilcoxon',
                 comparisons_correction='Bonferroni',
                 text_format='star',
                 loc='outside',
-                hide_non_significant = True,
+                # hide_non_significant = True,
                 correction_format="replace"
             )
             annot_wi.apply_and_annotate()
             
             plt.tight_layout()
+            plt.ylim(-0.4, 0.6)
             plt.savefig(os.path.join(self.pltdir, f'MovementsDRNRQuant({b}).svg'))
     
 # -------------- Helpers ----------------
-def corr_worker(neurons_slice:slice, 
-                sessDFF:np.ndarray, 
-                sessARR:np.ndarray
+def corr_worker(sessDFF:np.ndarray, 
+                sessARR:np.ndarray,
+                trialSLICE:tuple,
                 )->np.ndarray:
+    '''
+    sessDFF: (ntrials x nts x nneurons) - neural signals
+    sessARR: (ntrials x nts) - behavioral signal
+    trialSLICE: (trialStart, trialEND) contains frames between which stimulus presentation happens
+    
+    NOTE: would be better to get principal components of the neural signal or something like that
+    and correlate that to the behavior
+    '''
     ntrials, nts, nneur = sessDFF.shape
     
     # 3D array nts x nts x nneurons
@@ -674,10 +733,31 @@ def corr_worker(neurons_slice:slice,
         
         # diagonal of trial-wise correlation matrix contains correlations of behavior and signal 
         # in each trial, the mean of that diagonal contains the average correlation of neuron's
-        # trial signal with trial behavior of the mouse
-        single_val_corrs[ineur] = np.nanmean(np.corrcoef(sessARR, sessDFF[:,:,ineur], 
-                                                         rowvar = True
-                                                         )[:ntrials, ntrials:].diagonal())
+        
+        # correlation of trial signal with trial behavior of the mouse (very low, a lot of single neuron noise hard to capture)
+        trialsCorr = np.corrcoef(sessARR[:,trialSLICE[0]:trialSLICE[1]], sessDFF[:,trialSLICE[0]:trialSLICE[1],ineur], 
+                                rowvar = True
+                                )[:ntrials, ntrials:].diagonal()
+
+        # Fisher-z correction to take correlation mean
+        fisher = np.arctanh(trialsCorr)
+        # inverse fisher of mean
+        single_val_corrs[ineur] = np.tanh(np.nanmean(fisher))
+        
+        # correlation of session averages for each neuron (high and not meaningful)
+        # single_val_corrs[ineur] = np.corrcoef(sessARR[:,trialSLICE[0]:trialSLICE[1]].mean(axis=0),
+        #                                       sessDFF[:,trialSLICE[0]:trialSLICE[1],ineur].mean(axis = 0),
+        #                                       rowvar=True)[0,1]
+    
+    # Average correlation on trial-level across trials with average population signal (fisher-z correction)
+    # trialsCorr = np.corrcoef(sessARR[:,trialSLICE[0]:trialSLICE[1]], sessDFF[:,trialSLICE[0]:trialSLICE[1],:].mean(axis=2), 
+    #                         rowvar = True
+    #                         )[:ntrials, ntrials:].diagonal()
+
+    # # Fisher-z correction to take correlation mean
+    # fisher = np.arctanh(trialsCorr)
+    # # inverse fisher of mean
+    # single_val_corrs = np.tanh(np.nanmean(fisher))
 
     # average relationship of signal (xaxis) with given behavior (yaxis)
     # over all neurons in the session for given TT

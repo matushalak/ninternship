@@ -71,10 +71,10 @@ class Behavior:
         
         # NOTE!!! 3 possible z-scoring schemes:
         #1) Z-score on trial-level beh_i = (beh_i - µ_beh_i_bsl) / std_beh_i_bsl [What was initially done]
-            # PROBLEM: trials not comparable because trials with low baseline variability overestimated
+            # PROBLEM: trials not comparable because trials with low baseline variability extremely overestimated
         #2) Z-score on global µ_beh_global_bsl and std_beh_global_bsl
             # PROBLEM: not centered around 0
-        #3) Z-score on global µ_beh_global_bsl and std_beh_global_bsl & subsequently baseline correct
+        #3) Z-score on global µ_beh_global_bsl and std_beh_global_bsl & subsequently baseline correct on trial level
         # with beh_i = (beh_i - µ_beh_i_bsl) [NOTE: CURRENTLY USED]
         
         # Z-scoring on global baseline µ and std

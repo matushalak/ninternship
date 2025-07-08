@@ -48,24 +48,25 @@ def get_distancesDF(distDF:DataFrame,
 
 def local_plotter(data:DataFrame, plot_func:Callable, whichframe:str, 
                   **kwargs):
-        data = data.loc[data['frame']==whichframe,:]
-        kwargs['hue'] = data[[kwargs['x'], kwargs['hue']]].apply(tuple, axis = 1)
-        palette = {('V', 'DRpre'):'dodgerblue',
-                   ('A', 'DRpre'):'red',
-                   ('M', 'DRpre'):'goldenrod',
-                   ('V', 'NRpre'):'lightskyblue',
-                   ('A', 'NRpre'):'lightsalmon',
-                   ('M', 'NRpre'):'palegoldenrod'}
-        kwargs['palette'] = palette
-        kwargs['hue_order'] = (('V', 'DRpre'), ('A', 'DRpre'), ('M', 'DRpre'), 
-                               ('V', 'NRpre'),('A', 'NRpre'),('M', 'NRpre'),
-                               )
-        plot_func(data = data, **kwargs)
+    data = data.loc[data['frame']==whichframe,:]
+    kwargs['hue'] = data[[kwargs['x'], kwargs['hue']]].apply(tuple, axis = 1)
+    palette = {('V', 'DRpre'):'dodgerblue',
+                ('A', 'DRpre'):'red',
+                ('M', 'DRpre'):'goldenrod',
+                ('V', 'NRpre'):'lightskyblue',
+                ('A', 'NRpre'):'lightsalmon',
+                ('M', 'NRpre'):'palegoldenrod'}
+    kwargs['palette'] = palette
+    kwargs['hue_order'] = (
+        ('V', 'NRpre'),('A', 'NRpre'),('M', 'NRpre'),
+        ('V', 'DRpre'), ('A', 'DRpre'), ('M', 'DRpre'), 
+                            )
+    plot_func(data = data, **kwargs)
 
 def local_plotter2(data:DataFrame, plot_func:Callable, whichframe:str, 
                   **kwargs):
-        data = data.loc[data['frame']==whichframe,:]
-        plot_func(data = data, **kwargs)
+    data = data.loc[data['frame']==whichframe,:]
+    plot_func(data = data, **kwargs)
 
 
 def catplot_proportions(DF:DataFrame, 

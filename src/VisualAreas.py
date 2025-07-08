@@ -182,8 +182,8 @@ class Areas:
         
         if values is not None:
             # determine min/max
-            _vmin = -0.2#float(np.nanmin(values))
-            _vmax = 0.2#float(np.nanmax(values))
+            _vmin = float(np.nanmin(values))
+            _vmax = float(np.nanmax(values))
             norm = Normalize(vmin=_vmin, vmax=_vmax)
             sm   = ScalarMappable(norm=norm, cmap=cmap)
 
@@ -407,6 +407,13 @@ def by_areas_VENN(svg:bool=False,
         else:
             VennRegfig.savefig(os.path.join(PLOTSDIR, f'{AV.NAME}_VennDiagramAREAS.svg'))
         plt.close()
+    # Example
+    venn3(subsets = ({5,1,2,3}, {2,3,4, 7}, {3,4,5, 9}), 
+          set_labels=('V', 'A', 'AV'), 
+          set_colors=('dodgerblue', 'r', 'goldenrod'))
+    plt.tight_layout()
+    plt.savefig(os.path.join(PLOTSDIR, 'VennDiagramEXAMPLE.svg'))
+    plt.close()
     print('Done with venn diagrams!')
 
     propDF = pd.DataFrame(proportion_df)
@@ -665,7 +672,8 @@ def Quantification(df_long: pd.DataFrame,
     
     for (ar, ntype), arDF in df_long.groupby(['BRAIN_AREA', 'NeuronType']):
         bp = sns.catplot(arDF, x = 'TT', y='F', hue = 'Group', 
-                    kind = 'point', palette=colors[ar], dodge = 0.3, 
+                    kind = 'point', palette=colors[ar], 
+                    dodge = 0.3, capsize = .2,
                     legend=False)
         
         ax = bp.ax
@@ -847,30 +855,33 @@ class Architecture:
                      'V1-center-dist':'v1centerdist.svg'}
         palette = {'V':'dodgerblue', 'A':'red', 'M':'goldenrod'}
 
-        data.loc[:, 'bins'] = data.loc[:, 'bins'].astype(str)
+        # cast bins to categorical for pointplot
+        data = data.astype({'bins':'str'})
+        data['bins'] = data['bins'].astype(str)
 
         for var in vars:
             varDF = data.loc[data['Metric'] == var, :].copy()
             g = sns.FacetGrid(data = varDF, row = 'Group', row_order=['NRpre','DRpre'])
             
-            if var == 'Medio-Lateral':
-                x, y = 'bins', 'Proportion'
-                order = varDF.bins.unique()
-            else:
-                x, y = 'Proportion', 'bins'
+            if var == 'Caudo-Rostral':
+                x, y, orient = 'Proportion', 'bins', 'y'
                 order = varDF.bins.unique()[::-1]
+            else:
+                x, y, orient = 'bins', 'Proportion', 'x'
+                order = varDF.bins.unique()
 
             # Null confidence intervals
             g.map_dataframe(anut.local_plotter2,
-                        plot_func = sns.pointplot,
+                        plot_func = sns.lineplot,
                         whichframe = 'null',
                         x = x, y = y,
-                        order = order,
+                        # order = order,
                         hue = 'Type',
                         palette = palette,
                         errorbar = 'pi', # percentile interval (2.5 - 97.5)
-                        capsize = .3,
-                        dodge = 0.5,
+                        # capsize = .3,
+                        # dodge = 0.5,
+                        orient=orient,
                         marker = "", linestyle = "none")
             # Real data
             g.map_dataframe(anut.local_plotter2,
@@ -881,12 +892,16 @@ class Architecture:
                     hue = 'Type',
                     palette = palette,
                     errorbar = None,
-                    marker = "x",
-                    dodge = 0.5)
+                    marker = "x", linestyle = 'dashed', 
+                    markersize = 9, markeredgewidth = 2, linewidth = 1,
+                    # dodge = 0.5
+                    )
             
             g.add_legend()
             plt.savefig(os.path.join(self.SAVEDIR, savenames[var]))
             plt.close()
+        
+        print('Location of neuron types analysis DONE!')
 
     
     def neighbors(self, K:int | None = None):
@@ -1186,7 +1201,7 @@ def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool,
     assert -1 not in nullgDF.Session
 
     # within session shuffle to preserve per-session proportions of neuron types
-    nullgDF.loc[:,'Type'] = nullgDF.groupby(['Session'])['Type'].sample(frac = 1).to_numpy()
+    nullgDF.loc[:,'Type'] = nullgDF.groupby(['Session', 'Area'])['Type'].sample(frac = 1).to_numpy()
     
     DF = neighbor_analysis(nullgDF, adj, session_neurons, k=k)
     propVAR = 'NeighborTYPE' if k is None else 'Neighborhood'
@@ -1217,7 +1232,7 @@ def null_dist_worker(gDF:pd.DataFrame, adj:np.ndarray, perArea:bool,
 def get_histogramDF(spatialDF:pd.DataFrame, vars:list[str], nbins:int,
                     shuffle:bool = False)->pd.DataFrame:
     bigdfs = []
-    edges = np.linspace(0, 1, nbins+1).round(decimals=5)
+    edges = np.linspace(0, 1, nbins+1).round(decimals=1)
     for g, gdf in spatialDF.groupby('Group'):
         if shuffle:
             gdf.loc[:, 'Type'] = gdf['Type'].sample(frac=1).to_numpy()
@@ -1228,7 +1243,10 @@ def get_histogramDF(spatialDF:pd.DataFrame, vars:list[str], nbins:int,
             countsA, _ = np.histogram(gdf.loc[(gdf['Type'] == 'A'), var], bins = edges)
             countsM, _ = np.histogram(gdf.loc[(gdf['Type'] == 'M'), var], bins = edges)
             # nbins x 3 (V,A,M) dimensions
-            proportions = np.column_stack((countsV, countsA, countsM)) / countsoverall[:,np.newaxis]
+            nonzero = countsoverall > 0
+            proportions = np.column_stack((countsV, countsA, countsM)).astype(float)
+            proportions[nonzero, :] = proportions[nonzero,:] / countsoverall[nonzero,np.newaxis]
+            proportions[~nonzero, :] = np.nan
 
             # create DF
             dfdict = {'bins':edges[1:],
@@ -1259,10 +1277,10 @@ if __name__ == '__main__':
 
     # # Architecture analysis
     Arch = Architecture(NGDF, ARdict, SESSdict)
-    Arch.spatial_distribution(nbins=10)
-    # Arch.neighbors()
-    # Arch.neighbors(K = 3)
-    # Arch.neighbors(K = 5)
+    # Arch.spatial_distribution(nbins=10)
+    Arch.neighbors()
+    Arch.neighbors(K = 3)
+    Arch.neighbors(K = 5)
 
     ### Timeseries plots for neurons from different regions
     # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=False)
