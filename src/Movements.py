@@ -79,10 +79,10 @@ class Movements:
         # self.raw_signals()
 
         # 4) separate plot per session (random chunk from session of consecutive trials of all trial types)
-        self.raw_signals(all_TT_together=True, 
-                         N_example_trials=15,
-                         averaged=False,
-                         )
+        # self.raw_signals(all_TT_together=True, 
+        #                  N_example_trials=15,
+        #                  averaged=False,
+        #                  )
 
         # Correlation Behavior (Whisker, Running and Pulil) and signal throughout trial (47 bins)
         # In each time bin, take correlation between 90 values from signal and 90 values from behavior [or 180 if combining LR]
@@ -118,7 +118,7 @@ class Movements:
                             behavior_by_session[attr][f'sess{isess}'] = general_separate_signal(
                                 sig=beh_sig, trial_types=AV.sessions[isess]['trialIDs'],
                                 # comment out if want RAW trial_types
-                                trial_type_combinations=[('Vr', 'Vl'), ('Al', "Ar"), ('AlVl', 'ArVr', 'AlVr', 'ArVl')],
+                                trial_type_combinations=[('Vl', 'Vr'), ('Al', "Ar"), ('AlVl', 'AlVr', 'ArVl', 'ArVr')],
                                 separation_labels= ['V', 'A', 'AV']
                                 )
                         else:
@@ -416,17 +416,22 @@ class Movements:
         extracts signal correlations for each neuron for each trial-type for each behavior
         in a dict: group -> behavior -> TT -> corr_matrix (ts x ts x neurons)
         '''
-        # if os.path.exists(
-        #     CORRsavepath := os.path.join(PYDATA, 'MovementCORRts.pkl')
-        #                   ) and os.path.exists(
-        #     SINGLECORRsavepath := os.path.join(PYDATA, 'MovementCORRsingle.pkl')):
-        #     # Load files
-        #     with open(CORRsavepath, 'rb') as CORR_f:
-        #         correlations = pkl.load(CORR_f)
-        #     with open(SINGLECORRsavepath, 'rb') as SINGLECORR_f:
-        #         singlevalcorrelations = pkl.load(SINGLECORR_f)
+        SINGLECORRsavepath = os.path.join(PYDATA, 'MovementCORRsingle.pkl')
+        CORRsavepath = os.path.join(PYDATA, 'MovementCORRpop.pkl')
+
+        # based on testing does not seem to be good idea
+        bigDF = {'Group':[],'Session':[], 'NeuronID':[],
+                 'Stimulus':[], 'Region':[], 'Behavior':[],
+                 'Behavioral signal':[], 'FR':[]}
+                          
+        if os.path.exists(CORRsavepath) and os.path.exists(SINGLECORRsavepath):
+            # Load files
+            with open(CORRsavepath, 'rb') as CORR_f:
+                correlations = pkl.load(CORR_f)
+            with open(SINGLECORRsavepath, 'rb') as SINGLECORR_f:
+                singlevalcorrelations = pkl.load(SINGLECORR_f)
             
-        #     return correlations, singlevalcorrelations
+            return correlations, singlevalcorrelations
         
         # different brain areas
         self.ARs:list[Areas] = [Areas(av) for av in self.AVs]
@@ -435,7 +440,7 @@ class Movements:
         groupedTTnames = ['V', 'A', 'AV']
         groupedTTgroups = [(6, 7), (0, 3), (1, 2, 4, 5)]
 
-        correlations = defaultdict(lambda:defaultdict(dict))
+        popcorrelations = defaultdict(lambda:defaultdict(dict))
         singlevalcorrelations = defaultdict(lambda:defaultdict(dict))
         for ig, (g, gdict) in enumerate(self.aggregated_behavior.items()):
             AV = self.AVs[ig]
@@ -452,13 +457,14 @@ class Movements:
             sess_neur = AV.session_neurons
 
             for ib, (b, bTTdict) in enumerate(gdict.items()):
-                for tt, ttlist in tqdm(bTTdict.items()):
+                for tt, ttlist in bTTdict.items():
                     ttsig = groupsig[tt]
 
                     # prepare parallel args
                     corr_worker_args = []
                     tt_all_neur = []
-                    for isess, sessARR in enumerate(ttlist):
+
+                    for isess, sessARR in tqdm(enumerate(ttlist)):
                         neurons_slice = slice(*sess_neur[isess])
                         # ntrials (of trial type tt), nts, nneurons (of session isess)
                         sessDFF = ttsig[:,:,neurons_slice]
@@ -466,103 +472,60 @@ class Movements:
                         corr_worker_args.append((sessDFF, sessARR, AV.TRIAL))
                         tt_all_neur.append(corr_worker(sessDFF, sessARR, AV.TRIAL))
                     
-                    timewise, singlevals = [t for t, _ in tt_all_neur], [s for _, s in tt_all_neur]
-                    temporal_corr_all_neur = np.dstack(timewise)
-                    singlevals_all_neur = np.concatenate(singlevals)
-                    
+                    single_neuron_corrs, population_corrs = [s for s, _ in tt_all_neur], [p for _, p in tt_all_neur]
+                    singlevals_all_neur = np.concatenate(single_neuron_corrs)
+                    populationvals = np.array(population_corrs)
+
                     # add to results array
-                    correlations[g][b][tt] = temporal_corr_all_neur
                     singlevalcorrelations[g][b][tt] = singlevals_all_neur
+                    popcorrelations[g][b][tt] = populationvals
         
         # save files
-        # with open(CORRsavepath, 'wb') as CORR_f:
-        #     pkl.dump(dict(correlations), CORR_f)
+        with open(CORRsavepath, 'wb') as CORR_f:
+            pkl.dump(dict(popcorrelations), CORR_f)
     
-        # with open(SINGLECORRsavepath, 'wb') as SINGLECORR_f:
-        #     pkl.dump(dict(singlevalcorrelations), SINGLECORR_f)
+        with open(SINGLECORRsavepath, 'wb') as SINGLECORR_f:
+            pkl.dump(dict(singlevalcorrelations), SINGLECORR_f)
         
         # return self.signal_correlations()
-        return correlations, singlevalcorrelations
+        return popcorrelations, singlevalcorrelations
     
     def analyze_correlations(self):
-        # 0) Heatmap (3 x 2 [DR vs NR]) - neurons from all areas all sessions combined
-        # one for each behavior
-        heatmap_artists =  [plt.subplots(nrows=2, ncols=3, figsize = (7, 4), sharex='all', sharey='all') for _ in range(3)]
-        
-        # 1) Basic correlation lineplot 
-        # (3 colors - TT, dashed control, solid DR), 1 per area
-        # one row per behavior (3)
-        lfig, laxs = plt.subplots(nrows=3, ncols=4, sharex='all', sharey='all')
-
         # collect dataframes for each group-behavior combination
         overallQuantDF = []
+        populationQuantDF = []
 
         for ig, (g, gdict) in enumerate(self.CORR.items()):
             av = self.AVs[ig]
             AR = Areas(av)
-            collstl = self.tt_col_lstl if '1' in g else self.tt_col_lstl2
 
             for ib, (b, bdict) in enumerate(gdict.items()):
                 
                 single_neuron_beh_corrs = []
                 
                 for itt, (tt, ttARR) in enumerate(bdict.items()):
-                    col, lstl = collstl[tt]
-                    nansessions = np.isnan(ttARR[0,0,:]) # boolean array
-                    goodindices = np.nonzero(~nansessions) # integer indexing array
-                    # ttGOOD = ttARR[:,:, ~nansessions]
-                    
+                    nansessions =  np.isnan(ttARR) # boolean array
+                    goodsessions = np.nonzero(~nansessions)[0]
+                    ttGOOD = ttARR[~nansessions]
+
+                    PopBehaviorDf = pd.DataFrame({'Group':[g] * len(ttGOOD),
+                                            'Session':goodsessions,
+                                            'Behavior':[b] * len(ttGOOD),
+                                            'Stimulus':[tt] * len(ttGOOD),
+                                            'Correlation':ttGOOD})
+                    populationQuantDF.append(PopBehaviorDf)
+
+
+                    goodindices = np.nonzero(~np.isnan(self.singleCORR[g][b][tt])) # integer indexing array
+                    print(goodindices)
                     # for brainmap
-                    single_neuron_beh_corrs.append(self.singleCORR[g][b][tt])
+                    single_neuron_beh_corrs.append(self.singleCORR[g][b][tt][goodindices])
 
-                    # mean over sessions first before overall mean
-                    sessmeans = []
-                    for st, en in av.session_neurons:
-                        if np.isnan(ttARR[0,0,st]):
-                            continue
-                        sessmeans.append(np.mean(ttARR[:,:,st:en], axis = 2))
-                    sessmeans = np.dstack(sessmeans)
-
-                    # get heatmap artists for this behavior
-                    hf, haxs = heatmap_artists[ib]
-                    hm = sns.heatmap(data = np.mean(sessmeans, axis = 2), ax = haxs[ig, itt],
-                                     vmin = -0.02, vmax = 0.02, 
-                                     square=True,
-                                     cmap='rocket' if ig == 1 else 'mako',
-                                     cbar=(itt == 2), 
-                                     )
-                    haxs[ig, itt].set_xticks((0, 15, 32, 47), (-1,0,1,2), rotation = 'horizontal')
-                    haxs[ig, itt].set_yticks((0, 15, 32, 47), (-1,0,1,2))
-                    if ig ==1:
-                        haxs[ig, itt].set_xlabel('∆F/F time (s)')
-                    else:
-                        haxs[ig, itt].set_title(f'{tt} trials')
-                    if itt ==0:
-                        haxs[ig, itt].set_ylabel(f'{b} time (s)')
-
-                    for iarea, (area_name, area_indices) in enumerate(AR.region_indices.items()):
-                        lax = laxs[ib, iarea]
-
-                        areagood = np.mean(ttARR[:,:,
-                                                   np.intersect1d(area_indices, goodindices)], 
-                                            axis = 2).diagonal()
-                        lax.axvspan(0,1, color = 'k', alpha = 0.15)
-                        lax.plot(self.time, areagood, color = col, linestyle = lstl, label = f'{tt} ({self.gname_map[g]})')
-                        lax.set_xlim(self.time.min(), self.time.max())
-                        
-                        if ib == 0:
-                            lax.set_title(area_name)
-                        if iarea == 0:
-                            lax.set_ylabel(f'r({b}-∆F/F)')
-                        if ib == 2:
-                            lax.set_xticks((-1,0,1,2))
-                            lax.set_xlabel('Time (s)')
-            
+                # Single Neuron DF
                 single_neuron_beh_corrs = np.column_stack(single_neuron_beh_corrs)
                 colnames = ['V', 'A', 'AV']
                 
-                regions = AR.dfROI['Region'].tolist()
-                
+                regions = AR.dfROI['Region'].iloc[goodindices].tolist()
                 # add correlations for each trial-type
                 TT, Correlations = [], []
                 for icolnm, colnm in enumerate(colnames):
@@ -584,35 +547,129 @@ class Movements:
                                          'Correlation':Correlations})
                 
                 overallQuantDF.append(GroupBehaviorDf)
-                self.corrBrainmap(AR=AR, single_neuron_corrs=single_neuron_beh_corrs, 
-                                behavior_name=b, group = g, groupname=self.gname_map[g],
-                                colnames=colnames, indices=goodindices)
-
-        # Lineplot
-        lfig.tight_layout()
-        lfig.savefig(os.path.join(self.pltdir, 'Correlations_AREA_tsplot.png'), dpi = 300)
-        
-        # Heatmap plot
-        for (hf, _), b in zip(heatmap_artists, gdict.keys()):
-            hf.tight_layout()
-            hf.savefig(os.path.join(self.pltdir, f'{b}_correlations_heatmap.png'), dpi = 300)
-        plt.close()
+                # self.corrBrainmap(AR=AR, single_neuron_corrs=single_neuron_beh_corrs, 
+                #                 behavior_name=b, group = g, groupname=self.gname_map[g],
+                #                 colnames=colnames, indices=goodindices)
 
         # Quantification plot
+        Y = 'Correlation'
+        between_pairs = [
+            (("V", "g1"), ("V", "g2")),
+            (("A", "g1"), ("A", "g2")),
+            (("AV", "g1"), ("AV", "g2")),
+        ]
+        within_pairs = [
+            (("V", "g1"), ("A", "g1")),
+            (("V", "g2"), ("A", "g2")),
+            (("V", "g1"), ("AV", "g1")),
+            (("V", "g2"), ("AV", "g2")),
+        ]
+
         # assemble dataframe
         QuantDF = pd.concat(overallQuantDF, ignore_index=True)
         QuantDF['R2'] = QuantDF['Correlation']**2
         QuantDF['|r|'] = QuantDF['Correlation'].abs()
         # Filter out neurons not in Visual Areas
         QuantDF = QuantDF.loc[QuantDF['Region'] != '']
-        quantplot = sns.catplot(data = QuantDF, x = 'Stimulus', 
-                                y = '|r|', # |r| or R2 makes sense here
-                                hue = 'Group', 
-                                row = 'Behavior', col='Region',
-                                col_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
-                                kind = 'point', dodge = True, estimator='mean')
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.pltdir, f'BehaviorCorrelations_Quant.svg'))
+        palettes = {'V1':{'g1':'darkgreen' , 'g2':'mediumseagreen'},
+                    'AM/PM':{'g1':'darkred',  'g2':'coral'},
+                    'A/RL/AL':{'g1':'saddlebrown', 'g2':'rosybrown'},
+                    'LM':{'g1':'darkmagenta', 'g2':'orchid'}}
+        
+        for (Reg, Beh), subDF in QuantDF.groupby(['Region', 'Behavior']):
+            quantplot = sns.catplot(data = subDF, x = 'Stimulus', 
+                                    y = Y, # |r| or R2 makes sense here
+                                    hue = 'Group', hue_order=['g2', 'g1'], palette=palettes[Reg],
+                                    # row = 'Behavior', col='Region',
+                                    # col_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                                    kind = 'point', dodge = 0.3, capsize = 0.3)
+            # first: between‑group comparisons
+            annot_bw = Annotator(
+                quantplot.ax,
+                between_pairs,
+                data=subDF,
+                x='Stimulus',
+                y=Y,
+                hue='Group',
+            )
+            annot_bw.configure(
+                test='Mann-Whitney',#'t-test_ind', 'Mann-Whitney',
+                comparisons_correction='Bonferroni',
+                text_format='star',
+                loc='outside',
+                # hide_non_significant = True,
+                correction_format="replace"
+            )
+            annot_bw.apply_and_annotate()
+
+            # second: within-group comparison
+            annot_wi = Annotator(
+            quantplot.ax, within_pairs,
+            data=subDF, x='Stimulus', y=Y, hue='Group'
+            )
+            annot_wi.configure(
+                test='Wilcoxon',#'t-test_paired', 'Wilcoxon',
+                comparisons_correction='Bonferroni',
+                text_format='star',
+                loc='outside',
+                # hide_non_significant = True,
+                correction_format="replace"
+            )
+            annot_wi.apply_and_annotate()
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.pltdir, f'{Beh}-NeuronCorrelations_Quant{Reg.replace('/', '|')}.svg'))
+            plt.close()
+
+        # Population level
+        PopQUANT = pd.concat(populationQuantDF, ignore_index=True)
+        PopQUANT['R2'] = PopQUANT['Correlation']**2
+        PopQUANT['|r|'] = PopQUANT['Correlation'].abs()
+
+        
+
+        for beh, behdf in PopQUANT.groupby('Behavior'):
+            popquantplot = sns.catplot(data = behdf, x = 'Stimulus', 
+                                    y = Y, # |r| or R2 makes sense here
+                                    hue = 'Group', hue_order=['g2', 'g1'], palette={'g1':'darkorange', 
+                                                                                    'g2':'grey'},
+                                    # row = 'Behavior',
+                                    kind = 'point', dodge = 0.3, capsize = 0.3)
+            # first: between‑group comparisons
+            annot_bw = Annotator(
+                popquantplot.ax,
+                between_pairs,
+                data=behdf,
+                x='Stimulus',
+                y=Y,
+                hue='Group',
+            )
+            annot_bw.configure(
+                test='Mann-Whitney',#'t-test_ind', 'Mann-Whitney',
+                comparisons_correction='Bonferroni',
+                text_format='star',
+                loc='outside',
+                # hide_non_significant = True,
+                correction_format="replace"
+            )
+            annot_bw.apply_and_annotate()
+
+            # second: within-group comparison
+            annot_wi = Annotator(
+            popquantplot.ax, within_pairs,
+            data=behdf, x='Stimulus', y=Y, hue='Group'
+            )
+            annot_wi.configure(
+                test='Wilcoxon',#'t-test_paired', 'Wilcoxon',
+                comparisons_correction='Bonferroni',
+                text_format='star',
+                loc='outside',
+                # hide_non_significant = True,
+                correction_format="replace"
+            )
+            annot_wi.apply_and_annotate()
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.pltdir, f'POP_neuron_{beh}_Correlations_Quant.svg'))
+            plt.close()
 
 
     def corrBrainmap(self, AR:Areas, single_neuron_corrs:np.ndarray, 
@@ -648,25 +705,30 @@ class Movements:
             (("V", "g1"), ("A", "g1")),
             (("V", "g2"), ("A", "g2")),
         ]
-        # palette = {('V', 'g1'):'dodgerblue',
-        #         ('A', 'g1'):'red',
-        #         ('AV', 'g1'):'goldenrod',
-        #         ('V', 'g2'):'lightskyblue',
-        #         ('A', 'g2'):'lightsalmon',
-        #         ('AV', 'g2'):'palegoldenrod'}
-        palette = {'g1':'darkorange', 'g2':'grey'}
+        palette = {('V', 'g1'):'dodgerblue',
+                ('A', 'g1'):'red',
+                ('AV', 'g1'):'goldenrod',
+                ('V', 'g2'):'lightskyblue',
+                ('A', 'g2'):'lightsalmon',
+                ('AV', 'g2'):'palegoldenrod'}
+        palette_2col = {'g1':'darkorange', 'g2':'grey'}
         
         for b in self.DRNR_QUANT.Behavior.unique():
             sigcol = f'Z-{b}'
             data = self.DRNR_QUANT.loc[self.DRNR_QUANT['Behavior'] == b].copy()
             data.rename(columns = {'Signal':sigcol}, inplace = True)
+            plt.figure(figsize = (6.9145, 5.0581))
             cp = sns.catplot(data = data, x = 'Trial', y = sigcol, 
-                             hue = 'Group', #data[['Trial','Group']].apply(tuple, axis = 1),
-                             hue_order=['g2', 'g1'],
-                            #  (('V', 'g2'),('A', 'g2'),('AV', 'g2'),('V', 'g1'), ('A', 'g1'), ('AV', 'g1')),
+                            #  hue = 'Group', 
+                             hue =data[['Trial','Group']].apply(tuple, axis = 1),
+                            #  hue_order=['g2', 'g1'],
+                            hue_order =   (('V', 'g2'),('A', 'g2'),('AV', 'g2'),('V', 'g1'), ('A', 'g1'), ('AV', 'g1')),
+                            # palette=palette_2col,
                             palette=palette,
-                            kind = 'point', dodge = .3, capsize = .2, 
-                            legend=True)
+                            dodge = True,  
+                            width = 1, capsize = .2, 
+                            kind = 'bar', 
+                            legend=False,)
             # first: between‑group comparisons
             annot_bw = Annotator(
                 cp.ax,
@@ -701,9 +763,10 @@ class Movements:
             )
             annot_wi.apply_and_annotate()
             
+            # plt.ylim(-0.4, 0.6)
             plt.tight_layout()
-            plt.ylim(-0.4, 0.6)
             plt.savefig(os.path.join(self.pltdir, f'MovementsDRNRQuant({b}).svg'))
+            plt.close()
     
 # -------------- Helpers ----------------
 def corr_worker(sessDFF:np.ndarray, 
@@ -720,15 +783,17 @@ def corr_worker(sessDFF:np.ndarray,
     '''
     ntrials, nts, nneur = sessDFF.shape
     
-    # 3D array nts x nts x nneurons
-    # average correlations of each timebin of signal - behavior over trials for each neuron
-    neuron_corrs = np.empty(shape=(nts, nts, nneur))
     # 1D array (nneurons) holding the average overall correlation of signal w behavior (over trials)
     single_val_corrs = np.empty(shape = nneur)
+
+    # # ntrials
+    # beh = fluorescence_response(sessARR[:,:,np.newaxis], trialSLICE, returnF = True, retMEAN_only = True).squeeze()
+    # # ntrials x nneurons
+    # sig = fluorescence_response(sessDFF, trialSLICE, returnF = True, retMEAN_only = True).squeeze()
+    
     for ineur in range(nneur):
         # part of a bigger matrix that includes corr of behavior w itself [:nts, :nts] and
         # corr of signal w itself [nts:, :nts]
-        neuron_corrs[:,:, ineur] = np.corrcoef(sessARR, sessDFF[:,:,ineur], rowvar = False)[:nts, nts:]
         # now includes nans for sessions without facemap
         
         # diagonal of trial-wise correlation matrix contains correlations of behavior and signal 
@@ -743,6 +808,7 @@ def corr_worker(sessDFF:np.ndarray,
         fisher = np.arctanh(trialsCorr)
         # inverse fisher of mean
         single_val_corrs[ineur] = np.tanh(np.nanmean(fisher))
+        # single_val_corrs[ineur] = np.corrcoef(beh, sig[:,ineur])[0,1]
         
         # correlation of session averages for each neuron (high and not meaningful)
         # single_val_corrs[ineur] = np.corrcoef(sessARR[:,trialSLICE[0]:trialSLICE[1]].mean(axis=0),
@@ -750,21 +816,22 @@ def corr_worker(sessDFF:np.ndarray,
         #                                       rowvar=True)[0,1]
     
     # Average correlation on trial-level across trials with average population signal (fisher-z correction)
-    # trialsCorr = np.corrcoef(sessARR[:,trialSLICE[0]:trialSLICE[1]], sessDFF[:,trialSLICE[0]:trialSLICE[1],:].mean(axis=2), 
-    #                         rowvar = True
-    #                         )[:ntrials, ntrials:].diagonal()
+    POPAVRGtrialsCorr = np.corrcoef(sessARR[:,trialSLICE[0]:trialSLICE[1]], sessDFF[:,trialSLICE[0]:trialSLICE[1],:].mean(axis=2), 
+                            rowvar = True
+                            )[:ntrials, ntrials:].diagonal()
 
-    # # Fisher-z correction to take correlation mean
-    # fisher = np.arctanh(trialsCorr)
-    # # inverse fisher of mean
-    # single_val_corrs = np.tanh(np.nanmean(fisher))
+    # Fisher-z correction to take correlation mean
+    AVRGfisher = np.arctanh(POPAVRGtrialsCorr)
+    # inverse fisher of mean
+    POPcorr = np.tanh(np.nanmean(AVRGfisher))
 
     # average relationship of signal (xaxis) with given behavior (yaxis)
     # over all neurons in the session for given TT
 
     # diagonal here is the "line-plot" correlation / time-bin relationship
     # sns.heatmap(neuron_corrs.mean(axis = 2))
-    return neuron_corrs, single_val_corrs
+    # print(POPcorr, flush=True)
+    return single_val_corrs, POPcorr
 
 def find_session_tt_indices(sess_idx:int, AV:AUDVIS
                     )->np.ndarray:
