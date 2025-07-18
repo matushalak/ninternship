@@ -520,18 +520,14 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                     'LM':('darkmagenta', 'orchid')}
     
     nfigs = len(NEURON_types)
-    tsnrows = 4
-    tsncols = 4 - int(combineMST) # 4 combined trial types if MS+ MS- separate, otherwise 3
+    tsnrows = 4 - int(combineMST) # 4 combined trial types if MS+ MS- separate, otherwise 3
+    tsncols = 4
 
     # prepare timeseries figure and axes for nfigs separate figures
     Artists = [plt.subplots(nrows=tsnrows, ncols=tsncols, 
                             sharex='all', sharey='all', figsize = (7.6, 7.3)) 
                             for _ in range(nfigs)]
     
-    SnakeArtists = [plt.subplots(nrows=tsnrows*len(AVs), ncols=tsncols, 
-                            sharex='col', sharey='row', figsize = ((tsncols * 3) + .8, tsnrows * len(AVs) * 3)) 
-                            for _ in range(nfigs)]
-                       
     trials = ['VT', 'AT', 'MS+', 'MS-']
     # Collect data for Quantification
     QuantDict = {'Group':[], 'BRAIN_AREA': [], 'NeuronType':[], 'neuronID': [],
@@ -566,98 +562,36 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                 # QuantDict['F_MST-'] += [*Fresps[3]]
                 QuantDict['neuronID'] += [*np.intersect1d(AN.NEURON_groups[neuronTYPE], 
                                                               area_indices)]
-
-                # also plot cascade traces
-                if add_CASCADE:
-                    CASCADE_TT_info, _ = AN.tt_BY_neuron_group(neuronTYPE, GROUP_type, 
-                                                               SIGNALS_TO_USE= AN.CASCADE,
-                                                               BrainRegionIndices=area_indices,
-                                                               combineMST=combineMST) 
                 
                 # neuron type determines which Artists we use
                 ts_fig, ts_ax = Artists[itype]
-                snake_fig, snake_ax = SnakeArtists[itype]
 
                 # different Trial Types for each of which we want a separate subplot in each figure
                 COL = colors[area_name][icond]
                 for itt, (avr, sem) in enumerate(TT_info):
                     anut.plot_avrg_trace(time = AN.time, avrg=avr, SEM = sem, 
-                                    Axis=ts_ax[iarea, itt],
-                                    title = trials[itt] if iarea == 0 else False,
-                                    label = f'{AV.NAME} ({group_size})' if itt == 0 else None, 
+                                    Axis=ts_ax[itt, iarea],
+                                    # title = trials[itt] if iarea == 0 else False,
+                                    # label = f'{AV.NAME} ({group_size})' if itt == 0 else None, 
                                     col = COL, lnstl=linestyles[icond],
                                     vspan=True if icond == 0 else False,
                                     tt=itt)
-                    ts_ax[iarea,itt].spines['top'].set_visible(False)
-                    ts_ax[iarea,itt].spines['right'].set_visible(False)
-                    # suppress the x-axis everywhere EXCEPT the last row
-                    if iarea != len(list(AR.region_indices)) - 1:
-                        ts_ax[iarea, itt].spines['bottom'].set_visible(False)
-                        ts_ax[iarea, itt].tick_params(axis='x', bottom=False, labelbottom=False)
+                    ts_ax[itt, iarea].axis('off')
 
-                    # suppress the y-axis everywhere EXCEPT the first column
-                    if itt != 0:
-                        ts_ax[iarea, itt].spines['left'].set_visible(False)
-                        ts_ax[iarea, itt].tick_params(axis='y', left=False, labelleft=False, right=False)
-
-                    if add_CASCADE:
-                        anut.plot_avrg_trace(time = AN.time, avrg=CASCADE_TT_info[itt][0], SEM = None, 
-                                        Axis=ts_ax[iarea, itt],
-                                        label = 'Est. FR' if itt == len(list(TT_info)) - 1 else None, 
-                                        col = COL, lnstl=linestyles[icond], alph=.5, vspan=False)
-                        
-                    # Add snake plot - of already the significant neurons in the region
-                    if GROUP_type == 'all' or GROUP_type == 'TOTAL':
-                        anut.snake_plot(ind_neuron_traces[itt], 
-                                stats = ind_neuron_pvals[itt],
-                                trial_window_frames=AV.TRIAL, 
-                                time=AN.time,
-                                Axis=snake_ax[(len(ANs)*iarea)+icond, itt],
-                                MODE = 'onset',
-                                cmap=COL)
-
-                    if icond == len(AVs) - 1:
-                        if iarea == len(list(AR.region_indices)) - 1:
-                            ts_ax[iarea, itt].set_xlabel('Time (s)')
-                            ts_ax[iarea, itt].spines['bottom'].set_visible(True)
-                            ts_ax[iarea, itt].tick_params(axis='x', bottom=True, labelbottom=True)
-
-                        if itt == 0:
-                            ts_ax[iarea, itt].set_ylabel('z(∆F/F)')
-                            ts_ax[iarea, itt].spines['left'].set_visible(True)
-                            ts_ax[iarea, itt].tick_params(axis='y', left=True, labelleft=True)                                
-                            # ts_ax[iarea, itt].legend(loc = 4, fontsize = 8)
-
-                        if itt == len(list(TT_info)) - 1:
-                            twin = ts_ax[iarea, itt].twinx()
-                            twin.spines['top'].set_visible(False)
-                            twin.spines['right'].set_visible(False)
-                            twin.spines['left'].set_visible(False)
-                            twin.spines['bottom'].set_visible(False)
-                            
-                            rowLab = area_name
-                            twin.set_ylabel(rowLab, rotation = 270, 
-                                            va = 'bottom', 
-                                            color = COL,
-                                            fontsize = 20)
-                            twin.set_yticks([])
+                    # # suppress the y-axis everywhere EXCEPT the first column
+                    # if itt != 0:
+                    #     ts_ax[iarea, itt].spines['left'].set_visible(False)
+                    #     ts_ax[iarea, itt].tick_params(axis='y', left=False, labelleft=False, right=False)
 
         # after both groups of animals for each neuron type
         if GROUP_type == 'all':
-            # snake_fig.suptitle(f'{area_name} neurons')
-            snake_fig.tight_layout()
-            # snake_fig.legend(loc = 'outside center right')
-            snake_fig.savefig(os.path.join(SAVEDIR,f'{neuronTYPE}_Neuron_type({GROUP_type})SNAKE({pre_post}).png'), dpi = 500)
-
-            ts_fig.suptitle(f'{neuronTYPE} neurons')
-            ts_fig.tight_layout(rect = [0,0,0.85,1])
-            ts_fig.legend(loc = 'outside center right')
+            # ts_fig.suptitle(f'{neuronTYPE} neurons')
+            ts_fig.tight_layout()
+            # ts_fig.legend(loc = 'outside center right')
             ts_fig.savefig(os.path.join(SAVEDIR, f'{neuronTYPE}_Neuron_type({GROUP_type})_average_res({pre_post}){SUFFIX}'), dpi = 300)
     
     if GROUP_type == 'TOTAL':
-        snake_fig.tight_layout()
         ts_fig.tight_layout()
-        snake_fig.savefig(os.path.join(SAVEDIR, f'Neuron_type({GROUP_type})SNAKE({pre_post}).png'), dpi = 500)
         ts_fig.savefig(os.path.join(SAVEDIR, f'Neuron_type({GROUP_type})_average_res({pre_post}){SUFFIX}'), dpi = 300)
     
     QuantDF: pd.DataFrame = pd.DataFrame(QuantDict)
@@ -702,20 +636,26 @@ def Quantification(df_long: pd.DataFrame,
     df_long['|Fluorescence response|'] = df_long['F'].abs()
 
     yvar = '|Fluorescence response|' if abs else 'F'
+    trials = ['V', 'A', 'AV']
+    mapping = lambda x: 'NR' if 'g2' in x else 'DR'
+    lim_by_nt = {'VIS': (-0.05, 1.4), 'AUD':(-0.4, 0.8), 'MST':(-0.25, 1)}
     
     for (ar, ntype), arDF in df_long.groupby(['BRAIN_AREA', 'NeuronType']):
         bp = sns.catplot(arDF, x = 'TT', y=yvar, hue = 'Group', 
                     palette=colors[ar], 
                     # kind = 'point', dodge = 0.3, 
+                    order=('VIS',  'AUD', 'MST'), # NOTE HARDCODED
+                    hue_order=('g2pre', 'g1pre'), # NOTE HARDCODED
+                    aspect=0.8,
                     kind = 'bar',
                     capsize = .3,
                     legend=False)
         
         ax = bp.ax
         fg = bp.figure
-        hue_order = arDF['Group'].unique().tolist()       # e.g. ['g1pre','g2pre']
-        new_labels = [f"{hue_order[0]}   {hue_order[1]}\n{tt}" 
-                      for tt in arDF['TT'].unique()]
+        hue_order = ('g2pre', 'g1pre')       # e.g. ['g1pre','g2pre'] # NOTE HARDCODED
+        new_labels = [f"{mapping(hue_order[0])}   {mapping(hue_order[1])}\n{tt}" 
+                      for tt in trials]
         ax.set_xticklabels(new_labels)
         ax.set_xlabel('')
         # annotations and stats
@@ -743,6 +683,8 @@ def Quantification(df_long: pd.DataFrame,
                     (("MST", "g1pre"), ("AUD", "g1pre")),
                     (("MST", "g2pre"), ("VIS", "g2pre")),
                     (("MST", "g2pre"), ("AUD", "g2pre")),
+                    (("VIS", "g2pre"), ("AUD", "g2pre")),
+                    (("VIS", "g1pre"), ("AUD", "g1pre")),
                 ]
             
         else:
@@ -795,6 +737,7 @@ def Quantification(df_long: pd.DataFrame,
             correction_format="replace"
         )
         annot_wi.apply_and_annotate()
+        ax.set_ylim(*lim_by_nt[ntype])
         fg.tight_layout()
         fg.savefig(os.path.join(SAVEDIR,f'{ar.replace('/', '|'), ntype}_traces_QUANT{SUFFIX}'), dpi = 300)
         plt.close()

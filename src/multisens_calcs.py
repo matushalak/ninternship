@@ -526,14 +526,13 @@ def scatter_hist_reg_join(MIdata: pd.DataFrame,
     # Quantifications using Mann-Whitney-U test
     pval, means, sems, group_names = Quantification(MIdata, X_VAR, Y_VAR, HUE_VAR, kind=statsmethod)
     # Inset plot
-    sig_label_map = {0: 'n.s.', 1: '*', 2: '**', 3: '***'}
     inset_ax = g.figure.add_axes([0.675, 0.675, 0.2, 0.2])
     indices = np.arange(len(group_names))
     # Plot each bar with error bars; use the same colors as in colmap.
     for i, group in enumerate(group_names):
         group = [k for k in colmap if k in group][0]
         if i % 2 == 0:
-            sig_text = get_sig_label(pval[i//2], sig_label_map)
+            sig_text = get_sig_label(pval[i//2])
             # Connect the means with a dashed line.
             inset_ax.plot(indices[i:i+2], means[i:i+2], linestyle='--', color='k', marker='o', alpha = 0.8)
             # Place the significance label above the highest error bar in the inset.

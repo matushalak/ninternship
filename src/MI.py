@@ -4,7 +4,7 @@ import pandas as pd
 import os
 import seaborn as sns
 import matplotlib.pyplot as plt
-from statannotations import Annotator
+from statannotations.Annotator import Annotator
 import src.multisens_calcs as MScalc
 from src.Analyze import Analyze
 from src.AUDVIS import AUDVIS, Behavior, load_in_data
@@ -52,6 +52,7 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
         if GROUP_type is not None:
             for gt in subsets.keys():
                 # need to do this to index into the big dataframe with all different groups of mice
+                # only taking significant neurons from different neuron groups
                 sub_set = Analys.NEURON_groups[gt] + last_n_neur # from the other analysis
                 subsets[gt] += [*sub_set]
 
@@ -218,7 +219,7 @@ def plot_MI_data(MIdata:pd.DataFrame, savedir: str, includeVIS:bool, includeAUD:
         print(f'AUD RCI {name} plot done!')
 
 
-# New cleaner analysis
+# XXX New cleaner analysis
 def MIanalysis(MIDF:pd.DataFrame):
     groupmapper = {'g1':'DR', 'g2':'NR'}
     palette = {('V', 'DRpre'):'dodgerblue',
@@ -236,13 +237,65 @@ def MIanalysis(MIDF:pd.DataFrame):
     longMIDF:pd.DataFrame = MScalc.processFULLDFintoLONG(MIDF)
     longMIDF.loc[:, 'Group'] = longMIDF.loc[:, 'Group'].transform(lambda x: groupmapper[x[:2]]+x[2:])
 
+    # to look at FR: filter on FRdf (where FR is not NaN)
+    FRall(longMIDF, hue_order, palette)
+
     # direction selectivity for different neuron types
     DSIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
 
     # to look at RCI: filter on RCIdf (where RCI is not NaN)
     RCIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
+    
 
-    # to look at FR: filter on FRdf (where FR is not NaN)
+def FRall(longMIDF:pd.DataFrame, hue_order:list, palette:dict, 
+          congruency_check:bool = False):
+    FRdf = longMIDF.loc[~longMIDF['FR'].isna()].copy()
+    congdf = FRdf.loc[FRdf['Congruency'] != 'Unimodal'].copy()
+    congdf['group_hue'] = congdf[['Group', 'Congruency']].apply(tuple, axis = 1)
+    hue_order=[('NRpre', 'congruent'),('NRpre', 'incongruent'),
+                ('DRpre', 'congruent'),('DRpre', 'incongruent')]
+    regions = ['V1', 'AM/PM', 'A/RL/AL', 'LM']
+    if not os.path.exists(supplementaryPATH:=os.path.join(PLOTSDIR, 'Amplitude', 'supplementary')):
+        os.makedirs(supplementaryPATH)
+    for (nt, pref, mod), subdf in congdf.groupby(['NeuronType', 'Preference', 'Modality']):
+        if nt != 'M' and mod[0] != nt:
+            continue
+        
+        print(nt ,pref, mod)
+        extraplot = sns.catplot(subdf, y = 'FR', 
+                    hue= 'group_hue',
+                    hue_order=hue_order,
+                    x = 'BrainRegion',  order=regions,
+                    kind = 'bar', capsize = .3,
+                    legend=False)
+        ax = extraplot.ax
+        within_pairs = []
+        for reg in regions:
+            within_pairs += [
+                    ((reg, ('NRpre', 'congruent')),(reg, ('NRpre', 'incongruent'))),
+                    ((reg, ('DRpre', 'congruent')),(reg, ('DRpre', 'incongruent')))
+                ]
+        annot_wi = Annotator(
+            ax = ax, pairs = within_pairs,
+            plot = 'barplot',
+            data=subdf, x='BrainRegion',
+            y='FR', 
+            hue='group_hue',
+            hue_order = hue_order
+        )
+        annot_wi.configure(
+            test='Wilcoxon', 
+            comparisons_correction='Bonferroni',
+            text_format='star',
+            loc='outside',
+            hide_non_significant = True,
+            correction_format="replace"
+        )
+        annot_wi.apply_and_annotate()
+        extraplot.figure.suptitle(f'{nt} neuron AV responses wrt. to {pref}. {mod[0]} stimulus')
+        plt.tight_layout()
+        plt.savefig(os.path.join(supplementaryPATH, f'{nt}_{pref}_{mod}_congruencySUPP.svg'))
+        plt.close()
 
 def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict,
            show:bool = False):
@@ -288,7 +341,7 @@ def RCImag(RCIdf:pd.DataFrame, hue_order:list, palette:dict):
 def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict,
                     show:bool = False):
     '''
-    Not really different if we split by sign of enhanced vs suppressed
+    Not different if we split by sign of enhanced vs suppressed
     '''
     typeToMod = {'V':['VIS'], 'A':['AUD'], 'M':['VIS', 'AUD']}
     for mod in typeToMod[Type]:
@@ -313,8 +366,7 @@ def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict,
 def multisens_proportions(RCIdf:pd.DataFrame):
     # get proportion DF
     RCIdf.groupby(['Group', 'BrainRegion', 'NeuronType', 'Modality', 'Preference', 'Congruency'])
-    breakpoint()
-
+    raise NotImplementedError
 
 ### ---------- Main block that runs the file as a script
 if __name__ == '__main__':
