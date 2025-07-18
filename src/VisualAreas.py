@@ -6,6 +6,7 @@ from matplotlib_venn import venn3
 from src.AUDVIS import AUDVIS, Behavior, load_in_data
 from src.Analyze import Analyze, neuron_typesVENN_analysis
 import src.analysis_utils as anut
+from src.utils import get_sig_label
 from typing import Literal
 from scipy.io.matlab import loadmat
 from tqdm import tqdm
@@ -417,17 +418,24 @@ def by_areas_VENN(svg:bool=False,
     print('Done with venn diagrams!')
 
     propDF = pd.DataFrame(proportion_df)
+    
+    # significance test
+    for ar, ardf in propDF.groupby('Area'):
+        pval = anut.proportion_significance_test(ardf, rows="Group", cols = 'Type')
+        print(f'Proportion comparison {ar}: {pval}, {get_sig_label(pval)}')
+
     counts = (propDF
               .groupby(['Group', 'Area', 'Type'])
               .size()
               .reset_index(name="n"))
+    
     
     counts["Proportion"] = ( counts
                     .groupby(["Group","Area"])["n"]
                     .transform(lambda x: x / x.sum()) )
     
     prop = (
-        so.Plot(counts, x = 'Group', y = 'Proportion', color = 'Type')
+        so.Plot(counts, x = 'Group', y = 'Proportion', color = 'Type',)
         .facet('Area', order = ['V1', 'AM/PM', 'A/RL/AL', 'LM'])
         .add(so.Bars(), so.Stack())
         .scale(color = {'V':'dodgerblue', 'A':'red', 'M':'goldenrod'})
@@ -436,6 +444,26 @@ def by_areas_VENN(svg:bool=False,
     plt.tight_layout()
     plt.savefig(os.path.join(PLOTSDIR, 'neuron_groupsAREAS.svg'))
     plt.close()
+
+    # pointplot proportions
+    palet = {
+        ('NRpre','V'):'lightskyblue', ('NRpre','A'):'lightsalmon', ('NRpre','M'):'palegoldenrod',
+        ('DRpre','V'):'dodgerblue', ('DRpre','A'):'red', ('DRpre','M'):'goldenrod'
+             }
+    hue_order = [('NRpre','V'), ('NRpre','A'), ('NRpre','M'),('DRpre','V'), ('DRpre','A'), ('DRpre','M')]
+    grouphue = counts[['Group', 'Type']].apply(tuple ,axis=1)
+    sns.catplot(counts, x = 'Area', y = 'Proportion',
+                order = ['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                kind = 'point',
+                marker = 'x', markersize = 11,
+                linestyle = 'dashed',
+                hue = grouphue, hue_order=hue_order, palette=palet,
+                errorbar=None, 
+                height=4, aspect=0.75, legend=False)
+    plt.ylim(0,0.7)
+    plt.tight_layout()
+    plt.savefig(os.path.join(PLOTSDIR, 'neuron_groupsAREAS_POINT.svg'))
+
     print('Done with neuron groups proportion plots diagrams!')
 
     # control counts
@@ -497,7 +525,7 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
 
     # prepare timeseries figure and axes for nfigs separate figures
     Artists = [plt.subplots(nrows=tsnrows, ncols=tsncols, 
-                            sharex='col', sharey='all', figsize = ((tsncols * 3) + .8, tsnrows * 3)) 
+                            sharex='all', sharey='all', figsize = (7.6, 7.3)) 
                             for _ in range(nfigs)]
     
     SnakeArtists = [plt.subplots(nrows=tsnrows*len(AVs), ncols=tsncols, 
@@ -629,8 +657,8 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
     if GROUP_type == 'TOTAL':
         snake_fig.tight_layout()
         ts_fig.tight_layout()
-        snake_fig.savefig(os.path.join(SAVEDIR, f'Neuron_type({GROUP_type})SNAKE({pre_post}).png', dpi = 500))
-        ts_fig.savefig(os.path.join(SAVEDIR, f'Neuron_type({GROUP_type})_average_res({pre_post}){SUFFIX}', dpi = 300))
+        snake_fig.savefig(os.path.join(SAVEDIR, f'Neuron_type({GROUP_type})SNAKE({pre_post}).png'), dpi = 500)
+        ts_fig.savefig(os.path.join(SAVEDIR, f'Neuron_type({GROUP_type})_average_res({pre_post}){SUFFIX}'), dpi = 300)
     
     QuantDF: pd.DataFrame = pd.DataFrame(QuantDict)
     # Transform to Long format
@@ -654,7 +682,8 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
 def Quantification(df_long: pd.DataFrame,
                    pre_post: Literal['pre', 'post', 'both'] = 'pre',
                    svg:bool = False,
-                   combineMST:bool = True):
+                   combineMST:bool = True,
+                   abs:bool = False):
     AVs : tuple[AUDVIS] = load_in_data(pre_post)
     AreasN_neurons = dict()
     for AV in AVs:
@@ -670,10 +699,16 @@ def Quantification(df_long: pd.DataFrame,
             'A/RL/AL':{'g1pre':'saddlebrown', 'g2pre':'rosybrown'},
             'LM':{'g1pre':'darkmagenta', 'g2pre':'orchid'}}
     
+    df_long['|Fluorescence response|'] = df_long['F'].abs()
+
+    yvar = '|Fluorescence response|' if abs else 'F'
+    
     for (ar, ntype), arDF in df_long.groupby(['BRAIN_AREA', 'NeuronType']):
-        bp = sns.catplot(arDF, x = 'TT', y='F', hue = 'Group', 
-                    kind = 'point', palette=colors[ar], 
-                    dodge = 0.3, capsize = .2,
+        bp = sns.catplot(arDF, x = 'TT', y=yvar, hue = 'Group', 
+                    palette=colors[ar], 
+                    # kind = 'point', dodge = 0.3, 
+                    kind = 'bar',
+                    capsize = .3,
                     legend=False)
         
         ax = bp.ax
@@ -686,18 +721,30 @@ def Quantification(df_long: pd.DataFrame,
         # annotations and stats
         # split your pairs
         if combineMST:
-            between_pairs = [
-                (("VIS", "g1pre"), ("VIS", "g2pre")),
-                (("AUD", "g1pre"), ("AUD", "g2pre")),
-                (("MST", "g1pre"), ("MST", "g2pre")),
-            ]
-            # compare combined mst to unimodal
-            within_pairs = [
-                (("MST", "g1pre"), ("VIS", "g1pre")),
-                (("MST", "g1pre"), ("AUD", "g1pre")),
-                (("MST", "g2pre"), ("VIS", "g2pre")),
-                (("MST", "g2pre"), ("AUD", "g2pre")),
-            ]
+            if ntype != "MST":
+                between_pairs = [
+                    ((ntype, "g1pre"), (ntype, "g2pre")),
+                    (("MST", "g1pre"), ("MST", "g2pre")),
+                ]
+                # compare combined mst to unimodal
+                within_pairs = [
+                    (("MST", "g1pre"), (ntype, "g1pre")),
+                    (("MST", "g2pre"), (ntype, "g2pre")),
+                ]
+            else:
+                between_pairs = [
+                    (("VIS", "g1pre"), ("VIS", "g2pre")),
+                    (("AUD", "g1pre"), ("AUD", "g2pre")),
+                    (("MST", "g1pre"), ("MST", "g2pre")),
+                ]
+                # compare combined mst to unimodal
+                within_pairs = [
+                    (("MST", "g1pre"), ("VIS", "g1pre")),
+                    (("MST", "g1pre"), ("AUD", "g1pre")),
+                    (("MST", "g2pre"), ("VIS", "g2pre")),
+                    (("MST", "g2pre"), ("AUD", "g2pre")),
+                ]
+            
         else:
             between_pairs = [
                 (("VIS", "g1pre"), ("VIS", "g2pre")),
@@ -717,7 +764,7 @@ def Quantification(df_long: pd.DataFrame,
             between_pairs,
             data=arDF,
             x='TT',
-            y='F',
+            y=yvar,
             hue='Group'
         )
         annot_bw.configure(
@@ -734,7 +781,9 @@ def Quantification(df_long: pd.DataFrame,
         # then: Wilcoxon signed‑rank (paired) for within‑group
         annot_wi = Annotator(
             ax, within_pairs,
-            data=arDF, x='TT', y='F', hue='Group'
+            data=arDF, x='TT', 
+            y=yvar, 
+            hue='Group'
         )
         annot_wi.configure(
             # within-group paired ['t-test_paired','Wilcoxon']
@@ -939,7 +988,7 @@ class Architecture:
         NULLareas = pd.concat(nullAreas, ignore_index=True)
         NULLoverall = pd.concat(nullOverall, ignore_index=True)
         
-        # PROBABILITY of being Nearest Neighbor
+        # PROBABILITY of being Nearest Neighbor (if K > 1 probability of being in a neighborhood)
         # everything per-area
         anut.catplot_proportions(DF = DF,
                                  NULLDF=NULLareas,
@@ -969,7 +1018,8 @@ class Architecture:
                                 plotname=f'overallNeighbors(k = {kname})',
                                 savedir=self.SAVEDIR)
         
-        ## DISTANCE to closest neighbor of different TYPES
+        ## DISTANCE to closest neighbor of different TYPES (now is actually neighborhood composition 
+        # (average proportion of neighborhood weights per neuron))
         # per area
         anut.catplot_distanc(DF = DISTDF,
                              NULLDF=NULLareas,
@@ -1273,28 +1323,28 @@ def get_histogramDF(spatialDF:pd.DataFrame, vars:list[str], nbins:int,
 
 if __name__ == '__main__':
     ### Venn diagram of neuron classes in in the 4 different regions
-    NGDF, ARdict, SESSdict = by_areas_VENN(svg=True, pre_post='pre')
+    # NGDF, ARdict, SESSdict = by_areas_VENN(svg=True, pre_post='pre')
 
-    # # Architecture analysis
-    Arch = Architecture(NGDF, ARdict, SESSdict)
-    # Arch.spatial_distribution(nbins=10)
-    Arch.neighbors()
-    Arch.neighbors(K = 3)
-    Arch.neighbors(K = 5)
+    # # # Architecture analysis
+    # Arch = Architecture(NGDF, ARdict, SESSdict)
+    # # Arch.spatial_distribution(nbins=10)
+    # # Arch.neighbors()
+    # # Arch.neighbors(K = 3)
+    # Arch.neighbors(K = 5)
 
     ### Timeseries plots for neurons from different regions
     # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=False)
     # by_areas_TSPLOT(GROUP_type = 'modality_specific', add_CASCADE=False)
     
     # this is the one that makes sense for V /A /M neuron groups
-    # QuantDF = by_areas_TSPLOT(GROUP_type = 'all', pre_post='pre',
-    #                           svg=True)
-    # Quantification(QuantDF, svg=True)
+    QuantDF = by_areas_TSPLOT(GROUP_type = 'all', pre_post='pre',
+                              svg=True)
+    Quantification(QuantDF, svg=True)
     
-    ### TOTAL timeseries plot and quantification
-    # QuantDF = by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
+    # ## TOTAL timeseries plot and quantification
+    # by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
 
-    # # Recorded neurons plot
+    # # # Recorded neurons plot
     # recordedNeurons(svg=True)
 
     

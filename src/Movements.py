@@ -65,36 +65,36 @@ class Movements:
         
         # 1) first plot average behavior (over trials) per session per trial type (overlaid)
         self.aggregated_behavior, self.pltdir = self.aggregate_trial_type_behavior_by_session(
-            plot=False
+            plot=True
             )
         print('1) Behavior by Group, Trial-type and Session DONE')
         
-        # 2) second plot comparing average behavior (over trials and sessions) per trial type between DR and NR (overlaid)
-        self.DRNR_QUANT = self.behaviors_DR_vs_NR(show=False)
-        self.quantify()
-        print('2) Averaged comparison between DR and NR DONE')
+        # # 2) second plot comparing average behavior (over trials and sessions) per trial type between DR and NR (overlaid)
+        # self.DRNR_QUANT = self.behaviors_DR_vs_NR(show=False)
+        # self.quantify()
+        # print('2) Averaged comparison between DR and NR DONE')
         
-        # 3) third series of plots is per session raw signal during each trial type and corresponding behaviors
-        # separate plot per trial type
-        # self.raw_signals()
+        # # 3) third series of plots is per session raw signal during each trial type and corresponding behaviors
+        # # separate plot per trial type
+        # # self.raw_signals()
 
-        # 4) separate plot per session (random chunk from session of consecutive trials of all trial types)
-        # self.raw_signals(all_TT_together=True, 
-        #                  N_example_trials=15,
-        #                  averaged=False,
-        #                  )
+        # # 4) separate plot per session (random chunk from session of consecutive trials of all trial types)
+        # # self.raw_signals(all_TT_together=True, 
+        # #                  N_example_trials=15,
+        # #                  averaged=False,
+        # #                  )
 
-        # Correlation Behavior (Whisker, Running and Pulil) and signal throughout trial (47 bins)
-        # In each time bin, take correlation between 90 values from signal and 90 values from behavior [or 180 if combining LR]
-        # **(calculate seperately for each neuron** and **each trial type**, then show average over all neurons of a given brain area (4 columns)
-        # across 3 types of stimuli) (V / A / AV) - 3 lines
-        # for DR and NR separately (2 rows)
-        self.CORR, self.singleCORR = self.signal_correlations()
+        # # Correlation Behavior (Whisker, Running and Pulil) and signal throughout trial (47 bins)
+        # # In each time bin, take correlation between 90 values from signal and 90 values from behavior [or 180 if combining LR]
+        # # **(calculate seperately for each neuron** and **each trial type**, then show average over all neurons of a given brain area (4 columns)
+        # # across 3 types of stimuli) (V / A / AV) - 3 lines
+        # # for DR and NR separately (2 rows)
+        # self.CORR, self.singleCORR = self.signal_correlations()
         
-        # Heatmap, Lineplot, Brain map
-        self.analyze_correlations()
+        # # Heatmap, Lineplot, Brain map
+        # self.analyze_correlations()
 
-        # BONUS
+        # # BONUS
         # TODO: Direction selectivity in whisker movements / running / pupil vs Neuronal activity!
 
     
@@ -149,13 +149,15 @@ class Movements:
                 # plot for each session and each behavior across trial types
                 f, axs = plt.subplots(nrows=3, ncols=len(BBSs['running']), 
                                     figsize= (2.5*len(BBSs['running']), 9), 
-                                    sharex='all', sharey='row')
+                                    sharex='all', sharey='all')
             
             # go through behaviors (rows), in each have data on every session
             for ib, (beh_name, beh_by_sess) in enumerate(BBSs.items()):
                 for iss, (sess_name, TT_beh_dict) in enumerate(beh_by_sess.items()):
                     if ib == 0 and plot:
-                        axs[ib, iss].set_title(f'Sess_{iss} \n({self.AVs[ig].sessions[iss]['session']})')
+                        # full picture
+                        # axs[ib, iss].set_title(f'Session {iss} \n({self.AVs[ig].sessions[iss]['session']})')
+                        axs[ib, iss].set_title(f'Session {iss} ({self.AVs[ig].sessions[iss]['session'].split('_')[0]})')
                     if iss == 0 and plot:
                         axs[ib, iss].set_ylabel(f'Z-{beh_name}')
                     
@@ -165,7 +167,8 @@ class Movements:
                             if itt == list(TT_beh_dict)[0]:
                                 axs[ib, iss].axvline(0)
                                 axs[ib, iss].axvline(1)
-                                axs[ib, iss].set_xlabel('self.time (s)')
+                                axs[ib, iss].axis('off')
+                                # axs[ib, iss].set_xlabel('Time (s)')
                             
                             # plot for each session and each behavior across trial types
                             col, lnstl = self.tt_col_lstl[itt]
@@ -181,8 +184,7 @@ class Movements:
             if plot:
                 # plot for each session and each behavior across trial types
                 f.tight_layout()
-                f.savefig(os.path.join(pltdir, f'group{ig+1}_behavior_exploration.png'), dpi = 500)
-                plt.show()
+                f.savefig(os.path.join(pltdir, f'group{ig+1}_behavior_exploration.svg'))
                 plt.close()
         
         return aggregated_behavior, pltdir

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pandas import DataFrame, Categorical
 import pandas as pd
-from scipy.stats import sem, norm, _result_classes
+from scipy.stats import sem, norm, _result_classes, fisher_exact
 from matplotlib import artist
 from collections import defaultdict
 from typing import Literal, Iterable, Callable
@@ -14,6 +14,11 @@ import os
 from src import PYDATA, PLOTSDIR
 
 ###-------------------------------- GENERAL Helper functions --------------------------------
+def proportion_significance_test(df:pd.DataFrame, rows:str, cols:str):
+    tab = pd.crosstab(index=df[rows], columns=df[cols])
+    sig, pval = fisher_exact(tab)
+    return pval
+
 def get_proportionsDF(nbDF:DataFrame,
                       countgroupby:list[str],
                       propgroupby:list[str],)->DataFrame:
@@ -100,8 +105,21 @@ def catplot_proportions(DF:DataFrame,
                       null.assign(frame = 'null')], ignore_index=True)
     
     g = sns.FacetGrid(data, row = row, col = col, 
-                      aspect=2 if col is not None else 1,
+                      aspect=1,
                       row_order=row_order, col_order=col_order)
+
+    # Connect points
+    g.map_dataframe(local_plotter2,
+                    plot_func = sns.pointplot,
+                    whichframe = 'counts',
+                    x =x, y = 'prob',
+                    hue = hue, hue_order = ['NRpre', 'DRpre'], 
+                    palette = {'NRpre':'grey', 'DRpre':'black'},
+                    errorbar = None,
+                    marker = "",
+                    linestyles = ['dashed', '-'],
+                    dodge = 0.5,
+                    order = order)
 
     if NULLDF is not None:
         g.map_dataframe(local_plotter,
@@ -115,19 +133,22 @@ def catplot_proportions(DF:DataFrame,
                         marker = "", linestyle = "none",
                         order = order)
         
-    # 3. Draw a bar plot of those probs
+    # 3. Draw a point plot of those probs
     g.map_dataframe(local_plotter,
                     plot_func = sns.pointplot,
                     whichframe = 'counts',
                     x =x, y = 'prob',
                     hue = hue,
                     errorbar = None,
-                    marker = "x", linestyle = 'none',
+                    marker = "x", markersize = 14,
+                    linestyle = 'none',
                     dodge = 0.5,
                     order = order)
     
+    
     g.set_axis_labels(x,"Probability")
-    g.add_legend()
+    # sns.despine(fig = g.figure)
+    # g.add_legend()
     g.set(ylim=(-0.05,1))
 
     extension = '.png' if not svg else '.svg'
@@ -170,7 +191,7 @@ def catplot_distanc(DF:DataFrame,
                       null.assign(frame = 'null')], ignore_index=True)
     
     g = sns.FacetGrid(data, row = row, col = col, 
-                      aspect=2 if col is not None else 1,
+                      aspect=1.3518,
                       row_order=row_order, col_order=col_order)
 
     if NULLDF is not None:
@@ -196,7 +217,8 @@ def catplot_distanc(DF:DataFrame,
                     dodge = 0.5,
                     order = order)
     
-    g.add_legend()
+    # g.add_legend()
+    # sns.despine(fig = g.figure)
 
     extension = '.png' if not svg else '.svg'
     plt.savefig(savedir+extension, dpi = 300 if not svg else 'figure')

@@ -277,7 +277,7 @@ def RCIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
     # TODO: RCI +- proportions (maybe treat just proportion enhanced - automatically the rest is suppressed)
     # XXX (compare also between V & A neurons; V 50/50 enhanced A more supressed)
     # XXX (also compare between preferred and non-preferred WITHIN group)
-    multisens_proportions(RCIdf=RCIdf)
+    # multisens_proportions(RCIdf=RCIdf)
     # RCI magnitude MAIN
     RCImag(RCIdf, hue_order, palette)
 

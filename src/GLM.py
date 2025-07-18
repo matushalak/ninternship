@@ -1309,7 +1309,8 @@ def explained_variance(target_trial_locked:np.ndarray,
                        test_trial_indices:np.ndarray|None = None,
                        exportAS:type = dict,
                        trial_groups:list[tuple[int]] = [(6,7), (0,3), (1,5), (2,4)],
-                       trial_group_labels:list[str] = ['V', 'A', 'AV+', 'AV-']
+                       trial_group_labels:list[str] = ['V', 'A', 'AV+', 'AV-'],
+                       stim_presentation:tuple[int, int] = (15,31)
                        )->dict[str:list[float]]:
     '''
     targe_trial_locked is (ntrials, nts, optional[nshuffles]) 2D / 3D array 
@@ -1382,12 +1383,13 @@ def explained_variance(target_trial_locked:np.ndarray,
                 results_explanation['columns'][ip] = f'EV_{predictor_name}_a'
 
             # Explained variance for trial-trial signal within trial-type
-            pred_tt_flat = pred_ttsignal.flatten()
+            # XXX: Changed so taking only the portion from stimulus onset until end of trial! (not including 1s baseline!)
+            pred_tt_flat = pred_ttsignal[:,stim_presentation[0]:].flatten()
 
             if EV == EV2:
-                target_tt_flat = target_TT[ttname].reshape(-1, target_TT[ttname].shape[2])
+                target_tt_flat = target_TT[ttname][:,stim_presentation[0]:,:].reshape(-1, target_TT[ttname].shape[2])
             else:
-                target_tt_flat = target_TT[ttname].flatten()
+                target_tt_flat = target_TT[ttname][:,stim_presentation[0]:].flatten()
 
             EV_trial= EV(pred_tt_flat, target_tt_flat)
             if isinstance(model_results, dict):

@@ -1,11 +1,12 @@
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 
 from src import PYDATA, PLOTSDIR
 
 # For GLM figure  / GLM supplementary figure, demonstration of experiment
 screen = ears = time = 16
-for linear in [np.linspace(0, 1, screen), np.linspace(1, 0, screen)]:
+for linear, directionname in zip([np.linspace(0, 1, screen), np.linspace(1, 0, screen)], ('rightward', 'leftward')):
     exponential = np.exp(-5*linear)
     time = np.linspace(1, 0, screen)
     ident = np.eye(screen)
@@ -37,4 +38,4 @@ for linear in [np.linspace(0, 1, screen), np.linspace(1, 0, screen)]:
     ax[1,1].set_xlabel('Auditory location predictors (0-15)(left - right)')
     ax[1,1].set_ylabel('Frames since trial start')
     plt.tight_layout()
-    plt.show()
+    plt.savefig(os.path.join(PLOTSDIR, f'GLMstimuli_{directionname}.svg'))

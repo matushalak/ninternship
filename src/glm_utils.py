@@ -333,6 +333,82 @@ def drives_loader(group_name:str, storage_folder:str = PYDATA,):
 
     return driveDict
 
+def glmSUPPLEMENT(everything:dict[str:np.ndarray], 
+                  supplement_type:Literal['heatmap', 'onset'],
+                  group_name:str, area_name:str, savedir:str
+                  )-> None | pd.DataFrame:
+    import seaborn as sns
+
+    if supplement_type == 'onset':
+        # look at auditory trials
+        predictors = ['Adrive', 'Motordrive']
+        tt = 'A'
+        collection = {'Group':[], 'Area':[], 'Predictors':[], 'Onset':[]}
+        group = 'DR' if 'g1' in group_name else 'NR'
+        pred_map = {'Vdrive':'Visual', 'Adrive':'Auditory', 'Motordrive':'Motor'}
+        for predictor in predictors:
+            data = everything[predictor][tt]
+            data[:,:15,:] = -100 # dont care about before stimulus (nooise)
+            avrg_per_neuron = data.mean(axis = 0) # shape: (ts x neurons)
+            onset:np.ndarray = np.argmax(avrg_per_neuron, axis = 0) # shape: (neurons)
+            collection['Group'] += [group] * len(onset)
+            collection['Area'] += [area_name] * len(onset)
+            collection['Predictors'] += [pred_map[predictor]] * len(onset)
+            collection['Onset'] += onset.tolist()
+        out = pd.DataFrame(collection)
+    
+    elif supplement_type == 'heatmap':
+        area_name = area_name.replace('/', '|')
+        out = None
+        # find neurons with the strongest response 
+        mostVisual = np.argsort(everything['Vdrive']['V'][:,15:,:].mean(axis = (1, 0)))[-5:]
+        mostAud = np.argsort(everything['Adrive']['A'][:,15:,:].mean(axis = (1, 0)))[-5:]
+        mostMotor = np.argsort(everything['Motordrive']['V'][:,15:,:].mean(axis = (1, 0)))[-5:]
+
+        trial_order = ['V', 'A', 'AV']
+        interesting_signals = ['Raw dF/F', 'Modeldrive', 'Vdrive', 'Adrive', 'Motordrive']
+        clippermin, clippermax = -1, 3
+        neuron_selection = {'mostVisual': mostVisual,
+                            'mostAuditory':mostAud,
+                            'mostMotor': mostMotor}
+        order = dict()
+
+        for selection_name, selection in neuron_selection.items():
+            print(f'Processing {group_name}, {area_name}, {selection_name} examples!')
+            selectionDir = os.path.join(savedir, 'Single_neuron_examples',group_name, area_name, selection_name)
+            if not os.path.exists(selectionDir):
+                os.makedirs(selectionDir)
+
+            for neuron in selection:
+                f, ax  = plt.subplots(nrows = 3, ncols=5)
+                for icol, predictor_name in enumerate(interesting_signals):
+                    signal = everything[predictor_name]
+                    for irow, tt in enumerate(trial_order):
+                        clippedsig = np.clip(signal[tt][:,:,neuron], 
+                                            clippermin, clippermax
+                                            )
+                        if icol ==0:
+                            # order by maximum response in raw signal (top 50 most responsive trials)
+                            order[irow]= np.argsort(clippedsig[:,15:].mean(axis = 1))[-50:][::-1]
+
+                        sns.heatmap(clippedsig[order[irow], :], cmap = 'viridis', ax=ax[irow, icol],
+                                    vmin=clippermin, vmax=clippermax,
+                                    xticklabels=False, yticklabels=False, 
+                                    cbar=True if icol == 4 else False,
+                                    # square=True
+                                    )
+                        ax[irow, icol].axvline(15, linestyle = 'dashed', color = 'white', linewidth = 2)
+                        ax[irow, icol].axvline(31, linestyle = 'dashed', color = 'white', linewidth = 2)
+                        if irow == 0:
+                            ax[irow, icol].set_title(predictor_name.removesuffix('drive'))
+                        if icol == 0:
+                            ax[irow, icol].set_ylabel(tt)
+                # f.suptitle(f"neuron {neuron}")
+                f.tight_layout()
+                f.savefig(os.path.join(selectionDir, f'top50trials_neuron{neuron}.png'), dpi = 450)
+                plt.close()
+    return out
+
 
 if __name__ == '__main__':
     use_encoding_model(EV = True, redo=True)

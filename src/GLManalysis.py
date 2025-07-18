@@ -1,8 +1,9 @@
 from src.GLM import design_matrix, clean_group_signal
-from src.AUDVIS import Behavior, AUDVIS
+from src.AUDVIS import Behavior, AUDVIS, load_in_data
 from src.VisualAreas import Areas
-from src.analysis_utils import plot_avrg_trace, fluorescence_response
-from src.glm_utils import drives_loader
+from src.analysis_utils import plot_avrg_trace, fluorescence_response, proportion_significance_test
+from src.utils import get_sig_label
+from src.glm_utils import drives_loader, glmSUPPLEMENT
 
 import pickle
 import scipy.stats as stats
@@ -13,6 +14,7 @@ import seaborn as sns
 import seaborn.objects as so
 import os
 import sklearn.cluster as skClust
+from statannotations.Annotator import Annotator
 
 from collections import defaultdict
 from typing import Literal
@@ -284,33 +286,124 @@ class EvAnalysis:
                             tt:Literal['A', 'V', 'AV'] = 'AV',
                             calc:Literal['averaged', 'trial'] = 'averaged', 
                             dataset:Literal['in_sample', 'held_out'] = 'held_out'):
+        # Quick check for supplemental when full model performs best
+        supplemental = self.df.loc[((self.df['Calculation'] == calc) & 
+                            (self.df['Dataset'] == dataset) &
+                            (self.df['Predictors'] == 'Model')&
+                            # (self.df['EV'] > 0) &
+                            (self.df['ModelSignificant'] == True) # where overall model significant
+                            )].copy()
+        sns.catplot(supplemental,y = 'EV', x = 'trial_type', order = ['A', 'V', 'AV'], color = 'magenta', kind = 'box', aspect=0.5, showfliers = False)
+        plt.savefig(os.path.join(self.saveDIR, 'supplemental_overallModelEV.svg'))
+        plt.close()
+
         data = self.df.loc[((self.df['Calculation'] == calc) & 
                             (self.df['Dataset'] == dataset) &
                             (self.df['trial_type'] == tt) & 
-                            (self.df['Predictors'] != 'Model') &
-                            (self.df['EV'] > 0) &
+                            (self.df['Predictors'] != 'Model') & (self.df['Predictors'] != 'AV') &
+                            # (self.df['EV'] > 0) &
                             (self.df['ModelSignificant'] == True) # where overall model significant
                             )].copy()
-        
-        bp = sns.catplot(data=data, x = 'Region', y = 'EV', 
-                            hue = 'group_id', 
-                            estimator='median',
-                            kind='box', 
-                            col = 'Predictors', col_order=['V', 'A', 'Motor'],  
-                            # edgecolor = 'k',
-                            # palette=color_scheme,
-                            # alpha = 0.7,
-                            showfliers = False
+
+        data['group_id'] = data['group_id'].transform(lambda x: 'DR' if 'g1' in x else 'NR')
+        data['group_hue'] = data[['group_id', 'Predictors']].apply(tuple, axis=1)
+        data.rename(columns={'EV':'Explained variance'}, inplace=True)
+
+        for reg, regdf in data.groupby('Region'):
+            bp = sns.catplot(data=regdf, x = 'Region', y = 'Explained variance', 
+                            # hue = 'group_id', 
+                            hue =  'group_hue',
+                            hue_order= [('NR', 'V'), ('DR', 'V'),
+                                        ('NR', 'A'), ('DR', 'A'),
+                                        ('NR', 'Motor'), ('DR', 'Motor')],
+                            palette={
+                                ('NR', 'V'):'lightskyblue', ('DR', 'V'):'dodgerblue',
+                                ('NR', 'A'):'lightsalmon', ('DR', 'A'):'red',
+                                ('NR', 'Motor'):'limegreen', ('DR', 'Motor'):'green'
+                                        },
+                            estimator='mean',
+                            aspect=1,
+                            kind='bar', capsize = .3, errorbar='ci',
+                            # order =  ['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                            legend=False
                             )
             
-        bp.legend.set_visible(False)
-        bp.figure.legend()
-        bp.figure.suptitle(f'EV comparison [EV on {dataset} {calc} data for {tt} trials]')
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.saveDIR, f'EV_region_group_comparison_{calc}_{dataset}_TT({tt}).svg'), 
-                    # dpi = 300
-                    )
-        plt.show()
+            # based on group x region x predictors pairs
+            between_pairs = []
+            predictors_dict = {'AV': ['V', 'A', 'Motor'], 
+                               'A':['A', 'Motor'],
+                               'V':['V', 'Motor']}
+            for p in predictors_dict[tt]:
+                # between groups comparisons
+                # for reg in data.Region.unique():
+                between_pairs.append(((reg, ('DR', p)), (reg, ('NR', p))))
+
+            within_pairs = []
+            for g in ['NR', 'DR']:
+                if tt == 'AV':
+                    within_pairs.append(
+                        ((reg, (g, 'V')), (reg, (g, 'A')))
+                                    )
+                if tt != 'A':
+                    within_pairs.append(
+                        ((reg, (g, 'V')), (reg, (g, 'Motor')))
+                                        )
+                if tt != 'V':
+                    within_pairs.append(
+                        ((reg, (g, 'A')), (reg, (g, 'Motor')))
+                                        )
+            
+            # first: between‑group comparisons
+            annot_bw = Annotator(
+                ax = bp.ax,
+                pairs = between_pairs,
+                plot='barplot',
+                data=regdf,
+                x='Region',
+                y='Explained variance',
+                hue='group_hue',
+                hue_order= [('NR', 'V'), ('DR', 'V'),
+                            ('NR', 'A'), ('DR', 'A'),
+                            ('NR', 'Motor'), ('DR', 'Motor')]
+            )
+            annot_bw.configure(
+                test='Mann-Whitney',#'t-test_ind', 'Mann-Whitney',
+                comparisons_correction='Bonferroni',
+                text_format='star',
+                loc='outside',
+                hide_non_significant = True,
+                correction_format="replace"
+            )
+            annot_bw.apply_and_annotate()
+
+            # second: within-group comparison
+            annot_wi = Annotator(
+            ax = bp.ax, pairs = within_pairs, plot='barplot', 
+            data=regdf, x='Region', y='Explained variance', 
+            hue='group_hue',
+            hue_order= [('NR', 'V'), ('DR', 'V'),
+                        ('NR', 'A'), ('DR', 'A'),
+                        ('NR', 'Motor'), ('DR', 'Motor')]
+            )
+            annot_wi.configure(
+                test='Wilcoxon',#'t-test_paired', 'Wilcoxon',
+                comparisons_correction='Bonferroni',
+                text_format='star',
+                loc='outside',
+                hide_non_significant = True,
+                correction_format="replace"
+            )
+            annot_wi.apply_and_annotate()
+
+            plt.ylim(0, 1) if calc == 'averaged' else plt.ylim(0, 0.25)
+            # plt.tight_layout()
+            varexplDIR = os.path.join(self.saveDIR, 'varExplained')
+            if not os.path.exists(varexplDIR):
+                os.makedirs(varexplDIR)
+            plt.savefig(os.path.join(varexplDIR, f'{reg.replace('/', '|')}_EV_region_group_comparison_{calc}_{dataset}_TT({tt}).svg'), 
+                        # dpi = 300
+                        )
+            plt.close()
     
 
     def order_neurons(self,
@@ -334,70 +427,117 @@ class EvAnalysis:
         # Proportion plot
         wide['STATLabel'] = wide.apply(lambda r: r['EV'].idxmax(), 
                                        axis = 1)
+        
+        wide = wide.reset_index()
         # 1) count
         # wideprop = wide.loc[wide['STATLabel'] != 'Nonsignificant']
         counts = ( wide
-                .groupby(["group_id","Region", "STATLabel"])
+                .groupby(["group_id","Region", "STATLabel"], observed=False)
                 .size()
                 .reset_index(name="n") )
 
         # 2) fraction within each Region × group_id
-        counts["prop"] = ( counts
-                        .groupby(["group_id", "Region"])["n"]
+        counts["Proportion"] = ( counts
+                        .groupby(["group_id", "Region"], observed=False)["n"]
                         .transform(lambda x: x / x.sum()) )
 
         # 3) plot
+        counts['group_id'] = counts['group_id'].transform(lambda x: 'DR' if 'g1' in x else 'NR')
         out = (
-            so.Plot(counts, x="group_id", y="prop", color="STATLabel", 
+            so.Plot(counts, x="group_id", y="Proportion", color="STATLabel",
                     )
-            .facet("Region")
+            .facet(col = "Region", order = ['V1', 'AM/PM', 'A/RL/AL', 'LM'])
             .add(so.Bars(), so.Stack())
             .scale(color = {'V':'dodgerblue', 'A':'red', 'Motor':'green'})
             )
         plot = out.plot(pyplot=True)
         plt.tight_layout()
-        plt.savefig(os.path.join(self.saveDIR, 'proportion_neurons.svg'))
-        plt.show()
+        plt.savefig(os.path.join(self.saveDIR, f'proportion_neurons_{dataset}_{calc}_{tt}.svg'))
         plt.close()
+
+        # hardcoded null row
+        nullrow = pd.DataFrame({'group_id':['NR'], 'Region':['LM'], 
+                                'STATLabel':['Motor'], 
+                                'n':[0], 'Proportion':[0.0]})
+        counts = pd.concat([counts, nullrow], ignore_index=True)
         
-        for region in regions:
-            for group in group_ids:
-                mask = (wide.index.get_level_values('Region') == region) & \
-                   (wide.index.get_level_values('group_id') == group)
-                sub_wide = wide.loc[mask]
-                # Order for plot
-                v_minus_m = sub_wide['EV']['V'] - sub_wide['EV']['Motor']
-                order = sub_wide.assign(v_m = v_minus_m).sort_values('v_m', ascending=False)
+        grouphue = counts[['group_id', 'STATLabel']].apply(tuple, axis=1)
+        hue_order= [('NR', 'V'), ('DR', 'V'),
+                    ('NR', 'A'), ('DR', 'A'),
+                    ('NR', 'Motor'), ('DR', 'Motor')]
+        palette={
+                ('NR', 'V'):'lightskyblue', ('DR', 'V'):'dodgerblue',
+                ('NR', 'A'):'lightsalmon', ('DR', 'A'):'red',
+                ('NR', 'Motor'):'limegreen', ('DR', 'Motor'):'green'
+                }
+        sns.catplot(counts, x = 'Region', y = 'Proportion',
+                    order = ['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                    kind = 'point',
+                    hue = grouphue, hue_order=hue_order, palette=palette,
+                    errorbar=None, 
+                    height=8, aspect=0.75, legend=False)
+        plt.savefig(os.path.join(self.saveDIR, f'POINTPLOTproportion_neurons_{dataset}_{calc}_{tt}.svg'))
+        plt.close()
 
-                fig, axes = plt.subplots(3, 1, figsize=(14, 4), sharex=True)
-                for n, row_data in order.iterrows():
-                    x = np.where(order.index==n)[0][0]                # bar position
-                    for pred, ev_value in row_data['EV'][['V','A','Motor']].items():
-                        ax = axes[row[pred]]
-                        color = (col_map[pred] if (row_data['Label']==pred).bool() else 'gray')
-                        ax.bar(x, ev_value, color=color, width=1.0)
+        # Significance test for proportions (between groups)
+        for regio, regioDF in wide.groupby('Region'):
+            pv = proportion_significance_test(regioDF, 'group_id', 'STATLabel')
+            print(f'{regio} comparison: {pv} {get_sig_label(pv)}')
+        
+        # Distribution plot (too big, not very informative)
+        # for region in regions:
+        #     for group in group_ids:
+        #         mask = (wide.index.get_level_values('Region') == region) & \
+        #            (wide.index.get_level_values('group_id') == group)
+        #         sub_wide = wide.loc[mask]
+        #         # Order for plot
+        #         v_minus_m = sub_wide['EV']['V'] - sub_wide['EV']['Motor']
+        #         order = sub_wide.assign(v_m = v_minus_m).sort_values('v_m', ascending=False)
 
-                for ax in axes:
-                    ax.set_ylabel('EV')
-                    ax.spines[['right','top']].set_visible(False)
-                    ax.set_xticks([])
+        #         fig, axes = plt.subplots(3, 1, figsize=(14, 4), sharex=True)
+        #         for n, row_data in order.iterrows():
+        #             x = np.where(order.index==n)[0][0]                # bar position
+        #             for pred, ev_value in row_data['EV'][['V','A','Motor']].items():
+        #                 ax = axes[row[pred]]
+        #                 color = (col_map[pred] if (row_data['Label']==pred).bool() else 'gray')
+        #                 ax.bar(x, ev_value, color=color, width=1.0)
 
-                fig.suptitle(f'Region: {region}, Group: {group}')
-                plt.tight_layout()
-                plt.show()
+        #         for ax in axes:
+        #             ax.set_ylabel('EV')
+        #             ax.spines[['right','top']].set_visible(False)
+        #             ax.set_xticks([])
+
+        #         fig.suptitle(f'Region: {region}, Group: {group}')
+        #         plt.tight_layout()
+        #         plt.show()
 
     def cluster_neurons(self):
         raise NotImplementedError
 
     
     def well_modelled(self, 
-                      calc:Literal['averaged', 'trial'] = 'averaged'):
+                      calc:Literal['averaged', 'trial'] = 'averaged',
+                      tt:str|None = None):
         sub_df = self.df.loc[(self.df['Calculation'] == calc) & (self.df['Dataset'] == 'held_out')]
-        anygood = sub_df.groupby(['group_id', 'neuron_id_overall']
+        
+        # check how many well modelled per trial type
+        # print(sub_df.loc[sub_df['Predictors'] == 'Model'].groupby(
+        #     ['trial_type', 'group_id'])['ModelSignificant'].sum())
+        if tt is not None:
+            anygood = sub_df.loc[sub_df['trial_type'] == tt].groupby(['group_id', 'neuron_id_overall']
                                   )['ModelSignificant'].any()
+        else:
+            anygood = sub_df.groupby(['group_id', 'neuron_id_overall']
+                                    )['ModelSignificant'].any()
         anygood = pd.DataFrame(anygood.reset_index())
+        
+        # check how many well modelled overall
+        # print('Well modelled in any trial type:', 
+        #       anygood.groupby('group_id')['ModelSignificant'].sum())
+
         anygood = anygood.loc[anygood['ModelSignificant'] == True, 
                               ['group_id', 'neuron_id_overall']]
+        
         good_dict = {g:s.to_numpy() for g, s in anygood.groupby('group_id')['neuron_id_overall']}
         return good_dict
     
@@ -407,7 +547,11 @@ def average_clean_plot(AVs:list[AUDVIS],
                        well_modelled_neurons:dict[str:np.ndarray],
                        pre_post: Literal['pre', 'post', 'both'] = 'pre', 
                        savedir:str = PLOTSDIR,
-                       show:bool = True):
+                       show:bool = True,
+                       well_mod_for_quant:dict[str:np.ndarray]|None = None,
+                       supplement_type:Literal['heatmap', 'onset']|None = None
+                       ):
+    supplement = False if supplement_type is None else True
     component_colors = {'Vdrive':'dodgerblue', 'Adrive':'red', 'AVdrive':'goldenrod', 
                         'Motordrive':'green',
                         'Modeldrive':'magenta', 
@@ -427,23 +571,28 @@ def average_clean_plot(AVs:list[AUDVIS],
                       'Predictor':[],
                       'FR':[]
                       }
-
+    if supplement_type == 'onset':
+        onsetDF = []
     for AV in AVs:
         # collect drives for plotting
         drives: dict[str:np.ndarray] = drives_loader(group_name=AV.NAME)
         drives['Cleaned dF/F'] = clean_group_signal(group_name=AV.NAME, pre_post=pre_post)
         drives['Raw dF/F'] = AV.baseline_correct_signal(AV.zsig, AV.TRIAL[0])
         # well modelled neurons (significantly at least for one trial type)
-        selection = well_modelled_neurons[AV.NAME]
+        selection = well_modelled_neurons[AV.NAME] if well_mod_for_quant is None else well_mod_for_quant[AV.NAME]
 
         # get brain area indices
         AR = Areas(AV, get_indices=True)
 
         # set-up figure
-        f, ax  = plt.subplots(nrows=4, ncols=3, sharey='all', sharex='col',
-                              figsize = (6, 8))
+        if not supplement:
+            f, ax  = plt.subplots(nrows=4, ncols=3, sharey='all', sharex='col',
+                                figsize = (6, 8))
 
         for iarea, (area_name, area_indices) in enumerate(AR.area_indices.items()):
+            print(f"Analyzing drives in area {area_name}: {list(drives)}")
+            if supplement:
+                alldrives_neuron_trials = dict()
             for iname, (name, sig) in enumerate(drives.items()):
                 # split into trials
                 sig_dict = AV.separate_signal_by_trial_types(signal=sig)
@@ -455,58 +604,166 @@ def average_clean_plot(AVs:list[AUDVIS],
                         if tt in tg:
                             ttname = trial_group_labels[itg]
                     sig2[ttname].append(sigtt[:,:,np.intersect1d(selection, area_indices)])
-                
                 del sig_dict # free up memory
+                # concatenate arrays within sig2
+                for trialname, trialarrays in sig2.items():
+                    sig2[trialname] = np.vstack(trialarrays)
                 
-                for itg, tn in enumerate(trial_group_labels):
-                    if tn in ('V', 'A') and 'AV' in name:
-                        continue
-                    grouped_trial_all_neurons = np.vstack(sig2[tn])
-                    if name in ('Adrive', 'Motordrive') and tn == 'A':
-                        driveFR = fluorescence_response(signal=grouped_trial_all_neurons, window=AV.TRIAL, retMEAN_only=True)
-                        outsize = driveFR.size
-                        # save to dict
-                        quantFRdrives['Group'] += [AV.NAME]*outsize
-                        quantFRdrives['Region'] += [area_name]*outsize
-                        quantFRdrives['Predictor'] += [name]*outsize
-                        quantFRdrives['FR'] += driveFR.tolist()
+                if supplement:
+                    alldrives_neuron_trials[name] = sig2
 
-                    sig2[tn] = np.mean(grouped_trial_all_neurons, axis = 0)
-                    plot_avrg_trace(time=time, avrg=np.mean(sig2[tn], axis=1), #SEM = stats.sem(sig2[tn], axis = 1),
-                                    Axis=ax[iarea, itg], label=name, title=f'{tn}trials_{area_name}', 
-                                    col=component_colors[name],
-                                    tt = itg)
-                    if iarea == len(AR.area_indices)-1:
-                        ax[iarea, itg].set_xlabel('Time (s)')
-                    if itg == 0:
-                        ax[iarea, itg].set_ylabel('z(dF/F0)')
+                if not supplement:
+                    for itg, tn in enumerate(trial_group_labels):
+                        if tn in ('V', 'A') and 'AV' in name:
+                            continue
+                        grouped_trial_all_neurons = sig2[tn]#np.vstack(sig2[tn])
+                        if name in ('Adrive', 'Motordrive') and tn == 'A':
+                            driveFR = fluorescence_response(signal=grouped_trial_all_neurons, window=AV.TRIAL, retMEAN_only=True)
+                            outsize = driveFR.size
+                            # save to dict
+                            quantFRdrives['Group'] += [AV.NAME]*outsize
+                            quantFRdrives['Region'] += [area_name]*outsize
+                            quantFRdrives['Predictor'] += [name]*outsize
+                            quantFRdrives['FR'] += driveFR.tolist()
+
+                        averagesig = np.mean(grouped_trial_all_neurons, axis = 0)
+                        plot_avrg_trace(time=time, avrg=np.mean(averagesig, axis=1), 
+                                        #SEM = stats.sem(sig2[tn], axis = 1),
+                                        Axis=ax[iarea, itg], label=name, 
+                                        # title=f'{tn}trials_{area_name}', 
+                                        col=component_colors[name],
+                                        tt = itg)
+                        ax[iarea, itg].set_ylim(-0.05, 1)
+                        ax[iarea, itg].axis('off')
+                        # if iarea == len(AR.area_indices)-1:
+                        #     ax[iarea, itg].set_xlabel('Time (s)')
+                        # if itg == 0:
+                        #     ax[iarea, itg].set_ylabel('z(dF/F0)')
         
-        plt.tight_layout()
-        plt.savefig(os.path.join(savedir, f'glmCleanAverage_{AV.NAME}.png'), dpi = 300)
-        if show:
-            plt.show()
+            # Supplementary analysis for each area
+            # produce Response onset and example neurons supplementary figures
+            if supplement:
+                out = glmSUPPLEMENT(alldrives_neuron_trials, 
+                                    supplement_type,
+                                    AV.NAME, area_name, savedir)
+                if supplement_type == 'onset':
+                    onsetDF.append(out)
+            
+        if not supplement:
+            plt.tight_layout()
+            plt.savefig(os.path.join(savedir, f'glmCleanAverage_{AV.NAME}.svg'))
+            if show:
+                plt.show()
+            plt.close()
     
-    # Quantification Dataframe
-    quantDF = pd.DataFrame(quantFRdrives)
-    # export for easy stat analysis in JASP / R
-    quantDF.to_csv(os.path.join(PYDATA, 'GLMdrives_quantification.csv'))
-
+    if not supplement:
+        # Quantification Dataframe
+        quantDF = pd.DataFrame(quantFRdrives)
+        # export for easy stat analysis in JASP / R
+        quantDF.to_csv(os.path.join(PYDATA, 'GLMdrives_quantification.csv'))
+    
+    elif supplement_type == 'onset':
+        ONSETDF = pd.concat(onsetDF, ignore_index=True)
+        
+        plot = sns.catplot(data = ONSETDF, 
+                           x = 'Onset', y = 'Group', order = ['NR', 'DR'],
+                           hue = 'Predictors', hue_order=['Auditory', 'Motor'], 
+                           palette={'Auditory':'red', 'Motor':'green'},
+                           row = 'Area', row_order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                           kind='violin', split = True, inner = 'box',
+                           legend=False, cut = 0, aspect = 2.5)
+        
+        plot.set(xticks = (15, 24, 31, 39, 47), xticklabels=(0, 0.5, 1, 1.5, 2), 
+                 xlabel='Response onset (s)')
+        plot.despine()
+        plt.savefig(os.path.join(savedir, 'onsetsQuant.svg'))
+        plt.close()
+    
 
 def driveQuantPlot(savedir:str):
     assert os.path.exists(path := os.path.join(PYDATA, 'GLMdrives_quantification.csv'))
 
     df = pd.read_csv(path, index_col=False)
-    plot = sns.catplot(data = df, x = 'Predictor', y = 'FR', 
-                       hue = 'Group', row = 'Region', 
-                       kind = 'point', dodge = True)
-    plt.tight_layout()
-    plt.savefig(os.path.join(savedir, f'DriveQuants.svg'))
+    df['Group'] = df['Group'].transform(lambda x: 'DR' if 'g1' in x else 'NR')
+    df['Predictor'] = df['Predictor'].transform(lambda x: 'Auditory' if 'A' in x else 'Motor')
+
+    colors = {'V1':{'DR':'darkgreen', 'NR':'mediumseagreen'},
+            'AM/PM':{'DR':'darkred', 'NR':'coral'},
+            'A/RL/AL':{'DR':'saddlebrown', 'NR':'rosybrown'},
+            'LM':{'DR':'darkmagenta', 'NR':'orchid'}}
+    
+    between_pairs = (
+        (('Auditory','DR'), ('Auditory','NR')),
+        (('Motor', 'DR'), ('Motor', 'NR'))
+    )
+    within_pairs = (
+        (('Auditory','DR'), ('Motor', 'DR')),
+        (('Auditory','NR'), ('Motor', 'NR'))
+    )
+    # df['FR'] = df['FR'].abs() # can consider absolute ∆FR - similar results
+    for reg, regDF in df.groupby('Region'):
+        plot = sns.catplot(data = regDF, x = 'Predictor', y = 'FR', 
+                        hue = 'Group', hue_order=['NR', 'DR'],
+                        palette=colors[reg],
+                        aspect=0.3, 
+                        kind= 'bar', 
+                        # kind='box', showfliers = False,
+                        # kind = 'point', marker = 's', dodge = 0.3, 
+                        capsize = 0.3
+                        )
+        
+        # first: between‑group comparisons
+        annot_bw = Annotator(
+            ax = plot.ax,
+            pairs = between_pairs,
+            data=regDF,
+            x='Predictor',
+            y='FR',
+            hue='Group',
+            hue_order=['NR', 'DR']
+        )
+        annot_bw.configure(
+            test='t-test_ind',#'t-test_ind', 'Mann-Whitney',
+            comparisons_correction='Bonferroni',
+            text_format='star',
+            loc='outside',
+            hide_non_significant = True,
+            correction_format="replace"
+        )
+        annot_bw.apply_and_annotate()
+
+        # second: within-group comparison
+        annot_wi = Annotator(
+        ax = plot.ax, pairs = within_pairs, 
+        data=regDF, 
+        x='Predictor',
+        y='FR',
+        hue='Group',
+        hue_order=['NR', 'DR']
+        )
+        annot_wi.configure(
+            test='t-test_paired',#'t-test_paired', 'Wilcoxon',
+            comparisons_correction='Bonferroni',
+            text_format='star',
+            loc='outside',
+            hide_non_significant = True,
+            correction_format="replace"
+        )
+        annot_wi.apply_and_annotate()
+
+        plt.ylim(-0.01, 0.3)
+        plt.yticks([0,0.15,0.3], ['0','0.15','0.3'])
+        plt.tight_layout()
+        plt.savefig(os.path.join(savedir, f'{reg.replace('/', '|')}_DriveQuants.svg'))
 
 
 if __name__ == '__main__':
-    gXY, AVs = design_matrix(pre_post='pre', group='both', returnAVs=True, 
-                            #  show=True
-                             )
+    # don't actually need design matrix
+    # gXY, AVs = design_matrix(pre_post='pre', group='both', returnAVs=True, 
+    #                         #  show=True
+    #                          )
+
+    AVs = load_in_data(pre_post='pre')
     
     # Initialize class
     EVa = EvAnalysis(resultsDF=os.path.join(PYDATA, 
@@ -516,22 +773,38 @@ if __name__ == '__main__':
     # Analysis 1) Compare V, A, motor predictors in neurons significantly explained by model
     # for AV trials (that's where all 3 components can come through)
     # TODO: separately for running / whisker / pupil
-    # main
-    EVa.preditor_comparison(tt='AV', calc='averaged', dataset='held_out')
-    # supplementary
-    EVa.preditor_comparison(tt='V', calc='averaged', dataset='held_out')
-    EVa.preditor_comparison(tt='A', calc='averaged', dataset='held_out')
-    # EVa.preditor_comparison(tt = 'AV', calc='trial', dataset='held_out')
+    # XXX main!
+    # EVa.preditor_comparison(tt='AV', calc='averaged', dataset='held_out')
+    # # supplementary
+    # EVa.preditor_comparison(tt='V', calc='averaged', dataset='held_out')
+    # EVa.preditor_comparison(tt='A', calc='averaged', dataset='held_out')
 
-    # Analysis 2) Distribution of neurons based on explained variance
+    # Trial-level (low EV - but compared to other studies relatively high) supplementary
+    # would be better to quantify this only during stimulus presentation 
+    # or at least after stimulus onset:end of trial (right now quantified over the whole session essentially)
+    # EVa.preditor_comparison(tt = 'AV', calc='trial', dataset='held_out')
+    # EVa.preditor_comparison(tt = 'V', calc='trial', dataset='held_out')
+    # EVa.preditor_comparison(tt = 'A', calc='trial', dataset='held_out')
+
+    # # Analysis 2) Distribution of neurons based on explained variance
+    # XXX main!
     # EVa.order_neurons(tt = 'AV', calc='averaged', dataset='held_out')
+    # supplementary
+    # EVa.order_neurons(tt = 'A', calc='averaged', dataset='held_out')
+    # EVa.order_neurons(tt = 'V', calc='averaged', dataset='held_out')
     # EVa.order_neurons(tt = 'AV', calc='trial', dataset='held_out')
     
-    # Analysis 3-4) Average drives plot over well-modelled neurons + examples of well-modelled neurons
-    # average_clean_plot(AVs=AVs, well_modelled_neurons=EVa.well_modelled(calc='averaged'), savedir=EVa.saveDIR)
+    # # Analysis 3-4) Average drives plot over well-modelled neurons + examples of well-modelled neurons
+    # average_clean_plot(AVs=AVs, well_modelled_neurons=EVa.well_modelled(calc='averaged'), savedir=EVa.saveDIR,
+    #                    show=False, 
+    #                 # XXX this below will only plot significantly modelled auditory neurons
+    #                    well_mod_for_quant=EVa.well_modelled(calc='averaged', tt = 'A') ,
+    #                 # XXX this does supplemental analyses instead of the main figure
+    #                    supplement_type='onset'
+    #                    )
 
-    # Plot
-    # driveQuantPlot(savedir=EVa.saveDIR)
+    # # Analysis 4) Plot
+    driveQuantPlot(savedir=EVa.saveDIR)
     
 
     

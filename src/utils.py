@@ -35,15 +35,18 @@ def get_sig_label(p,
                   sig_label_map = {0: 'n.s.', 
                                    1: '*', 
                                    2: '**', 
-                                   3: '***'}):
-        if p > 0.05:
+                                   3: '***',
+                                   4: '****'}):
+        if p > 5e-2:
             return sig_label_map[0]
-        elif p > 0.01:
+        elif p > 1e-2:
             return sig_label_map[1]
-        elif p > 0.001:
+        elif p > 1e-3:
             return sig_label_map[2]
-        else:
+        elif p > 1e-4:
             return sig_label_map[3]
+        else:
+            return sig_label_map[4]
 
 def add_sig(ax, x1, x2, y, label,
             bar_height=0.02, text_offset=0.01, **kwargs):

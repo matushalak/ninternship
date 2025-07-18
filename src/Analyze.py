@@ -229,6 +229,9 @@ class Analyze:
         
         # Always responding (most) - intersection
         ALWAYS_responding = reduce(np.intersect1d, (VIS_set, MST_set, AUD_set))
+
+        # Vis & Aud (but not always responding)
+        VISandAUD = np.setdiff1d(np.intersect1d(VIS_set, AUD_set), ALWAYS_responding)
         
         # Modulated (intersection and difference)
         VIS_modulated = np.setdiff1d(np.intersect1d(VIS_set, MST_set), AUD_set) 
@@ -246,7 +249,7 @@ class Analyze:
                 'AUD':np.union1d(AUD_only, AUD_modulated),
                 'AUD_modulated':AUD_modulated,
                 'AUD_only':AUD_only,
-                'MST':np.union1d(MST_only, ALWAYS_responding),
+                'MST':reduce(np.union1d, (MST_only, ALWAYS_responding, VISandAUD)),
                 'MST_only': MST_only,
                 'ALWAYS_responding' : ALWAYS_responding,
                 'TOTAL': reduce(np.union1d, (MST_set, AUD_set, VIS_set)),
@@ -493,6 +496,7 @@ def TT_ANALYSIS(tt_grid:dict[int:tuple[int, int]],
 
 # overall responsive neuron groups, not by brain region
 def neuron_typesVENN_analysis():
+    import os
     avs : AUDVIS = load_in_data() # -> av1, av2, av3, av4
     # venn diagram figure
     fig3, axs3 = plt.subplots(nrows = 2, ncols = 2, figsize = (8, 8))
@@ -508,7 +512,7 @@ def neuron_typesVENN_analysis():
               subset_label_formatter=lambda x: str(x) + "\n(" + f"{(x/total_responsive):1.0%}" + ")")
     
     fig3.tight_layout()
-    fig3.savefig('VennDiagram.png', dpi = 1000)
+    fig3.savefig(os.path.join(PLOTSDIR, 'VennDiagram.png'), dpi = 1000)
     plt.show()
     plt.close()
 
@@ -624,10 +628,10 @@ if __name__ == '__main__':
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     # Example neurons
     # NOTE: check inside AN.example_neurons which neurons are being plotted!
-    Examples()
+    # Examples()
 
     # Neuron types analysis (venn diagrams)
-    # neuron_typesVENN_analysis()
+    neuron_typesVENN_analysis()
     # NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=False, pre_post='pre')
