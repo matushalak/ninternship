@@ -394,6 +394,10 @@ def by_areas_VENN(svg:bool=False,
 
             # prep for venn diagram
             plot_args = neuron_groups_this_area['diagram_setup']
+
+            # XXX: renamed
+            plot_args[1] = ('V trials', 'A trials', 'AV trials')
+
             total_responsive_this_area = len(neuron_groups_this_area['TOTAL'])
             area_ax.set_title(f'{area_name} ({total_responsive_this_area}/{area_indices.size})')
             venn3(*plot_args, ax = area_ax,
@@ -1266,14 +1270,14 @@ def get_histogramDF(spatialDF:pd.DataFrame, vars:list[str], nbins:int,
 
 if __name__ == '__main__':
     ### Venn diagram of neuron classes in in the 4 different regions
-    # NGDF, ARdict, SESSdict = by_areas_VENN(svg=True, pre_post='pre')
+    NGDF, ARdict, SESSdict = by_areas_VENN(svg=True, pre_post='pre')
 
     # # # Architecture analysis
-    # Arch = Architecture(NGDF, ARdict, SESSdict)
-    # # Arch.spatial_distribution(nbins=10)
-    # # Arch.neighbors()
+    Arch = Architecture(NGDF, ARdict, SESSdict)
+    Arch.spatial_distribution(nbins=10)
+    # Arch.neighbors()
     # # Arch.neighbors(K = 3)
-    # Arch.neighbors(K = 5)
+    Arch.neighbors(K = 5)
 
     ### Timeseries plots for neurons from different regions
     # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=False)
@@ -1288,6 +1292,6 @@ if __name__ == '__main__':
     # by_areas_TSPLOT(GROUP_type = 'TOTAL', add_CASCADE=False, svg=False)
 
     # # # Recorded neurons plot
-    # recordedNeurons(svg=True)
+    recordedNeurons(svg=True)
 
     

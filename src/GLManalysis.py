@@ -759,10 +759,9 @@ def driveQuantPlot(savedir:str):
 
 if __name__ == '__main__':
     # don't actually need design matrix
-    # gXY, AVs = design_matrix(pre_post='pre', group='both', returnAVs=True, 
-    #                         #  show=True
-    #                          )
-
+    gXY, AVs = design_matrix(pre_post='pre', group='both', returnAVs=True, 
+                            #  show=True
+                             )
     AVs = load_in_data(pre_post='pre')
     
     # Initialize class
@@ -774,10 +773,10 @@ if __name__ == '__main__':
     # for AV trials (that's where all 3 components can come through)
     # TODO: separately for running / whisker / pupil
     # XXX main!
-    # EVa.preditor_comparison(tt='AV', calc='averaged', dataset='held_out')
-    # # supplementary
-    # EVa.preditor_comparison(tt='V', calc='averaged', dataset='held_out')
-    # EVa.preditor_comparison(tt='A', calc='averaged', dataset='held_out')
+    EVa.preditor_comparison(tt='AV', calc='averaged', dataset='held_out')
+    # supplementary
+    EVa.preditor_comparison(tt='V', calc='averaged', dataset='held_out')
+    EVa.preditor_comparison(tt='A', calc='averaged', dataset='held_out')
 
     # Trial-level (low EV - but compared to other studies relatively high) supplementary
     # would be better to quantify this only during stimulus presentation 
@@ -788,20 +787,20 @@ if __name__ == '__main__':
 
     # # Analysis 2) Distribution of neurons based on explained variance
     # XXX main!
-    # EVa.order_neurons(tt = 'AV', calc='averaged', dataset='held_out')
+    EVa.order_neurons(tt = 'AV', calc='averaged', dataset='held_out')
     # supplementary
     # EVa.order_neurons(tt = 'A', calc='averaged', dataset='held_out')
     # EVa.order_neurons(tt = 'V', calc='averaged', dataset='held_out')
     # EVa.order_neurons(tt = 'AV', calc='trial', dataset='held_out')
     
     # # Analysis 3-4) Average drives plot over well-modelled neurons + examples of well-modelled neurons
-    # average_clean_plot(AVs=AVs, well_modelled_neurons=EVa.well_modelled(calc='averaged'), savedir=EVa.saveDIR,
-    #                    show=False, 
-    #                 # XXX this below will only plot significantly modelled auditory neurons
-    #                    well_mod_for_quant=EVa.well_modelled(calc='averaged', tt = 'A') ,
-    #                 # XXX this does supplemental analyses instead of the main figure
-    #                    supplement_type='onset'
-    #                    )
+    average_clean_plot(AVs=AVs, well_modelled_neurons=EVa.well_modelled(calc='averaged'), savedir=EVa.saveDIR,
+                       show=False, 
+                    # XXX this below will only plot significantly modelled auditory neurons
+                       well_mod_for_quant=EVa.well_modelled(calc='averaged', tt = 'A') ,
+                    # XXX this does supplemental analyses instead of the main figure
+                       supplement_type='onset'
+                       )
 
     # # Analysis 4) Plot
     driveQuantPlot(savedir=EVa.saveDIR)

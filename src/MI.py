@@ -234,19 +234,28 @@ def MIanalysis(MIDF:pd.DataFrame):
         os.makedirs(NEWMIPLOTS)
 
     # preprocess into long DF
+    # add maximum RCI
+    MIDF['RCI (VISpref max)'] = MIDF[['RCI (VISpref congruent)', 'RCI (VISpref incongruent)']].max(axis = 1)
+    MIDF['RCI (VISnonpref max)'] = MIDF[['RCI (VISnonpref congruent)', 'RCI (VISnonpref incongruent)']].max(axis = 1)
+    MIDF['RCI (AUDpref max)'] = MIDF[['RCI (AUDpref congruent)', 'RCI (AUDpref incongruent)']].max(axis = 1)
+    MIDF['RCI (AUDnonpref max)'] = MIDF[['RCI (AUDnonpref congruent)', 'RCI (AUDnonpref incongruent)']].max(axis = 1)
+    # TODO: maximum FR
+
+    # process into long format
     longMIDF:pd.DataFrame = MScalc.processFULLDFintoLONG(MIDF)
     longMIDF.loc[:, 'Group'] = longMIDF.loc[:, 'Group'].transform(lambda x: groupmapper[x[:2]]+x[2:])
 
     # to look at FR: filter on FRdf (where FR is not NaN)
     FRall(longMIDF, hue_order, palette)
 
-    # direction selectivity for different neuron types
-    DSIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
+    # # direction selectivity for different neuron types
+    # DSIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
 
-    # to look at RCI: filter on RCIdf (where RCI is not NaN)
-    RCIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
+    # # to look at RCI: filter on RCIdf (where RCI is not NaN)
+    # RCIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
     
-
+# TODO: redo FR analysis here and also include comparisons between brain regions
+# XXX: here we can really compare visual responses with matched multisensory responses etc.
 def FRall(longMIDF:pd.DataFrame, hue_order:list, palette:dict, 
           congruency_check:bool = False):
     FRdf = longMIDF.loc[~longMIDF['FR'].isna()].copy()
@@ -269,6 +278,8 @@ def FRall(longMIDF:pd.DataFrame, hue_order:list, palette:dict,
                     kind = 'bar', capsize = .3,
                     legend=False)
         ax = extraplot.ax
+        
+        # STATS
         within_pairs = []
         for reg in regions:
             within_pairs += [
@@ -278,7 +289,7 @@ def FRall(longMIDF:pd.DataFrame, hue_order:list, palette:dict,
         annot_wi = Annotator(
             ax = ax, pairs = within_pairs,
             plot = 'barplot',
-            data=subdf, x='BrainRegion',
+            data=subdf, x='BrainRegion', order = regions,
             y='FR', 
             hue='group_hue',
             hue_order = hue_order
@@ -297,22 +308,83 @@ def FRall(longMIDF:pd.DataFrame, hue_order:list, palette:dict,
         plt.savefig(os.path.join(supplementaryPATH, f'{nt}_{pref}_{mod}_congruencySUPP.svg'))
         plt.close()
 
-def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict,
-           show:bool = False):
+def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
     # to look at DSI: filter on DSIdf (one where DSI is not None / NaN)
     DSIdf = longMIDF.loc[~longMIDF['DSI'].isna()].iloc[:,[0,1,2,3,4,7]].copy()
-    hue = DSIdf[['NeuronType', 'Group']].apply(tuple, axis = 1)
-    dsi = sns.catplot(data = DSIdf, y = 'DSI', 
-                      x = 'BrainRegion', order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
-                      hue = hue, hue_order=hue_order, palette=palette, 
-                      row = 'Modality', row_order=['VIS', 'AUD'],
-                      col = 'NeuronType', col_order=['V', 'A', 'M'],
-                      kind = 'point', dodge=True, legend=False)
-    plt.tight_layout()
-    plt.savefig(os.path.join(NEWMIPLOTS, 'DSIareasNeuronTypes.svg'))
-    if show:
-        plt.show()
-    plt.close()
+    DSIdf['group_hue'] = DSIdf[['Group', 'Modality']].apply(tuple, axis = 1)
+    hue_order=[('NRpre', 'VIS'),('DRpre', 'VIS'),
+                ('NRpre', 'AUD'),('DRpre', 'AUD')]
+    palette={('NRpre', 'VIS'):'lightskyblue',('DRpre', 'VIS'):'dodgerblue',
+            ('NRpre', 'AUD'):'lightsalmon',('DRpre', 'AUD'):'red'}
+    regions = ['V1', 'AM/PM', 'A/RL/AL', 'LM']
+    for nt, ntdf in DSIdf.groupby("NeuronType"):
+        dsi = sns.catplot(data = ntdf, y = 'DSI', 
+                        x = 'BrainRegion', order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+                        hue = 'group_hue', hue_order=hue_order, palette=palette, 
+                        # kind = 'point', dodge = True, capsize = .3,
+                        # kind = 'box', showfliers = False,
+                        kind = 'bar', capsize = .3, 
+                        hatch = ['/', 'o', '.', 'x'],
+                        fill = False,
+                        # aspect = 1.85,
+                        legend=False)
+        
+        # sns.pointplot(data = ntdf, y = 'DSI', 
+        #             x = 'BrainRegion', order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
+        #             hue = 'group_hue', hue_order=hue_order, palette=palette, 
+        #             errorbar=None, markers="", linestyles=['dashed', '-', 'dashed', '-'],
+        #             ax = dsi.ax)
+        
+        # STATS
+        between_pairs = []
+        within_pairs = []
+        for reg in regions:
+            within_pairs += [
+                ((reg, ('DRpre', 'VIS')),(reg, ('DRpre', 'AUD'))),
+                ((reg, ('NRpre', 'VIS')),(reg, ('NRpre', 'AUD')))
+                ]
+            for mod in ('VIS', 'AUD'):
+                if nt == 'M' or nt == mod[0]:
+                    between_pairs.append(((reg, ('NRpre', mod)),(reg, ('DRpre', mod))))
+        
+        annot_be = Annotator(
+            ax = dsi.ax, pairs = between_pairs,
+            plot = 'barplot',
+            data=ntdf, 
+            x='BrainRegion', order = regions,
+            y='DSI', 
+            hue='group_hue', hue_order = hue_order
+        )
+        annot_be.configure(
+            test='Mann-Whitney', 
+            comparisons_correction='Bonferroni',
+            text_format='star',
+            loc='outside',
+            hide_non_significant = True,
+            correction_format="replace"
+        )
+        annot_be.apply_and_annotate()
+
+        annot_wi = Annotator(
+            ax = dsi.ax, pairs = within_pairs,
+            plot = 'barplot',
+            data=ntdf, 
+            x='BrainRegion', order = regions,
+            y='DSI', 
+            hue='group_hue', hue_order = hue_order
+        )
+        annot_wi.configure(
+            test='Wilcoxon', 
+            comparisons_correction='Bonferroni',
+            text_format='star',
+            loc='outside',
+            hide_non_significant = True,
+            correction_format="replace"
+        )
+        annot_wi.apply_and_annotate()
+        plt.tight_layout()
+        plt.savefig(os.path.join(NEWMIPLOTS, f'DSIareas(NeuronType={nt}).svg'))
+        plt.close()
 
 def RCIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
     ''''
@@ -339,28 +411,99 @@ def RCImag(RCIdf:pd.DataFrame, hue_order:list, palette:dict):
         RCI_within_Type(Type=TYPE, RCIdf=RCIdf, hue_order=hue_order, palette=palette)
 
 def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict,
-                    show:bool = False):
+                    combine_congruent:bool = True, abs:bool = False):
     '''
     Not different if we split by sign of enhanced vs suppressed
     '''
     typeToMod = {'V':['VIS'], 'A':['AUD'], 'M':['VIS', 'AUD']}
+    
+    palette={'VIS':{
+        ('NRpre', 'pref'):'lightskyblue',('DRpre', 'pref'):'dodgerblue',
+        ('NRpre', 'nonpref'):'grey',('DRpre', 'nonpref'):'black',
+        },
+            'AUD':{
+        ('NRpre', 'pref'):'lightsalmon',('DRpre', 'pref'):'red',
+        ('NRpre', 'nonpref'):'grey',('DRpre', 'nonpref'):'black',
+
+            }}
+    
+    regions = ['V1', 'AM/PM', 'A/RL/AL', 'LM']
+    
+    hue_order = [('NRpre', 'pref'),('DRpre', 'pref'), ('NRpre', 'nonpref') ,('DRpre', 'nonpref')]
+    
+    yvar = 'RCI' if not abs else '|RCI|'
+    
     for mod in typeToMod[Type]:
         TypeDF = RCIdf.loc[(RCIdf['NeuronType'] == Type) & (RCIdf['Modality'] == mod)].copy()
-        TypeDF.loc[:, 'RCI'] = TypeDF.loc[:, 'RCI'].abs()
-        hue = TypeDF[['NeuronType', 'Group']].apply(tuple, axis = 1)
-        rcitype = sns.catplot(data = TypeDF, y = 'RCI',
-                            x = 'BrainRegion', order=['V1', 'AM/PM', 'A/RL/AL', 'LM'],
-                            col = 'Congruency', col_order=['congruent', 'incongruent'],
-                            row = 'Preference', row_order=['pref', 'nonpref'],
-                            hue = hue, hue_order=hue_order, palette=palette,
-                            kind = 'point', dodge=True, legend=False)
+        if combine_congruent:
+            TypeDF = TypeDF.loc[TypeDF['Congruency']=='max']
+        TypeDF.loc[:, '|RCI|'] = TypeDF.loc[:, 'RCI'].abs()
+        TypeDF['group_hue'] = TypeDF[['Group', 'Preference']].apply(tuple, axis = 1)
+
+
+        rci = sns.catplot(data = TypeDF, y = yvar,
+                        x = 'BrainRegion', order=regions,
+                        # col = 'Congruency', col_order=['congruent', 'incongruent'],
+                        hue = 'group_hue', hue_order=hue_order, palette=palette[mod],
+                        # kind = 'point', dodge=True, 
+                        aspect=1.1,
+                        kind = 'bar', capsize = .3,
+                        fill = False, hatch = ['/', '|o', '|.', 'x'],
+                        legend=False)
+        
+        # STATS
+        between_pairs = []
+        within_pairs = []
+        for reg in regions:
+            within_pairs += [
+                ((reg, ('DRpre', 'pref')),(reg, ('DRpre', 'nonpref'))),
+                ((reg, ('NRpre', 'pref')),(reg, ('NRpre', 'nonpref')))
+                ]
+            for preference in ('pref', 'nonpref'):
+                between_pairs.append(((reg, ('NRpre', preference)),(reg, ('DRpre', preference))))
+        
+        annot_be = Annotator(
+            ax = rci.ax, pairs = between_pairs,
+            plot = 'barplot',
+            data=TypeDF, 
+            x='BrainRegion', order = regions,
+            y=yvar, 
+            hue='group_hue', hue_order = hue_order
+        )
+        annot_be.configure(
+            test='Mann-Whitney', 
+            comparisons_correction='Bonferroni',
+            text_format='star',
+            loc='outside',
+            hide_non_significant = True,
+            correction_format="replace"
+        )
+        annot_be.apply_and_annotate()
+
+        annot_wi = Annotator(
+            ax = rci.ax, pairs = within_pairs,
+            plot = 'barplot',
+            data=TypeDF, 
+            x='BrainRegion', order = regions,
+            y=yvar, 
+            hue='group_hue', hue_order = hue_order
+        )
+        annot_wi.configure(
+            test='Wilcoxon', 
+            comparisons_correction='Bonferroni',
+            text_format='star',
+            loc='outside',
+            hide_non_significant = True,
+            correction_format="replace"
+        )
+        annot_wi.apply_and_annotate()
+
         plt.tight_layout()
+        abstag = '' if not abs else 'abs'
         if Type == 'M':
-            plt.savefig(os.path.join(NEWMIPLOTS, f'RCIareas{Type}_{mod}.svg'))
+            plt.savefig(os.path.join(NEWMIPLOTS, f'RCI{abstag}areas{Type}_{mod}.svg'))
         else:
-            plt.savefig(os.path.join(NEWMIPLOTS, f'RCIareas{Type}.svg'))
-        if show:
-            plt.show()
+            plt.savefig(os.path.join(NEWMIPLOTS, f'RCI{abstag}areas{Type}.svg'))
         plt.close()
 
 def multisens_proportions(RCIdf:pd.DataFrame):

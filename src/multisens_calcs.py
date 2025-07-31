@@ -417,7 +417,7 @@ def processFULLDFintoLONG(df: pd.DataFrame)->pd.DataFrame:
     # parse "RCI (VISpref congruent)"
     rci[['Modality','Preference','Congruency']] = (
         rci['tmp']
-        .str.extract(r'RCI \((VIS|AUD)(pref|nonpref) (congruent|incongruent)\)')
+        .str.extract(r'RCI \((VIS|AUD)(pref|nonpref) (congruent|incongruent|max)\)')
     )
     rci = rci.drop(columns='tmp')
     # ---------------------------------------------------

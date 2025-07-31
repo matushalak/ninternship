@@ -567,7 +567,7 @@ def behavior_kernels(sessions:dict,
             XcolNames = []
 
         # setup matrix for initial
-        Xbeh = np.zeros(shape=(ntrials*nts, 11)) # 3 behaviors, (3 interaction terms), 2 square terms, 3 derivative terms, 3 event ONSET terms
+        Xbeh = np.zeros(shape=(ntrials*nts, 11)) # 3 behaviors, 2 square terms, 3 derivative terms, 3 event ONSET terms
 
         for ib, bname in enumerate(['running', 'whisker', 'pupil']):
             if isess == len(behaviors) -1:
@@ -583,7 +583,7 @@ def behavior_kernels(sessions:dict,
                 onst = np.zeros_like(behavior) # 720 x 47
                 beh_bsl0 = np.abs(behavior)
                 beh_bsl0[:, :trial_frames[0]] = 0
-                beh_bsl0[:, trial_frames[1]:] = 0
+                beh_bsl0[:, trial_frames[1]:] = 0 # NOTE: rethink this line
                 max_col_mask = np.argmax(beh_bsl0, axis = 1)
                 max_row_mask = np.max(beh_bsl0[:, trial_frames[0]:trial_frames[1]], axis = 1) > 2
                 onst[max_row_mask, max_col_mask[max_row_mask]] = 1
