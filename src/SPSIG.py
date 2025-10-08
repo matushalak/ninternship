@@ -19,8 +19,12 @@ class SPSIG:
     Turns SPSIG.mat file into
     '''
     def __init__(self,
-                 SPSIG_mat_path:str): # path to ..._SPSIG.mat file
+                 SPSIG_mat_path:str,
+                 printType:bool = False): # path to ..._SPSIG.mat file
         version, _ = matfile_version(SPSIG_mat_path)
+        if printType:
+            print(f'{SPSIG_mat_path} is version {"> V7.3: hdf5 format" if version == 2 else "<V7.3: proprietary .mat format"}')
+
         if version in (0,1):
             # old version < v7.3 mat file
             SPSIG_dict = old_loadmat(SPSIG_mat_path, simplify_cells = True)

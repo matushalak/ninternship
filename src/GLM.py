@@ -283,7 +283,7 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                   show:bool = False,
                   returnAVs:bool = False)-> dict[str:dict[str:np.ndarray]]:
     '''
-    Builds design matrix for GLM
+    Builds design matrix for GLM for Audio-visual (multisensory) experiment
     '''
     AVs = load_in_data(pre_post=pre_post)
     
