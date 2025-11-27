@@ -229,7 +229,7 @@ class EncodingModel:
             grid  = fig.add_gridspec(nrows=2, ncols=4)
 
             # 2.  Create the axes
-            ax_full     = fig.add_subplot(grid[0, :]) 
+            ax_full = fig.add_subplot(grid[0, :]) 
             # ax_bottom   = [fig.add_subplot(grid[1, c]) for c in range(4)]
             ax_bottom = []
             for c in range(4):
@@ -1240,7 +1240,7 @@ def run_model(X:np.ndarray, y:np.ndarray,
     
     # To check cross-validated regularization parameter
     # TODO: use same regularization in both models
-    best_regularization = SessionModel.model.alpha_
+    # best_regularization = SessionModel.model.alpha_
     # print(best_regularization)
 
     # shows prediction of the whole session if fit_full == True
@@ -1278,6 +1278,10 @@ def run_model(X:np.ndarray, y:np.ndarray,
     
         plt.show()
         plt.close()
+
+        sns.heatmap(SessionModel.model.coef_[None, :], 
+                    xticklabels=SessionModel.colnames)
+        plt.show(); plt.close()
 
     # Explained Variance (EV) analysis
     if EV_analysis:

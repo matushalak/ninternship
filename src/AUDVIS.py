@@ -21,7 +21,9 @@ class Behavior:
                  speed:ndarray, 
                  trialIDs: list,
                  facemap:Dict_to_Class|None = None,
-                 baseline_frames:int = 15): #NOTE: was 16 before!!!
+                 #  (15.457 falls right between, for some analyses 15 better, 
+                 # for others 16 seems to make more sense)
+                 baseline_frames:int = 15): #NOTE: was 16 before !!!
         '''
         Z-scored and baseline-corrected behaviors on trial level, to control for trial-evoked running / whisker movements / blinking / pupil
         '''
@@ -131,7 +133,8 @@ class AUDVIS:
         # Sampling Frequency
         self.SF = SF#self.signal.shape[1] / sum(self.trial_sec) 
         # Trial window (pre_trial, post_trial) in frames
-        self.trial_frames = (self.SF * np.array(self.trial_sec)).round().astype(int)
+        # NOTE 20.11.2025: .round() vs .ceil() before casting to int leads to 1 frame difference!
+        self.trial_frames = np.round(self.SF * np.array(self.trial_sec)).astype(int)
         # TRIAL duration between frames hardcoded TODO: fix based on indicated trial duration
         self.TRIAL = self.trial_frames#(self.trial_frames[0], 2*self.trial_frames[0]) 
 
@@ -222,7 +225,8 @@ class AUDVIS:
         return signal_by_trials
     
     def nantrials(self, signal: np.ndarray, 
-                  whiskWindow: tuple[int, int],
+                  movement:Literal['whisker', 'running', 'pupil'],
+                  behWindow: tuple[int, int],
                   Zthresh: float = 2,
                   verbose: bool = False, plot: bool = False) -> np.ndarray:
         '''
@@ -239,24 +243,24 @@ class AUDVIS:
         sigs_w_nans = []
         for i_session, (start, end) in enumerate(self.session_neurons):
             sess_sig = signal[:,:,start:end]
-            behavior : Behavior = self.sessions[i_session]['behavior']
+            behavior:Behavior = self.sessions[i_session]['behavior']
             sname = self.sessions[i_session]['session']
             sess_trialIDs = self.trials[i_session,:]
             # indices of trial type in the given session
             sess_itts = [np.where(sess_trialIDs==tt)[0] for tt in np.unique(sess_trialIDs)]
             
-            if hasattr(behavior, 'whisker'):
-                whisker = behavior.whisker
+            if hasattr(behavior, movement):
+                beh = getattr(behavior, movement)
                 # boolean mask
-                whisker_problem = whisker[:,whiskWindow[0]:whiskWindow[1]].max(axis = 1) > Zthresh
-                whisker_OK = ~whisker_problem
+                beh_problem = beh[:,behWindow[0]:behWindow[1]].max(axis = 1) > Zthresh
+                beh_OK = ~beh_problem
                 # indices
-                whiskProb_is = np.where(whisker_problem)[0]
-                whiskOK_is = np.where(whisker_OK)[0]
+                behProb_is = np.where(beh_problem)[0]
+                behOK_is = np.where(beh_OK)[0]
 
                 # ok trials left
-                OK_itts = [np.intersect1d(whiskOK_is, itts_sess) for itts_sess in sess_itts]
-                PROBLEM_itts = [np.intersect1d(whiskProb_is, itts_sess) for itts_sess in sess_itts]
+                OK_itts = [np.intersect1d(behOK_is, itts_sess) for itts_sess in sess_itts]
+                PROBLEM_itts = [np.intersect1d(behProb_is, itts_sess) for itts_sess in sess_itts]
                 # number of trial left for each trial type
                 nOK = [ok.size for ok in OK_itts]
                 nPROB = [prob.size for prob in PROBLEM_itts]
@@ -297,17 +301,21 @@ class AUDVIS:
             return sigNaNCorrected
         else:
             oks = np.array(oks_by_sess)
-            fig = plt.figure()
+            fig = plt.figure(figsize = (6,6))
             for isess, ok in enumerate(oks):
                 plt.plot(oks[isess,:], label = snames[isess], linestyle = '--' if snames[isess]!= 'Epsilon_20211210_002' else '-')
             plt.xticks(ticks = np.arange(oks.shape[1]), labels=[self.int_to_str_trials_map[i] for i in range(oks.shape[1])])
             plt.yticks(np.arange(0,91,5))
             plt.xlabel('Trial type')
             plt.ylabel('Number of trials left')
-            plt.title(self.NAME)
-            plt.legend(loc = 1, fontsize = 6)
+            plt.title(self.NAME + movement)
+            plt.legend(loc = 4, fontsize = 6)
             plt.tight_layout()
-            plt.savefig(self.NAME+'nanEXPLORATION.png', dpi = 300)
+            os.makedirs(os.path.join(PLOTSDIR, 'exploration'), exist_ok=True)
+            plt.savefig(os.path.join(PLOTSDIR, 
+                                     'exploration', 
+                                     self.NAME+f'nanEXPLORATION{movement}.png'), 
+                                     dpi = 300)
 
     def regress_out_behavior(self, signal:ndarray, 
                              MODE : Literal['all', 'whisker', 'running'] = 'all',

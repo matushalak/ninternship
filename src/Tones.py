@@ -5,9 +5,6 @@ import matplotlib.pyplot as plt
 from scipy.linalg import toeplitz
 from sklearn.linear_model import PoissonRegressor, TweedieRegressor, RidgeCV
 
-mats = mlb.find_mat(mlb.TEST)
-M = mlb.matgrab(mats[0], fields=mlb.FIELDS)
-
 def standardize_behaviors(MAT:mlb.MatFile, bsl_frames:int
                           )->mlb.MatFile:
     '''
@@ -89,7 +86,7 @@ def make_behavior_predictors(MAT:mlb.MatFile, bsl_frames:int, stim_frames:int,
             onset[where_max] = max_threshold
             BEH[time:time+nts, i+3*stim_frames:i+4*stim_frames] = make_toeplitz(onset, stim_frames)
     
-    BEHcolnames = [f'{i}_{fn}'for fn in feature_names for i in range(4)]
+    BEHcolnames = [f'{i}_{fn}'for fn in feature_names for i in range(stim_frames)]
     return BEH, BEHcolnames
 
 
@@ -133,12 +130,15 @@ def design_matrix(MAT:mlb.MatFile)->dict[str:np.ndarray]:
     
     # plt.imshow(X[1952:2390, :])    
     # plt.show()
-
     return X, Xcolnames
 
-        
+mats = mlb.find_mat(mlb.TEST)
+M = mlb.matgrab(mats[0], fields=mlb.FIELDS)
+
 trial_ts, trial_N, neuron_N = M.MLspike.shape
 X, colnames = design_matrix(MAT = M)
+tone_cols  = np.array([True if 'Tone' in col else False for col in colnames])
+beh_cols = ~tone_cols
 time_bad = M.time
 time_good = np.where(((-0.5 <= M.time) & (M.time <= 1)))[0]
 fullsess_time_good = np.tile(time_good, (trial_N, 1))
@@ -151,18 +151,44 @@ bsl = (M.time < 0).sum()
 # PGLM = TweedieRegressor(power = 1.5, alpha = 0, link='log', tol = 1e-4) # cross-validate alpha
 # ML_blc = M.MLspike - np.mean(M.MLspike[:bsl, ...], axis = 0).astype(int)
 # Y = ML_blc[:,:,190].T.ravel()
-
-PGLM = RidgeCV(alphas = np.logspace(-.2,4,30), fit_intercept=True) # cross-validate alpha
+GLM = RidgeCV(alphas = np.logspace(-.2,4,30), fit_intercept=True) # cross-validate alpha
 dF_blc = M.dF - np.mean(M.dF[:bsl, ...], axis = 0)
-Y = dF_blc[:,:,:].mean(axis=2).T.ravel()
 
-PGLM.fit(X[fullsess_time_good, :], Y[fullsess_time_good])
-Ypred = PGLM.predict(X[fullsess_time_good, :])
-
-f, ax = plt.subplots()
-ax.plot(Y[fullsess_time_good], color = 'k')
-# ax.plot(Ypred * np.max(Y) / np.max(Ypred), color = 'r')
-ax.plot(Ypred, color = 'g')
-f.tight_layout()
-
+plt.plot(dF_blc.mean(axis = 1))
 plt.show()
+# average over neurons
+# Y = dF_blc[:,:,:].mean(axis=2).T.ravel()
+for n in range(neuron_N):
+    # per single neuron
+    Y = dF_blc[:,:,n].T.ravel()
+    
+    GLM.fit(X[fullsess_time_good, :], Y[fullsess_time_good])
+    coefs = GLM.coef_
+    print(X.shape, tone_cols.shape, coefs.shape)
+    tone_coef = coefs[tone_cols]
+    Xtone = X[fullsess_time_good[:, None], np.where(tone_cols)[0][None, :]]
+
+    beh_coef = coefs[beh_cols]
+    Xbeh = X[fullsess_time_good[:, None], np.where(beh_cols)[0][None, :]]
+
+    Ypred = GLM.predict(X[fullsess_time_good, :])
+    Ybeh = Xbeh @ beh_coef
+    Ytone = Xtone @ tone_coef
+
+    f, ax = plt.subplots(nrows=2)
+    ax[0].plot(Y[fullsess_time_good], color = 'k')
+    ax[0].plot(Ypred, color = 'purple')
+    ax[0].plot(Ybeh, color = 'green')
+    ax[0].plot(Ytone, color = 'red')
+
+    good_ts = len(time_good)
+    ax[1].plot(Y[fullsess_time_good].reshape((trial_N, good_ts)).mean(axis = 0), color= 'k')
+    ax[1].plot(Ypred.reshape((trial_N, good_ts)).mean(axis = 0), color = 'purple')
+    ax[1].plot(Ybeh.reshape((trial_N, good_ts)).mean(axis = 0), color = 'green')
+    ax[1].plot(Ytone.reshape((trial_N, good_ts)).mean(axis = 0), color = 'red')
+
+
+
+    f.tight_layout()
+
+    plt.show()
