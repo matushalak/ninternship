@@ -313,7 +313,7 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                                                         SF = AV.SF,
                                                         trial_frames=AV.TRIAL,
                                                         n_basis=16,
-                                                        basis_window=(0,1),
+                                                        basis_window=(0,2),
                                                         basis_width=0.35,
                                                         plot_bases=show)
         # Stimulus design matrix
@@ -339,9 +339,10 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                                                         nts=AV.signal.shape[1],
                                                         SF = AV.SF,
                                                         trial_frames=AV.TRIAL,
-                                                        n_basis=8,
-                                                        basis_window=(-0.2,0.8),
+                                                        n_basis=16,
+                                                        basis_window=(-0.35, 1.05),
                                                         basis_width=0.35,
+                                                        THRESHOLD= 2,
                                                         plot_bases=show)
         # Behavioral design matrix
         if show:
@@ -434,26 +435,28 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
     trial_frames = np.array(trial_frames)
     direction_dict = {'l':1, 'r':-1}
     nstim_ts = trial_frames[1] - trial_frames[0]
-    # linearly move from side to side (bar)
-    bar = np.linspace(0,1, nstim_ts)
-    # sound = np.exp(-5*bar)
+    # linearly stimulus move from side to side
     # for rightwards trials (0 left -> right 1)
-    barstim = np.eye(nstim_ts)
-    # soundstim = barstim.copy()
-    # with amplitude changes (not helpful maybe)
-    # soundstim = (sound + sound[::-1]) * np.eye(nstim_ts)
-    # stimuli
-    CBstim, frame_lag_stim = rcb(n_basis=nstim_ts, window_s=basis_window, width_s=basis_width,
+    combined_stim_response_window = nstim_ts + n_basis
+    stim_responses = np.eye(combined_stim_response_window)
+    # new smooth blend response->offset
+    CosineBases, frame_lags = rcb(n_basis=combined_stim_response_window, window_s=basis_window, width_s=basis_width,
                                   dt = 1/SF, plot=plot_bases)
-    convbarstim = getBases(Xcol= barstim[:,0], Bases=CBstim, lags = frame_lag_stim, 
-                           trial_size = nts, trial_level = False)
-    # TODO: instead of sharp cut-off between stim & offset, continuous 2 s with X number of bases!!!
-    barstim = convbarstim
-    soundstim = convbarstim
-    # offset / edge responses
-    CosineBases, frame_lags = rcb(n_basis=n_basis, window_s=basis_window, width_s=basis_width,
-                                  dt = 1/SF, plot=plot_bases)
-    bb = getBases(Xcol = barstim[:,0], Bases = CosineBases, lags = frame_lags, trial_size = nts, trial_level = False)
+    response_matrix = getBases(Xcol = stim_responses[:,0], Bases = CosineBases, lags = frame_lags, trial_size = nts, trial_level = False)
+    if plot_bases: plt.imshow(response_matrix);plt.show()
+    
+    # # stimuli
+    # CBstim, frame_lag_stim = rcb(n_basis=nstim_ts, window_s=basis_window, width_s=basis_width,
+    #                               dt = 1/SF, plot=plot_bases)
+    # convbarstim = getBases(Xcol= barstim[:,0], Bases=CBstim, lags = frame_lag_stim, 
+    #                        trial_size = nts, trial_level = False)
+    # # TODO: instead of sharp cut-off between stim & offset, continuous 2 s with X number of bases!!!
+    # barstim = convbarstim
+    # soundstim = convbarstim
+    # # offset / edge responses
+    # CosineBases, frame_lags = rcb(n_basis=n_basis, window_s=basis_window, width_s=basis_width,
+    #                               dt = 1/SF, plot=plot_bases)
+    # bb = getBases(Xcol = barstim[:,0], Bases = CosineBases, lags = frame_lags, trial_size = nts, trial_level = False)
     
     all_session_Xs = []
 
@@ -461,7 +464,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
     VcolNames= [
         # Visual stimulus column 0-1
         # NOTE: only counts as "visual predictor if .startswith('V')"
-        # 'Vpresent', 
+        'Vpresent', 
         # 'Vdirection'
         ]+ [f'VdelayLEFT{i}' for i in range(n_basis)] + [
         # Visual stimulus columns 2-17
@@ -469,7 +472,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
         ]+ [f'VdelayRIGHT{i}' for i in range(n_basis)]
     AcolNames= [
         # Auditory stimulus columns 18-19
-        # 'Apresent', 
+        'Apresent', 
         # 'Adirection'
         ]+ [f'AdelayLEFT{i}' for i in range(n_basis)] + [
         # Auditory stimulus columns 20-36
@@ -509,10 +512,16 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                 # (0,...1) if bar is moving from left to right 
                 # (1,...,0) if bar is moving right to left
                 if Vdirection == -1:
-                    Xstim[stimEnd:stimEnd+nstim_ts, vis:vis+n_basis] = bb[::Vdirection, :]
-                Xstim[stimStart:stimEnd, vis+n_basis:vis+nstim_ts+n_basis] = barstim[::Vdirection, :]
+                    #new
+                    Xstim[stimStart:stimEnd+nstim_ts, vis:vis+nstim_ts+n_basis] = response_matrix[::Vdirection, :]
+                    # old
+                #     Xstim[stimEnd:stimEnd+nstim_ts, vis:vis+n_basis] = bb[::Vdirection, :]
+                # Xstim[stimStart:stimEnd, vis+n_basis:vis+nstim_ts+n_basis] = barstim[::Vdirection, :]
                 if Vdirection == 1:
-                    Xstim[stimEnd:stimEnd+nstim_ts, vis+nstim_ts+n_basis:vis+nstim_ts+(2*n_basis)] = bb[::Vdirection, :]
+                    # new
+                    Xstim[stimStart:stimEnd+nstim_ts, vis+n_basis:vis+n_basis+combined_stim_response_window] = response_matrix[::Vdirection, :]
+                    # old
+                    # Xstim[stimEnd:stimEnd+nstim_ts, vis+nstim_ts+n_basis:vis+nstim_ts+(2*n_basis)] = bb[::Vdirection, :]
             
             if 'A' in tname:
                 # column 0: Apresent
@@ -526,10 +535,16 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                 # (0,...1) if sound is moving from left to right 
                 # (1,...,0) if sound is moving right to left
                 if Adirection == -1:
-                    Xstim[stimEnd:stimEnd+nstim_ts, aud:aud+n_basis] = bb[::Adirection, :]
-                Xstim[stimStart:stimEnd, aud+n_basis:aud+n_basis+nstim_ts] = soundstim[::Adirection, :]
+                    # new
+                    Xstim[stimStart:stimEnd+nstim_ts, aud:aud+n_basis+nstim_ts] = response_matrix[::Adirection, :]
+                    # old
+                #     Xstim[stimEnd:stimEnd+nstim_ts, aud:aud+n_basis] = bb[::Adirection, :]
+                # Xstim[stimStart:stimEnd, aud+n_basis:aud+n_basis+nstim_ts] = soundstim[::Adirection, :]
                 if Adirection == 1:
-                    Xstim[stimEnd:stimEnd+nstim_ts, aud+n_basis+nstim_ts:] = bb[::Adirection, :]
+                    # new
+                    Xstim[stimStart:stimEnd+nstim_ts, aud+n_basis:aud+n_basis+combined_stim_response_window] = response_matrix[::Adirection, :]
+                    # old
+                    # Xstim[stimEnd:stimEnd+nstim_ts, aud+n_basis+nstim_ts:] = bb[::Adirection, :]
             
             trial_idx += nts
         
@@ -566,6 +581,7 @@ def behavior_kernels(sessions:dict,
                      n_basis:int,
                      basis_window:tuple[float, float],
                      basis_width:float,
+                     THRESHOLD:float,
                      plot_bases:bool = False)->np.ndarray:
     '''
     Generates behavior kernels for GLM separately for 
@@ -590,54 +606,53 @@ def behavior_kernels(sessions:dict,
 
     all_session_Xb = []
     for isess, BS in enumerate(behaviors):
-        if isess == len(behaviors) -1:
+        if isess == 0:
             XcolNames = []
 
         # setup matrix for initial
-        Xbeh = np.zeros(shape=(ntrials*nts, 11)) # 3 behaviors, 2 square terms, 3 derivative terms, 3 event ONSET terms
+        Xbeh = np.zeros(shape=(ntrials*nts, 9)) # 3 behaviors, 3 derivative terms, 3 event ONSET terms
 
         for ib, bname in enumerate(['running', 'whisker', 'pupil']):
-            if isess == len(behaviors) -1:
+            if isess == 0:
                 XcolNames.append(bname)
 
             if hasattr(BS, bname):
-                behavior = getattr(BS, bname)
+                behavior:np.ndarray = getattr(BS, bname)
                 Xbeh[:,ib] = behavior.flatten()
                 # Derivative term
-                Xbeh[:, ib+5] = np.diff(behavior, axis=1, prepend=0).flatten() * SF
-                
-                # Onset terms
-                onst = np.zeros_like(behavior) # 720 x 47
-                beh_bsl0 = np.abs(behavior)
-                beh_bsl0[:, :trial_frames[0]] = 0
-                beh_bsl0[:, trial_frames[1]:] = 0 # NOTE: rethink this line
-                max_col_mask = np.argmax(beh_bsl0, axis = 1)
-                max_row_mask = np.max(beh_bsl0[:, trial_frames[0]:trial_frames[1]], axis = 1) > 2
-                onst[max_row_mask, max_col_mask[max_row_mask]] = 1
-                Xbeh[:,ib+8] = onst.flatten() 
+                Xbeh[:, ib+3] = np.diff(behavior, axis=1, prepend=0).flatten() * SF
+                # Movement Onset terms
+                if bname == 'pupil':
+                    onst = (abs(behavior) > THRESHOLD).astype(float) # 720 x 47
+                else:
+                    onst = (behavior > THRESHOLD).astype(float) # 720 x 47
+                # XXX WRONG: was discarding offset movement responses
+                # beh_bsl0[:, trial_frames[1]:] = 0 # NOTE:rethink this line
+                # onset terms
+                Xbeh[:,ib+6] = onst.flatten() 
 
         # square terms
-        Xbeh[:,3] = Xbeh[:,1]**2 # whisker nonlinear term (onset would be better)
-        Xbeh[:,4] = Xbeh[:,0]**2 # running nonlinear term (onset would be better)
+        # Xbeh[:,3] = Xbeh[:,1]**2 # whisker nonlinear term (onset would be better)
+        # Xbeh[:,4] = Xbeh[:,0]**2 # running nonlinear term (onset would be better)
         # interaction terms
         # Xbeh[:,4] = Xbeh[:,1]*Xbeh[:,0] # whisker * running term
         # Xbeh[:,5] = Xbeh[:,1]*Xbeh[:,2] # whisker * pupil term
         # Xbeh[:,6] = Xbeh[:,0]*Xbeh[:,2] # running * pupil term
-        if isess == len(behaviors) -1:
-            XcolNames += ['whisker2', 'running2', 'running_derivative', 'whisker_derivative', 'pupil_derivative',
+        if isess == 0:
+            XcolNames += ['running_derivative', 'whisker_derivative', 'pupil_derivative',
                           'running_onset', 'whisker_onset', 'pupil_onset']
 
 
-        # have all behaviors, convolve with bases
-        xbases = [getBases(Xcol=Xbeh[:,ic], Bases=CosineBases, lags=frame_lags,
+        # have all behaviors, convolve onsets with bases
+        xbases = [getBases(Xcol=Xbeh[:,6+ic], Bases=CosineBases, lags=frame_lags,
                            trial_size=nts, trial_level=True)
-                  for ic in range(Xbeh.shape[1])]
+                  for ic in range(3) if 'onset' in XcolNames[6+ic]]
         
-        # Get column names for predictor convolved with each basis
-        if isess == len(behaviors) -1:
+        # Get column names for onset predictor convolved with each basis
+        if isess == 0:
             for icol, xcol_bases in enumerate(xbases):
                 for ibase in range(xcol_bases.shape[1]):
-                    XcolNames.append(f'{XcolNames[icol]}_basis{ibase}')
+                    XcolNames.append(f'{XcolNames[6+icol]}_basis{ibase}')
 
         Xbases = np.column_stack(xbases)
         X_sess = np.column_stack([Xbeh, Xbases])
@@ -649,7 +664,6 @@ def behavior_kernels(sessions:dict,
         X_sess = X_sess / col_std # variance scaling puts columns on equal footing for ridge
         assert not np.isnan(X_sess).any()
         all_session_Xb.append(X_sess)
-
     X = np.dstack(all_session_Xb)
     assert X.shape[1] == len(XcolNames), f'Mismatch between number of column names:{len(XcolNames)} and X columns:{X.shape[1]}'
     return X, XcolNames
@@ -1536,7 +1550,7 @@ if __name__ == '__main__':
     # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=True, redo = True)
     # res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=True, redo = True)
     # TODO: blend-in stim & offset
-    gXY = design_matrix(pre_post='pre', group='g2', show=False)
+    gXY = design_matrix(pre_post='pre', group='g1', show=False)
     EV_res = quantify_encoding_models(
         gXY=gXY, yTYPE='neuron', 
         plot=True, 
