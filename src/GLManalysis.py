@@ -1,4 +1,4 @@
-from src.GLM import design_matrix, clean_group_signal
+from src.GLM_new import design_matrix, clean_group_signal
 from src.AUDVIS import Behavior, AUDVIS, load_in_data
 from src.VisualAreas import Areas
 from src.analysis_utils import plot_avrg_trace, fluorescence_response, proportion_significance_test

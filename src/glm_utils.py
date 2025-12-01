@@ -15,7 +15,7 @@ from src.AUDVIS import Behavior, AUDVIS
 from dataclasses import dataclass
 from typing import Literal
 
-import src.GLM as glm
+import src.GLM_new as glm
 from src import PYDATA
 
 

@@ -74,12 +74,14 @@ class EncodingModel:
             self.colnames = Xcolumn_names
 
             # Train / Test split for quantifications
-            TRAIN, TEST = self.train_test_split(X=self.X, y=self.y, 
-                                                split_proportion=train_test_prop, 
-                                                trial_size=trial_size, trial_types=trial_types)
+            TRAIN, TEST, FULL_HALF_AV = self.train_test_split(
+                X=self.X, y=self.y, 
+                split_proportion=train_test_prop, 
+                trial_size=trial_size, trial_types=trial_types)
             
             self.Xtrain, self.ytrain, self.TRAINtrials = TRAIN
             self.Xtest, self.ytest, self.TESTtrials = TEST
+            self.XhalfAV, self.yhalfAV, self.HALFAVtrials = FULL_HALF_AV
         
         self.model = self.define_model(params=params)
 
@@ -92,14 +94,15 @@ class EncodingModel:
                                 fit_intercept=False)
         else:
             # Tried Ellastic net, didn't work better 
-            # + many papers argue against Ellastic net and use pure ridge
+            # + some papers argue against Ellastic net and use pure ridge
             raise NotImplementedError
 
 
     @staticmethod
     def train_test_split(X:np.ndarray, y:np.ndarray,
                          split_proportion:float,
-                         trial_size:int, trial_types:np.ndarray):
+                         trial_size:int, trial_types:np.ndarray,
+                         HALFAV:bool = True):
         '''
         NOTE on overfitting & train / test split:
         -----------------------------------------
@@ -113,6 +116,12 @@ class EncodingModel:
         
         Similarly, when we want to compare EV between reduced models fit only on (certain) Stimulus / Behavior features, 
         we need to report numbers from held-out test set.
+
+        1.12.2025 NOTE on balance between trial types (V/A/AV)
+        -----------------------------------------
+        Simply fitting the model on 80% of each trial type means that we use 2x as many AV trials
+        as unimodal trials (problem since model prioritizes minimizing AV error over unimodal error)
+            - need to use just half of AV trials (equally across all four conditions)
         '''
         all_tt_indices = np.arange(len(trial_types))
         n_train_trials = round(len(trial_types) * split_proportion)
@@ -120,21 +129,36 @@ class EncodingModel:
 
         train_i = []
         test_i = []
+        half_av_i = []
         # fair split between trial types always in the same way
         for tt in np.unique(trial_types):
             ttindices = np.where(trial_types == tt)[0]
-            n_train_tttrials = round(len(ttindices) * split_proportion)
-            n_test_tttrials = len(ttindices) - n_train_tttrials
+            N = len(ttindices)
             ilist = np.arange(ttindices.size)
-            test_tt_trials_mask = np.mod(ilist, len(ttindices)//n_test_tttrials) == 0
+            n_train_tttrials = round(len(ttindices) * split_proportion)
+            
+            # AV trials!
+            if tt in (1, 2, 4, 5):
+                half_av_i.append(ttindices[::2])
+            else:
+                half_av_i.append(ttindices)
+            
+            n_test_tttrials = N - n_train_tttrials
+            testpos = np.linspace(0, N-1, n_test_tttrials, dtype=int)
+            test_tt_trials_mask = np.zeros(N, dtype=bool)
+            test_tt_trials_mask[testpos] = True
 
             test_i.append(ttindices[test_tt_trials_mask])
             train_i.append(ttindices[~test_tt_trials_mask])
 
         train_i = np.concatenate(train_i)
         test_i = np.concatenate(test_i)
+        half_av_i = np.concatenate(half_av_i)
         
-        assert len(train_i) == n_train_trials and len(test_i) == n_test_trials, f'Train-test split mismatch Tr:{len(train_i)} instead of {n_train_trials}, Tst:{len(test_i)} instead of {n_test_trials}'
+        # NOTE: no-longer true if half AV trials dropped
+        # assert len(train_i) == n_train_trials and len(test_i) == n_test_trials, ('Train-test split mismatch', 
+        #                                                                          f'Tr:{len(train_i)} instead of {n_train_trials},' 
+        #                                                                          f'Tst:{len(test_i)} instead of {n_test_trials}')
         assert sum(np.isin(test_i, train_i)) == 0, 'Error! Data leakage!'
 
         # Slice X and y
@@ -156,12 +180,23 @@ class EncodingModel:
             ytest.append(y[trial_start:trial_stop])
         Xtest = np.concatenate(Xtest)
         ytest = np.concatenate(ytest)
-        
 
-        assert Xtrain.size == 4*Xtest.size and ytrain.size == 4*ytest.size
+        # NOTE: no-longer true if half AV trials dropped
+        # assert Xtrain.size == 4*Xtest.size and ytrain.size == 4*ytest.size
 
+        # Full set with half AV
+        XhalfAV, yhalfAV = [], []
+        for start in half_av_i:
+            trial_start = start * trial_size
+            trial_stop = trial_start + trial_size
+            XhalfAV.append(X[trial_start:trial_stop])
+            yhalfAV.append(y[trial_start:trial_stop])
+        XhalfAV = np.concatenate(XhalfAV)
+        yhalfAV = np.concatenate(yhalfAV)
         return ((Xtrain, ytrain, train_i), 
-                (Xtest, ytest, test_i))
+                (Xtest, ytest, test_i),
+                (XhalfAV, yhalfAV, half_av_i),
+                )
 
 
     # TODO: QR decomposition 
@@ -183,7 +218,8 @@ class EncodingModel:
         match X, y:
             case None, None:
                 if full:
-                    self.model.fit(X = self.X, y = self.y)
+                    self.model.fit(X = self.XhalfAV, y = self.yhalfAV)
+                    # self.model.fit(X = self.X, y = self.y)
                 else:
                     self.model.fit(X = self.Xtrain, y = self.ytrain)
             case X, y:
@@ -339,9 +375,11 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                                                         nts=AV.signal.shape[1],
                                                         SF = AV.SF,
                                                         trial_frames=AV.TRIAL,
-                                                        n_basis=16,
+                                                        n_onset_basis=16,
+                                                        n_continuous_lags=6,
                                                         basis_window=(-0.35, 1.05),
-                                                        basis_width=0.35,
+                                                        onset_basis_width=0.35,
+                                                        cont_basis_width = 0.5,
                                                         THRESHOLD= 2,
                                                         plot_bases=show)
         # Behavioral design matrix
@@ -372,7 +410,6 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                      ['trial'] + stim_col_names + beh_col_names)
         assert len(Xcolnames) == X.shape[1], f'Mismatch between number of column names:{len(Xcolnames)} and X columns:{X.shape[1]}'
         
-        
         # 3D - trial, ts, neuron
         y = AV.baseline_correct_signal(AV.zsig)
         
@@ -389,6 +426,7 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
             plt.show()
             plt.close()
         
+            plt.imshow(X[47:235, :, 7]);plt.show()
         # 4D - (trial, ts, neuron), session
         y = [y[:,:,start:stop]
              for start, stop in AV.session_neurons]
@@ -444,20 +482,6 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                                   dt = 1/SF, plot=plot_bases)
     response_matrix = getBases(Xcol = stim_responses[:,0], Bases = CosineBases, lags = frame_lags, trial_size = nts, trial_level = False)
     if plot_bases: plt.imshow(response_matrix);plt.show()
-    
-    # # stimuli
-    # CBstim, frame_lag_stim = rcb(n_basis=nstim_ts, window_s=basis_window, width_s=basis_width,
-    #                               dt = 1/SF, plot=plot_bases)
-    # convbarstim = getBases(Xcol= barstim[:,0], Bases=CBstim, lags = frame_lag_stim, 
-    #                        trial_size = nts, trial_level = False)
-    # # TODO: instead of sharp cut-off between stim & offset, continuous 2 s with X number of bases!!!
-    # barstim = convbarstim
-    # soundstim = convbarstim
-    # # offset / edge responses
-    # CosineBases, frame_lags = rcb(n_basis=n_basis, window_s=basis_window, width_s=basis_width,
-    #                               dt = 1/SF, plot=plot_bases)
-    # bb = getBases(Xcol = barstim[:,0], Bases = CosineBases, lags = frame_lags, trial_size = nts, trial_level = False)
-    
     all_session_Xs = []
 
     # Column names
@@ -472,6 +496,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
         ]+ [f'VdelayRIGHT{i}' for i in range(n_basis)]
     AcolNames= [
         # Auditory stimulus columns 18-19
+        # NOTE: only counts as "auditory predictor if .startswith('A')"
         'Apresent', 
         # 'Adirection'
         ]+ [f'AdelayLEFT{i}' for i in range(n_basis)] + [
@@ -485,11 +510,7 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
         trials = trs[:,isess]
         # diff features as columns of bigger matrix
         Xstim = np.zeros(shape=(ntrials*nts, 
-                                len(XcolNames)
-                                    ))
-        # good for debugging
-        # print(Xstim.shape)
-        # print(len(XcolNames))
+                                len(XcolNames)))
 
         trial_idx = 0
         for it in range(ntrials):
@@ -507,21 +528,15 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                     Xstim[stimStart:stimEnd, 0] = 1
                 # column 1: Vdirection
                 Vdirection = direction_dict[tname[tname.index('V')+1]]
-                # Xstim[stimStart:stimEnd, 1] = (Vdirection := direction_dict[tname[tname.index('V')+1]])
                 # columns 2:18 Vloc... bar location
                 # (0,...1) if bar is moving from left to right 
                 # (1,...,0) if bar is moving right to left
                 if Vdirection == -1:
                     #new
                     Xstim[stimStart:stimEnd+nstim_ts, vis:vis+nstim_ts+n_basis] = response_matrix[::Vdirection, :]
-                    # old
-                #     Xstim[stimEnd:stimEnd+nstim_ts, vis:vis+n_basis] = bb[::Vdirection, :]
-                # Xstim[stimStart:stimEnd, vis+n_basis:vis+nstim_ts+n_basis] = barstim[::Vdirection, :]
                 if Vdirection == 1:
                     # new
                     Xstim[stimStart:stimEnd+nstim_ts, vis+n_basis:vis+n_basis+combined_stim_response_window] = response_matrix[::Vdirection, :]
-                    # old
-                    # Xstim[stimEnd:stimEnd+nstim_ts, vis+nstim_ts+n_basis:vis+nstim_ts+(2*n_basis)] = bb[::Vdirection, :]
             
             if 'A' in tname:
                 # column 0: Apresent
@@ -530,57 +545,32 @@ def stimulus_kernels(tbs:np.ndarray, nts:int, SF:float,
                     aud += 1
                 # column 18: Adirection
                 Adirection = direction_dict[tname[tname.index('A')+1]]
-                # Xstim[stimStart:stimEnd, 19] = (Adirection := direction_dict[tname[tname.index('A')+1]])
                 # columns 20:36 Aloc... sound location
                 # (0,...1) if sound is moving from left to right 
                 # (1,...,0) if sound is moving right to left
                 if Adirection == -1:
                     # new
                     Xstim[stimStart:stimEnd+nstim_ts, aud:aud+n_basis+nstim_ts] = response_matrix[::Adirection, :]
-                    # old
-                #     Xstim[stimEnd:stimEnd+nstim_ts, aud:aud+n_basis] = bb[::Adirection, :]
-                # Xstim[stimStart:stimEnd, aud+n_basis:aud+n_basis+nstim_ts] = soundstim[::Adirection, :]
                 if Adirection == 1:
                     # new
                     Xstim[stimStart:stimEnd+nstim_ts, aud+n_basis:aud+n_basis+combined_stim_response_window] = response_matrix[::Adirection, :]
-                    # old
-                    # Xstim[stimEnd:stimEnd+nstim_ts, aud+n_basis+nstim_ts:] = bb[::Adirection, :]
-            
             trial_idx += nts
-        
-        # All trials done, convolve with bases to account for lags
-        # xbases = [getBases(Xcol=Xstim[:,ic], Bases=CosineBases, lags=frame_lags, 
-        #                    trial_size=nts, trial_level=True)
-        #           for ic in (17, 34)]
-        
-        # # good for debugging
-        # # print(len(xbases))
-        # # print(XcolNames)
-        
-        # Get column names for predictor convolved with each basis
-        # if isess == nsessions - 1:
-        #     for icol, xcol_bases in zip([17, 34], xbases):
-        #         for ibase in range(xcol_bases.shape[1]):
-        #             XcolNames.append(f'{XcolNames[icol]}_basis{ibase}')
-        # # print(XcolNames)
-        # Xbases = np.column_stack(xbases)
-        # Xbases = Xbases / np.std(Xbases, axis=0) # scale continuous columns so that on equal footing for regularization
-        # X_sess = np.column_stack([Xstim, Xbases])
-        # all_session_Xs.append(X_sess)
+
         all_session_Xs.append(Xstim)
     X = np.dstack(all_session_Xs)
     assert X.shape[1] == len(XcolNames), f'Mismatch between number of column names:{len(XcolNames)} and X columns:{X.shape[1]}'
     return X, XcolNames
 
 
-# TODO: consider extracting more PCs for whisker movement (not just average movement energy)
-# TODO: add derivative and onset
+# Note: consider extracting more PCs for whisker movement (not just average movement energy)
 def behavior_kernels(sessions:dict,
                      nts:int, SF:float,
                      trial_frames:tuple[int, int],
-                     n_basis:int,
+                     n_onset_basis:int,
+                     n_continuous_lags:int, 
                      basis_window:tuple[float, float],
-                     basis_width:float,
+                     onset_basis_width:float,
+                     cont_basis_width:float, 
                      THRESHOLD:float,
                      plot_bases:bool = False)->np.ndarray:
     '''
@@ -601,15 +591,24 @@ def behavior_kernels(sessions:dict,
 
     # Raised cosine bases 
     # NOTE: (for now, same used for all variables, can VARY for each column)
-    CosineBases, frame_lags = rcb(n_basis=n_basis, window_s=basis_window, width_s=basis_width,
-                                  dt = 1/SF, plot=plot_bases)
-
+    onsetCosineBases, onset_frame_lags = rcb(n_basis=n_onset_basis, window_s=basis_window, 
+                                             width_s=onset_basis_width, 
+                                             dt = 1/SF, plot=plot_bases)
+    continousCosineBases, continous_frame_lags = rcb(n_basis=n_continuous_lags, window_s=basis_window, 
+                                                     width_s=cont_basis_width,
+                                                     dt = 1/SF, plot=plot_bases)
+    bases = {True:onsetCosineBases,
+             False:continousCosineBases}
+    lags = {True:onset_frame_lags,
+            False:continous_frame_lags}
+    
     all_session_Xb = []
     for isess, BS in enumerate(behaviors):
         if isess == 0:
             XcolNames = []
 
         # setup matrix for initial
+        og_cols = list(range(9))
         Xbeh = np.zeros(shape=(ntrials*nts, 9)) # 3 behaviors, 3 derivative terms, 3 event ONSET terms
 
         for ib, bname in enumerate(['running', 'whisker', 'pupil']):
@@ -626,45 +625,52 @@ def behavior_kernels(sessions:dict,
                     onst = (abs(behavior) > THRESHOLD).astype(float) # 720 x 47
                 else:
                     onst = (behavior > THRESHOLD).astype(float) # 720 x 47
-                # XXX WRONG: was discarding offset movement responses
-                # beh_bsl0[:, trial_frames[1]:] = 0 # NOTE:rethink this line
-                # onset terms
                 Xbeh[:,ib+6] = onst.flatten() 
 
-        # square terms
-        # Xbeh[:,3] = Xbeh[:,1]**2 # whisker nonlinear term (onset would be better)
-        # Xbeh[:,4] = Xbeh[:,0]**2 # running nonlinear term (onset would be better)
-        # interaction terms
-        # Xbeh[:,4] = Xbeh[:,1]*Xbeh[:,0] # whisker * running term
-        # Xbeh[:,5] = Xbeh[:,1]*Xbeh[:,2] # whisker * pupil term
-        # Xbeh[:,6] = Xbeh[:,0]*Xbeh[:,2] # running * pupil term
         if isess == 0:
             XcolNames += ['running_derivative', 'whisker_derivative', 'pupil_derivative',
                           'running_onset', 'whisker_onset', 'pupil_onset']
 
 
-        # have all behaviors, convolve onsets with bases
-        xbases = [getBases(Xcol=Xbeh[:,6+ic], Bases=CosineBases, lags=frame_lags,
+        # have all behaviors, convolve onsets with bases (also convolve continuous but with fewer)
+        xbases = [getBases(Xcol=Xbeh[:,ic], 
+                           Bases=bases['onset' in XcolNames[ic]], 
+                           lags=lags['onset' in XcolNames[ic]],
                            trial_size=nts, trial_level=True)
-                  for ic in range(3) if 'onset' in XcolNames[6+ic]]
+                  for ic in og_cols]
         
         # Get column names for onset predictor convolved with each basis
         if isess == 0:
+            onset_cols = [6,7,8]
+            continuous_cols = list(range(6))
+            i=0
             for icol, xcol_bases in enumerate(xbases):
                 for ibase in range(xcol_bases.shape[1]):
-                    XcolNames.append(f'{XcolNames[6+icol]}_basis{ibase}')
+                    if 'onset' in XcolNames[icol]:
+                        onset_cols.append(9+i)
+                    else:
+                        continuous_cols.append(9+i)
+                    XcolNames.append(f'{XcolNames[icol]}_basis{ibase}')
+                    i += 1
 
         Xbases = np.column_stack(xbases)
         X_sess = np.column_stack([Xbeh, Xbases])
-        col_std = np.std(X_sess, axis=0)
+        # variance scaling
+        col_std = np.var(X_sess, axis=0)
         nancol = (col_std == 0)
-        onset_col = [8, 9, 10]
         col_std[nancol] = 1
-        col_std[onset_col] = 1
-        X_sess = X_sess / col_std # variance scaling puts columns on equal footing for ridge
+        col_std[onset_cols] = 1
+        X_sess = X_sess / col_std
+        X_sess = X_sess.clip(-5,5)
         assert not np.isnan(X_sess).any()
         all_session_Xb.append(X_sess)
     X = np.dstack(all_session_Xb)
+    # Drop cols
+    ts, preds, ssns = X.shape
+    convolved = list(range(9, preds))
+    newXcolNames = [XcolNames[i] for i in range(preds) if i in convolved]
+    newX = X[:, convolved, :]
+    X, XcolNames = newX, newXcolNames
     assert X.shape[1] == len(XcolNames), f'Mismatch between number of column names:{len(XcolNames)} and X columns:{X.shape[1]}'
     return X, XcolNames
 
@@ -707,100 +713,6 @@ def rcb(n_basis:int,
             ax.plot((lags - lags[0]) * dt, phi, 'k--')
 
     if plot:
-        plt.show()
-
-    return np.asarray(B), lags
-
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-
-def rbf(n_basis: int,
-        window_s: tuple[float, float],
-        dt: float,
-        alpha: float = 1.0,
-        plot: bool = False):
-    """
-    Adaptive Gaussian radial basis functions
-    ----------------------------------------
-    n_basis   : number of RBFs
-    window_s  : (t_min, t_max) in seconds
-    dt        : frame duration (seconds)
-    alpha     : overlap factor; width ~= alpha * spacing for large n_basis
-    returns   : (n_basis, n_lags) matrix
-
-    Each basis is a Gaussian bump whose (effective) support
-    [center - width, center + width] lies fully inside the window.
-    Width is chosen adaptively from window size and n_basis.
-    """
-
-    t_min, t_max = window_s
-    lags = np.arange(int(np.round(t_min/dt)),
-                     int(np.round(t_max/dt)) + 1)
-
-    # total length in "lag units"
-    L = float(lags[-1] - lags[0])
-
-    if n_basis < 1:
-        raise ValueError("n_basis must be >= 1")
-
-    # Special case: only one basis -> full window bump
-    if n_basis == 1:
-        width = L / 2.0  # half window
-        centres = np.array([lags[0] + width])
-    else:
-        # adaptive width:
-        # width = alpha * d, d = (L - 2*width)/(n_basis - 1)
-        # => width = alpha*L / ((n_basis - 1) + 2*alpha)
-        width = alpha * L / ((n_basis - 1) + 2 * alpha)
-
-        if width <= 0:
-            raise ValueError("Computed non-positive width; check n_basis and window.")
-        if 2 * width >= L:
-            raise ValueError("Window too small for given n_basis / alpha combination.")
-
-        # spacing between centres
-        d = (L - 2 * width) / (n_basis - 1)
-
-        # centres from (start+width) to (end-width)
-        centres = lags[0] + width + d * np.arange(n_basis)
-
-    if plot:
-        # finer grid for smooth curves
-        plotLags = np.linspace(lags[0], lags[-1], 2000)
-        fig, ax = plt.subplots()
-
-    B = []
-    for c in centres:
-        # Gaussian with std = width (you can change to width/k if you want narrower peaks)
-        sigma = width
-        x = (lags - c) / sigma
-        phi = np.exp(-0.5 * x**2)
-        # hard truncate outside "support" for a clean 0 at the edges
-        phi[np.abs(lags - c) > width] = 0.0
-        B.append(phi)
-
-        if plot:
-            plotx = (plotLags - c) / sigma
-            plotphi = np.exp(-0.5 * plotx**2)
-            plotphi[np.abs(plotLags - c) > width] = 0.0
-
-            plotpoints = np.linspace(t_min, t_max, len(plotLags))
-            ax.plot(plotpoints, plotphi, linewidth=3, alpha=0.6)
-
-            realplotpoints = plotpoints[::len(plotpoints)//len(lags)]
-            assert len(realplotpoints) == len(lags)
-            ax.plot(realplotpoints, phi, linestyle='--', color='k')
-
-    if plot:
-        plt.tight_layout()
-        plt.savefig(os.path.join(
-            PLOTSDIR, 'GLManalysis',
-            f'{n_basis}_rbf_adaptive({window_s}, alpha={alpha}).svg'
-        ))
-        print("lags:", lags)
-        print("centres:", centres)
-        print("width:", width)
         plt.show()
 
     return np.asarray(B), lags
@@ -1550,7 +1462,7 @@ if __name__ == '__main__':
     # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=True, redo = True)
     # res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=True, redo = True)
     # TODO: blend-in stim & offset
-    gXY = design_matrix(pre_post='pre', group='g1', show=False)
+    gXY = design_matrix(pre_post='pre', group='g2', show=False)
     EV_res = quantify_encoding_models(
         gXY=gXY, yTYPE='neuron', 
         plot=True, 

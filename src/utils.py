@@ -208,6 +208,16 @@ def load_audvis_files(group_condition_name:str)->tuple[
 
 # trials to int and trials to str
 def trialMAPS(trialsSTR:ndarray)-> tuple[dict, dict]:
+    '''
+    {0: np.str_('Al'), 
+    1: np.str_('AlVl'), 
+    2: np.str_('AlVr'), 
+    3: np.str_('Ar'), 
+    4: np.str_('ArVl'), 
+    5: np.str_('ArVr'), 
+    6: np.str_('Vl'), 
+    7: np.str_('Vr')}
+    '''
     trialsSTRtoINT = {s:i for i, s in enumerate(unique(trialsSTR))}
     trialsINTtoSTR = {i:s for i, s in enumerate(unique(trialsSTR))}
     return trialsSTRtoINT, trialsINTtoSTR

@@ -85,11 +85,11 @@ class Behavior:
         behavior_trial_evoked = (behavior - bsl_means) / bsl_stds # z-scoring step
         # baseline correct on trial-level
         behavior_trial_evoked -= np.mean(behavior_trial_evoked[:,:baseline_frames], axis = 1, keepdims=True)
-        # if debug:
-        #     plt.plot(np.nanmean(behavior, axis = 0))
-        #     plt.plot(np.nanmean(behavior_trial_evoked, axis = 0))
-        #     plt.show()
-        #     plt.close()
+        if debug:
+            plt.plot(np.nanmean(behavior, axis = 0))
+            plt.plot(np.nanmean(behavior_trial_evoked, axis = 0))
+            plt.show()
+            plt.close()
         return behavior_trial_evoked
 
 
