@@ -145,7 +145,7 @@ def encodingLOOP_(groupName:str, groupDict:dict,
 
         print(f'Processing group {groupName} session {isess} ...')
         # make one model for random neuron to extract the train / test split
-        TRAIN, TEST = glm.EncodingModel.train_test_split(
+        TRAIN, TEST, FULL = glm.EncodingModel.train_test_split(
             X = X, y = ysession[:,:,0].flatten(), 
             split_proportion=0.8,
             trial_size=trial_size,
@@ -411,4 +411,4 @@ def glmSUPPLEMENT(everything:dict[str:np.ndarray],
 
 
 if __name__ == '__main__':
-    use_encoding_model(EV = True, redo=True)
+    use_encoding_model(pre_post='both', EV = True, redo=True)

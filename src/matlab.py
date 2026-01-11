@@ -5,6 +5,7 @@ import os
 from joblib import Parallel, delayed
 from scipy.io.matlab import matfile_version
 import h5py
+import numpy as np
 
 # Datasets
 ALL = '/Volumes/my_SSD/darkRearingData'
@@ -13,7 +14,7 @@ GRATINGS = '/Volumes/my_SSD/darkRearingData/gratingWarped'
 TEST = '/Volumes/my_SSD/test'
 
 # Data fields of interest
-FIELDS = {'MLspike':('Res', 'CaDeconCorrected'),
+FIELDS = {
           'dF':('Res', 'CaSigCorrected'),
           'running':('Res', 'speed'),
           'whisker':('Res', 'facemap', 'motion'),
@@ -23,7 +24,7 @@ FIELDS = {'MLspike':('Res', 'CaDeconCorrected'),
           'TT_explain':('info', 'Stim', 'Parameters', 'stimuli')
           }
 
-WRITEFIELDS = {'MLspikeClean':'CaDeconGLMclean'}
+WRITEFIELDS = {'dFClean':'CaSigCorrectedGLMclean'}
 
 class MatFile:
     pass
@@ -59,6 +60,12 @@ def matgrab(matfile:str, fields:dict[str, tuple[str]]
             assert hasattr(data, struct), (
                 f'The file {matfile} does not contain this structure leading to a field {pth}')
             data = getattr(data, struct)
+        
+        if name == 'dF':
+            # Z-score (per neuron)
+            mean = np.mean(data, axis=(0,1), keepdims=True)
+            std = np.std(data, axis=(0,1), keepdims=True)
+            data = (data - mean) / std
         setattr(out, name, data)
     return out
 
@@ -76,14 +83,18 @@ def matwrite(matfile:str, fields:dict, obj:MatFile):
     # append to existing hdf5 file
     with h5py.File(matfile, 'a') as mf:
         for attr, fieldname in fields.items():
-            mf[fieldname] = getattr(obj, attr)
+            arr = np.asarray(getattr(obj, attr), dtype=np.float64)  # MATLAB "double"
+            if fieldname in mf:
+                del mf[fieldname]
+            d = mf.create_dataset(fieldname, data=arr)
+            d.attrs['MATLAB_class'] = np.bytes_('double')
     
     print(f'Write into {matfile} completed!')
 
 if __name__ == '__main__':
     mats = find_mat(TEST)
     M = matgrab(mats[0], fields=FIELDS)
-    M.MLspikeClean = M.MLspike.mean(axis = 1)
+    M.dFClean = M.dF.mean(axis = 1)
     print(M.__dict__.keys())
     matwrite(mats[0], WRITEFIELDS, M)
 

@@ -38,9 +38,11 @@ class EvAnalysis:
                 ), 'Error in provided list of shuffle paths. EVshuffles expects list[path, ...]'
         # null distributions for each neuron, predictor, trial type,...
         self.EVnull = dict()
+        # XXX This file is no longer created in glm.utils!!! Its just a small dictionary with info
+        # TODO: generate Fresh!!!
         assert os.path.exists(explain_file := os.path.join(savedir, 
                                                            'EV3Dexplanation.pkl')
-                            ), 'Explanation file for the shuffled distributions is missing, try rerunning glm_utils.py for a few neurons, '\
+                            ), 'TODO - following error message no longer true: Explanation file for the shuffled distributions is missing, try rerunning glm_utils.py for a few neurons, '\
                             'it will be recreated immediately'
         with open(explain_file, 'rb') as expl_f:
             self.shuffle_explain = pickle.load(expl_f)
@@ -294,7 +296,7 @@ class EvAnalysis:
                             (self.df['ModelSignificant'] == True) # where overall model significant
                             )].copy()
         sns.catplot(supplemental,y = 'EV', x = 'trial_type', order = ['A', 'V', 'AV'], color = 'magenta', kind = 'box', aspect=0.5, showfliers = False)
-        plt.savefig(os.path.join(self.saveDIR, 'supplemental_overallModelEV.svg'))
+        plt.savefig(os.path.join(self.saveDIR, f'supplemental_overallModelEV_{calc}_{dataset}.svg'))
         plt.close()
 
         data = self.df.loc[((self.df['Calculation'] == calc) & 
@@ -485,31 +487,31 @@ class EvAnalysis:
             print(f'{regio} comparison: {pv} {get_sig_label(pv)}')
         
         # Distribution plot (too big, not very informative)
-        # for region in regions:
-        #     for group in group_ids:
-        #         mask = (wide.index.get_level_values('Region') == region) & \
-        #            (wide.index.get_level_values('group_id') == group)
-        #         sub_wide = wide.loc[mask]
-        #         # Order for plot
-        #         v_minus_m = sub_wide['EV']['V'] - sub_wide['EV']['Motor']
-        #         order = sub_wide.assign(v_m = v_minus_m).sort_values('v_m', ascending=False)
+        for region in regions:
+            for group in group_ids:
+                mask = (wide['Region'] == region) & (wide['group_id'] == group)
+                sub_wide = wide.loc[mask]
+                # Order for plot
+                v_minus_m = sub_wide['EV']['V'] - sub_wide['EV']['Motor']
+                order = sub_wide.assign(v_m = v_minus_m).sort_values('v_m', ascending=False)
 
-        #         fig, axes = plt.subplots(3, 1, figsize=(14, 4), sharex=True)
-        #         for n, row_data in order.iterrows():
-        #             x = np.where(order.index==n)[0][0]                # bar position
-        #             for pred, ev_value in row_data['EV'][['V','A','Motor']].items():
-        #                 ax = axes[row[pred]]
-        #                 color = (col_map[pred] if (row_data['Label']==pred).bool() else 'gray')
-        #                 ax.bar(x, ev_value, color=color, width=1.0)
+                fig, axes = plt.subplots(3, 1, figsize=(14, 4), sharex=True)
+                for n, row_data in order.iterrows():
+                    x = np.where(order.index==n)[0][0]                # bar position
+                    for pred, ev_value in row_data['EV'][['V','A','Motor']].items():
+                        ax = axes[row[pred]]
+                        color = (col_map[pred] if (row_data['Label']==pred).bool() else 'gray')
+                        ax.bar(x, ev_value, color=color, width=1.0)
 
-        #         for ax in axes:
-        #             ax.set_ylabel('EV')
-        #             ax.spines[['right','top']].set_visible(False)
-        #             ax.set_xticks([])
+                for ax in axes:
+                    ax.set_ylabel('EV')
+                    ax.spines[['right','top']].set_visible(False)
+                    ax.set_xticks([])
 
-        #         fig.suptitle(f'Region: {region}, Group: {group}')
-        #         plt.tight_layout()
-        #         plt.show()
+                fig.suptitle(f'Region: {region}, Group: {group}')
+                plt.tight_layout()
+                plt.savefig(os.path.join(self.saveDIR, f'{group}_{region.replace('/', '|')}_Distribution_plot_{dataset}_{calc}_{tt}.svg'))
+                # plt.show()
 
     def cluster_neurons(self):
         raise NotImplementedError
@@ -781,7 +783,7 @@ if __name__ == '__main__':
     # Trial-level (low EV - but compared to other studies relatively high) supplementary
     # would be better to quantify this only during stimulus presentation 
     # or at least after stimulus onset:end of trial (right now quantified over the whole session essentially)
-    # EVa.preditor_comparison(tt = 'AV', calc='trial', dataset='held_out')
+    EVa.preditor_comparison(tt = 'AV', calc='trial', dataset='held_out')
     # EVa.preditor_comparison(tt = 'V', calc='trial', dataset='held_out')
     # EVa.preditor_comparison(tt = 'A', calc='trial', dataset='held_out')
 
@@ -789,13 +791,33 @@ if __name__ == '__main__':
     # XXX main!
     EVa.order_neurons(tt = 'AV', calc='averaged', dataset='held_out')
     # supplementary
-    # EVa.order_neurons(tt = 'A', calc='averaged', dataset='held_out')
-    # EVa.order_neurons(tt = 'V', calc='averaged', dataset='held_out')
-    # EVa.order_neurons(tt = 'AV', calc='trial', dataset='held_out')
+    EVa.order_neurons(tt = 'A', calc='averaged', dataset='held_out')
+    EVa.order_neurons(tt = 'V', calc='averaged', dataset='held_out')
+    EVa.order_neurons(tt = 'AV', calc='trial', dataset='held_out')
     
     # # Analysis 3-4) Average drives plot over well-modelled neurons + examples of well-modelled neurons
-    average_clean_plot(AVs=AVs, well_modelled_neurons=EVa.well_modelled(calc='averaged'), savedir=EVa.saveDIR,
+    # main
+    average_clean_plot(AVs=AVs, 
+                       well_modelled_neurons=EVa.well_modelled(calc='averaged'), 
+                       savedir=EVa.saveDIR,
                        show=False, 
+                       well_mod_for_quant=None,
+                       supplement_type=None
+                       )
+    # heatmap supplement
+    average_clean_plot(AVs=AVs, 
+                       well_modelled_neurons=EVa.well_modelled(calc='averaged'), 
+                       savedir=EVa.saveDIR,
+                       show=False, 
+                    # XXX this does supplemental analyses instead of the main figure
+                       supplement_type='heatmap'
+                       )
+
+    # onset supplement
+    average_clean_plot(AVs=AVs, 
+                       well_modelled_neurons=EVa.well_modelled(calc='averaged'), 
+                       savedir=EVa.saveDIR,
+                       show=True, 
                     # XXX this below will only plot significantly modelled auditory neurons
                        well_mod_for_quant=EVa.well_modelled(calc='averaged', tt = 'A') ,
                     # XXX this does supplemental analyses instead of the main figure

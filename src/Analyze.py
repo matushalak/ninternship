@@ -9,7 +9,7 @@ from src.analysis_utils import (calc_avrg_trace, build_snake_grid,
                             tt_fluoro_func)
 
 from src.Responsive import responsive_zeta, get_shuffle_dist
-from src.GLM import clean_group_signal
+from src.GLM_new import clean_group_signal
 
 from matplotlib_venn import venn3
 from numpy import ndarray, arange, where, unique
@@ -628,10 +628,10 @@ if __name__ == '__main__':
                4:(1,1),5:(1,0),6:(0,3),7:(1,3)}
     # Example neurons
     # NOTE: check inside AN.example_neurons which neurons are being plotted!
-    # Examples()
+    Examples()
 
     # Neuron types analysis (venn diagrams)
-    neuron_typesVENN_analysis()
+    # neuron_typesVENN_analysis()
     # NEURON_TYPES_TT_ANALYSIS('modulated', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('modality_specific', add_CASCADE=True, pre_post='pre')
     # NEURON_TYPES_TT_ANALYSIS('all', add_CASCADE=False, pre_post='pre')

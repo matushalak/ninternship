@@ -312,7 +312,7 @@ class EncodingModel:
 
 # --------------------------- DESIGN MATRIX SECTION ---------------------------------
 # NOTE: These functions need to be adapted to different experimental regimes
-# TODO CHECK: do not convolve bases with continous signals?
+# XXX CHECK: do not convolve bases with continous signals?
 @time_loops
 def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
                   group:Literal['g1', 'g2', 'both'] = 'both',
@@ -358,7 +358,7 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
             vhm = sns.heatmap(stim_kernels[47:235, vcols, 7], cbar=False, xticklabels=False, yticklabels=False,
                         cmap = 'Blues')
             plt.tight_layout()
-            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', f'Xvis_{AV.NAME}.png'), dpi = 300)
+            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', 'DesignMatrix',  f'Xvis_{AV.NAME}.svg'), dpi = 300)
             plt.show()
             plt.close()
 
@@ -366,7 +366,7 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
             ahm = sns.heatmap(stim_kernels[47:235, acols, 7], cbar=False, xticklabels=False, yticklabels=False,
                         cmap = 'Reds')
             plt.tight_layout()
-            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', f'Xaud_{AV.NAME}.png'), dpi = 300)
+            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', 'DesignMatrix', f'Xaud_{AV.NAME}.svg'), dpi = 300)
             plt.show()
             plt.close()
 
@@ -387,7 +387,7 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
             bhm = sns.heatmap(behav_kernels[47:235, :, 7], cbar=False,xticklabels=False, yticklabels=False,
                               cmap = 'Greens')
             plt.tight_layout()
-            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', f'Xmotor_{AV.NAME}.png'), dpi = 300)
+            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', 'DesignMatrix', f'Xmotor_{AV.NAME}.svg'), dpi = 300)
             plt.show()
             plt.close()
 
@@ -422,7 +422,7 @@ def design_matrix(pre_post: Literal['pre', 'post', 'both'] = 'pre',
             # Target neural activity
             ax[1].plot(y.reshape((-1, y.shape[2]))[47:235, 7], np.arange(47,235), color = 'k')
             plt.tight_layout()
-            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', f'Xfull_{AV.NAME}.png'), dpi = 300)
+            plt.savefig(os.path.join(PLOTSDIR, 'GLManalysis', f'Xfull_{AV.NAME}.svg'), dpi = 300)
             plt.show()
             plt.close()
         
@@ -610,7 +610,7 @@ def behavior_kernels(sessions:dict,
         # setup matrix for initial
         og_cols = list(range(9))
         Xbeh = np.zeros(shape=(ntrials*nts, 9)) # 3 behaviors, 3 derivative terms, 3 event ONSET terms
-
+        
         for ib, bname in enumerate(['running', 'whisker', 'pupil']):
             if isess == 0:
                 XcolNames.append(bname)
@@ -1458,16 +1458,16 @@ if __name__ == '__main__':
     # res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=True, 
     #                           redo=True
     #                           )
-    # # if time
+    # # # if time
     # res3 = clean_group_signal(pre_post='post', group_name='g1post', yTYPE='neuron', exportDrives=True, redo = True)
     # res4 = clean_group_signal(pre_post='post', group_name='g2post', yTYPE='neuron', exportDrives=True, redo = True)
-    # TODO: blend-in stim & offset
-    gXY = design_matrix(pre_post='pre', group='g2', show=False)
-    EV_res = quantify_encoding_models(
-        gXY=gXY, yTYPE='neuron', 
-        plot=True, 
-        EV=True,
-        rerun=False
-        )
+    gXY = design_matrix(pre_post='pre', group='both', show=True)
+    
+    # EV_res = quantify_encoding_models(
+    #     gXY=gXY, yTYPE='neuron', 
+    #     plot=False, 
+    #     EV=True,
+    #     rerun=True
+    #     )
     
     

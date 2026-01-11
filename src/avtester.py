@@ -14,23 +14,26 @@ for av in avs:
     # flat
     f, ax = plt.subplots(
         # nrows=len(av.session_neurons), 
-        figsize = (6,3))
+        ncols=3,
+        figsize = (18,6))
     for si, (start, stop) in enumerate(av.session_neurons):
         session = slice(start, stop)
         Asess = A[session, session, :]
-        # show correlations
-        # hm = sns.heatmap(Asess[:,:,1])
-        # plt.show()
-        Asess = np.tril(Asess) # get rid of reduntant upped triangle
-
+        
+        # XXX show correlations
+        hm = sns.heatmap(Asess[:,:,1])
+        plt.show()
+        
+        Asess = np.tril(Asess) # get rid of reduntant upper triangle
         Aflat = Asess.reshape(-1, 2)
         dists, corrs = Aflat[:,0], Aflat[:, 1]
-        ax.scatter(dists, corrs,
-                   alpha = 0.1,
-                   label = f'r(d, abs(r)) = {round(np.corrcoef(dists, corrs.__abs__())[0,1], 3)}')
-        ax.set_xlabel('Distance (a.u.)')
-        ax.set_ylabel('Correlation')
-        ax.legend(loc = 1)
+        sns.histplot(x=dists, ax = ax[0], kde=True)
+        ax[0].set_xlabel('Distance (a.u.)')
+        sns.histplot(y=corrs, ax = ax[1], kde=True)
+        ax[1].set_ylabel('Correlation')
+        sns.histplot(x = dists, y = corrs, ax = ax[2], fill=True)
+        ax[2].set_xlabel('Distance (a.u.)')
+        ax[2].set_ylabel('Correlation')
     plt.tight_layout()
     plt.show()
 
@@ -42,7 +45,7 @@ for iax, ax in enumerate(axs.flatten()):
     AV  = avs[iax]
     ax.set_title(AV.NAME)
     # get signal for all neurons
-    tsig = AV.baseline_correct_signal(AV.signal_CORR)
+    tsig = AV.baseline_correct_signal(AV.signal)
     # FRs
     blFRs = tsig[:,16:32,:].max(axis = 1)
     

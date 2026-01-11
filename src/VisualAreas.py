@@ -336,6 +336,14 @@ class Areas:
         # TODO / NOTE: could also consider cross-correlation function (signal processing sense) to identify 
         # the optimal LAG between each neuron cross-correlation function would peak at that lag
         # for that could use np.correlate (1D) or sp.correlate2D
+        
+        # XXX DIRECTED GRAPH IDEA
+        # TODO: make it more interesting and show
+        # row before col
+        # np.tril = np.correlate(Arows, Acols)[:1/2].max()
+        # col before row
+        # np.triu = np.correlate(Arows, Acols)[1/2:].max()
+        
         if signal is not None:
             assert len(signal.shape) in (2,3), 'signal must be either 2D (timestamps x neurons) or 3D (trials x timestamps x neurons)'
             if len(signal.shape) == 3:
@@ -343,10 +351,43 @@ class Areas:
                 signal = signal.reshape(-1, signal.shape[2])
             # matrix of neuron-neuron signal correlations
             corrM = np.corrcoef(signal, rowvar=False)
+            signal = np.transpose(signal, (1, 0))
+            # corrM = pairwise_max_xcorr_rows(signal, use_abs=True)
             # add as second layer to adjacency matrix
             adjM = np.dstack((adjM, corrM))
         
         return adjM    
+
+#
+# XXX
+def pairwise_max_xcorr_rows(X, normalize=False, use_abs=False):
+    """
+    X: (R, L) array. Treat each row as a signal of length L.
+    Returns: (R, R) matrix M where M[i,j] = max_lag xcorr(row_i, row_j).
+    """
+    X = np.asarray(X, dtype=float)
+    R, L = X.shape
+
+    if normalize:
+        # z-score each row (common choice for "correlation-like" values)
+        mu = X.mean(axis=1, keepdims=True)
+        sd = X.std(axis=1, keepdims=True) + 1e-12
+        X = (X - mu) / sd
+
+    # zero-pad to get linear correlation via FFT
+    nfft = 1 << int(np.ceil(np.log2(2 * L - 1)))  # next power of 2
+    F = np.fft.rfft(X, n=nfft, axis=1)           # (R, nfreq)
+
+    out = np.empty((R, R), dtype=float)
+    for i in range(R):
+        # correlations of row i with all rows j, for all lags:
+        # ifft( F[i] * conj(F[j]) ) gives circular corr; padding makes it linear in first 2L-1 samples
+        corr = np.fft.irfft(F[i][None, :] * np.conj(F), n=nfft, axis=1)[:, : (2 * L - 1)]
+        m = np.max(np.abs(corr), axis=1) if use_abs else np.max(corr, axis=1)
+        out[i, :] = m
+
+    return out
+
 
 #%%--------- Analyses by areas -------------
 def by_areas_VENN(svg:bool=False,

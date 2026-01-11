@@ -246,13 +246,13 @@ def MIanalysis(MIDF:pd.DataFrame):
     longMIDF.loc[:, 'Group'] = longMIDF.loc[:, 'Group'].transform(lambda x: groupmapper[x[:2]]+x[2:])
 
     # to look at FR: filter on FRdf (where FR is not NaN)
-    FRall(longMIDF, hue_order, palette)
+    # FRall(longMIDF, hue_order, palette)
 
     # # direction selectivity for different neuron types
-    # DSIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
+    DSIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
 
     # # to look at RCI: filter on RCIdf (where RCI is not NaN)
-    # RCIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
+    RCIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
     
 # TODO: redo FR analysis here and also include comparisons between brain regions
 # XXX: here we can really compare visual responses with matched multisensory responses etc.
@@ -404,11 +404,14 @@ def RCIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
     # XXX (also compare between preferred and non-preferred WITHIN group)
     # multisens_proportions(RCIdf=RCIdf)
     # RCI magnitude MAIN
-    RCImag(RCIdf, hue_order, palette)
+    RCImag(RCIdf, hue_order, palette, abs = False)
+    # |RCI|
+    RCImag(RCIdf, hue_order, palette, abs=True)
 
-def RCImag(RCIdf:pd.DataFrame, hue_order:list, palette:dict):
+def RCImag(RCIdf:pd.DataFrame, hue_order:list, palette:dict, abs:bool = False):
     for TYPE in ['V', 'A', 'M']:
-        RCI_within_Type(Type=TYPE, RCIdf=RCIdf, hue_order=hue_order, palette=palette)
+        RCI_within_Type(Type=TYPE, RCIdf=RCIdf, hue_order=hue_order, palette=palette,
+                        abs = abs)
 
 def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict,
                     combine_congruent:bool = True, abs:bool = False):

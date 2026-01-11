@@ -14,6 +14,21 @@ import os
 from src import PYDATA, PLOTSDIR
 
 ###-------------------------------- GENERAL Helper functions --------------------------------
+def trialsSessionToNeurons(trials:np.ndarray, 
+                           session_neurons:list[tuple[int, int]]
+                           )->np.ndarray:
+    nsess, ntrial = trials.shape
+    assert ntrial > nsess
+    neur_trials = []
+    
+    for isess, sess_tr in enumerate(trials):
+        start_neur, end_neur = session_neurons[isess]
+        n_sess_neur = end_neur - start_neur
+        neur_trials.append(np.tile(sess_tr, (1, n_sess_neur)))
+    breakpoint()
+    neur_trials = np.column_stack(neur_trials)
+    return neur_trials
+
 def proportion_significance_test(df:pd.DataFrame, rows:str, cols:str):
     tab = pd.crosstab(index=df[rows], columns=df[cols])
     sig, pval = fisher_exact(tab)
