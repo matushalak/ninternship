@@ -7,13 +7,86 @@ import matplotlib.pyplot as plt
 from src.SPSIG import SPSIG
 from glob import glob
 from pandas import read_csv
-from numpy import array, ndarray, load, unique, save
+import numpy as np
 from tkinter import filedialog
 from collections import defaultdict
 from joblib import Parallel, delayed
 from pandas import DataFrame, read_pickle
 from time import time
 from src import PYDATA, PLOTSDIR
+
+# ------- Hierarchical bootstrapping -----------
+## -- helper functions --
+def mean_diff(distA:np.ndarray, distB:np.ndarray)->float:
+    return np.mean(distA) - np.mean(distB)
+
+def bootstrapAnimalOnly(values:np.ndarray, group:int, animal:int, grp:int)-> np.ndarray:
+    '''
+    Sample animals (with replacement), then sample neurons within animals (with replacement)
+    '''
+    # Select group
+    idxG = group == grp
+    values = values[idxG]
+    animal = animal[idxG]
+
+    animals = np.unique(animal)
+    nAnimals = len(animals)
+
+    # Resample animals WITH replacement
+    resampledAnimals = animals[np.random.randint(nAnimals)]
+
+    sampledValues = []
+
+    for a in range(nAnimals):
+        aID = resampledAnimals[a]
+
+        idxA = animal == aID
+        v = values[idxA]
+
+        # Resample neurons WITH replacement (neurons are lowest level, must already contain summaries per neuron)
+        nNeurons = len(v)
+        sampledValues.append(v[np.random.randint(nNeurons)])
+
+    return np.array(sampledValues)
+
+def hierBootstrapTwoGroupsAnimalNeuron(values:np.ndarray, group:np.ndarray, animal:np.ndarray, Nboot:int,
+                                       dist_comparison:function = mean_diff
+                                       )-> tuple[float, np.ndarray, tuple[float, float]]:
+    '''
+    Hierarchical bootstrap with 2 layers: animal → neuron. Based on Saravanan et al., 2020. 
+        This is a simpler and non-parametric way of doing a linear-mixed effects model, with some clear advantages.
+    Input:
+        values = (M,) np.ndarray of values that were measured: e.a., average calcium activity over trials per neuron.
+        group = (M,) np.ndarray of groups. This can be '0' or '1' for normally reared or dark reared for example.
+        animal = (M,) np.ndarray of np.unique number per animal.
+        Nboot = int number of bootstraps for calculation. 1000 to 10000 acceptable.
+        dist_comparison(distA, distB)->float: function that compares two distributions to produce statistic of interest
+    
+    Returns:
+        pValue: float, bootstrapped p-value for statistical test of interest
+        bootDiff: (Nboot,) np.ndarray of bootstrapped statistics used to calculate p-value
+        CI: tuple[float, float] 95% confidence interval of the bootstrapped statistic distribution
+
+    % Verion 1.0
+    % Feb6 2026 - adapted to Python from MATLAB function by Huub Terra/h.terra@gmail.com
+    '''
+    bootDiff = np.zeros(Nboot)
+
+    # run bootstrapping for Nboot iterations
+    for b in range(Nboot):
+        sampA = bootstrapAnimalOnly(values, group, animal, 1)
+        sampB = bootstrapAnimalOnly(values, group, animal, 2)
+        # compute statistic of interest
+        bootDiff[b] = mean_diff(sampA, sampB)
+
+    # compute two-sided p-value
+    pValue = 2 * min(np.mean(bootDiff >= 0), np.mean(bootDiff <= 0))
+
+    # compute 95% confidence interval
+    CI = np.percentile(bootDiff, [2.5, 97.5])
+
+    return pValue, bootDiff, CI
+
 
 # ------- Random -----------
 def time_loops(func, per_loop:bool = False):
@@ -61,7 +134,7 @@ def add_sig(ax, x1, x2, y, label,
     ax.text((x1 + x2)/2, y + bar_height + text_offset,
             label, ha='center', va='bottom', fontsize=12)
 
-def show_me(*args:ndarray):
+def show_me(*args:np.ndarray):
     plt.figure()
     plt.plot(args)
     plt.show()
@@ -83,7 +156,7 @@ def progress_bar(current_iteration: int,
 def get_sessions_overview()->dict[tuple:dict]:
     if os.path.exists(overview_file := os.path.join(PYDATA, 'SessionsOverview.pkl')):
         with open(overview_file, 'rb') as overview:
-            GROUPS_SESSIONS_DICT :dict = pickle.load(overview)
+            GROUPS_SESSIONS_DICT :dict = pickle.np.load(overview)
         return GROUPS_SESSIONS_DICT
     
     # otherwise make it
@@ -128,7 +201,7 @@ def _overview(sess)->tuple[str, str]:
     assert re_match is not None, f'something wrong with: {sess}'
     group, name, date, bartone = re_match.groups()
     
-    sig: ndarray = get_SPSIGvars(spsgpath=sess, vars=['deconCorrected'], npsave=False)['deconCorrected']
+    sig: np.ndarray = get_SPSIGvars(spsgpath=sess, vars=['deconCorrected'], npsave=False)['deconCorrected']
     nneurons = min(sig.shape)
 
     print((f'{group}_{name}_{date}_{nneurons}', sess), flush=True)
@@ -153,34 +226,34 @@ def get_SPSIGvars(spsgpath:str | None, vars:list[str]|None = None,
         savefilename = os.path.join(savefolder, sessvar)
         if os.path.exists(savefilename):
             print(f'Loading {savefilename}!')
-            return load(savefilename)
+            return np.load(savefilename)
         else:
             SPSG = SPSIG(spsgpath)
             assert hasattr(SPSG, var), 'Cannot run get_SPSIGvars in npsave mode if vars is not contained in the SPSIG file'
             varARR = getattr(SPSG, var)
-            assert isinstance(varARR, ndarray), 'When npsave is True, SPSIG.vars must be a numpy array!'
-            save(savefilename, varARR)
+            assert isinstance(varARR, np.ndarray), 'When npsave is True, SPSIG.vars must be a numpy np.array!'
+            np.save(savefilename, varARR)
             return get_SPSIGvars(spsgpath, vars, npsave, check)
     
-    # if not npsave load the SPSIG file
+    # if not npsave np.load the SPSIG file
     SPSG = SPSIG(spsgpath)
     if check:
         print(spsgpath)
         for v in vars:
-            print(f'{v}: {hasattr(SPSG, v)}, {unique(getattr(SPSG, v))}')
+            print(f'{v}: {hasattr(SPSG, v)}, {np.unique(getattr(SPSG, v))}')
     
     # if not npsave, returns dictionary (can contain multiple variables 
-    # but is slower because npsave will save the variables locally and load them quickly afterwards)
+    # but is slower because npsave will np.save the variables locally and np.load them quickly afterwards)
     out = {var:getattr(SPSG, var) for var in vars if hasattr(SPSG, var)}
     return out
 
 
 def load_audvis_files(group_condition_name:str)->tuple[
-                    tuple[dict, dict, DataFrame, ndarray, ndarray, ndarray], 
-                    ndarray | None]:
+                    tuple[dict, dict, DataFrame, np.ndarray, np.ndarray, np.ndarray], 
+                    np.ndarray | None]:
     # indexing
     with open(f'{group_condition_name}_indexing.pkl', 'rb') as indx_f:
-        indexing = pickle.load(indx_f)
+        indexing = pickle.np.load(indx_f)
     
     neur_i = indexing['neuron_index']
     sess_i = indexing['session_index']
@@ -191,11 +264,11 @@ def load_audvis_files(group_condition_name:str)->tuple[
 
     # numpy arrays, signal, z-scored signal, trials
     endings = ('_sig.npy', '_zsig.npy', '_trials.npy')
-    sig, z, trials_all =  [load(group_condition_name+ending) for ending in endings]
+    sig, z, trials_all =  [np.load(group_condition_name+ending) for ending in endings]
 
     # check if cascade file exists
     if os.path.exists(cascade_file := (group_condition_name + '_CASCADE.npy')):
-        Cascade = load(cascade_file)
+        Cascade = np.load(cascade_file)
     else:
         Cascade = None
 
@@ -207,7 +280,7 @@ def load_audvis_files(group_condition_name:str)->tuple[
             trials_all), Cascade
 
 # trials to int and trials to str
-def trialMAPS(trialsSTR:ndarray)-> tuple[dict, dict]:
+def trialMAPS(trialsSTR:np.ndarray)-> tuple[dict, dict]:
     '''
     {0: np.str_('Al'), 
     1: np.str_('AlVl'), 
@@ -218,8 +291,8 @@ def trialMAPS(trialsSTR:ndarray)-> tuple[dict, dict]:
     6: np.str_('Vl'), 
     7: np.str_('Vr')}
     '''
-    trialsSTRtoINT = {s:i for i, s in enumerate(unique(trialsSTR))}
-    trialsINTtoSTR = {i:s for i, s in enumerate(unique(trialsSTR))}
+    trialsSTRtoINT = {s:i for i, s in enumerate(np.unique(trialsSTR))}
+    trialsINTtoSTR = {i:s for i, s in enumerate(np.unique(trialsSTR))}
     return trialsSTRtoINT, trialsINTtoSTR
 
 
@@ -228,13 +301,13 @@ def default_neuron_index():
     return {'overall_id':0,
             'specific_id':('', 0),
             'region':0,
-            'trialIDs':array([]),
+            'trialIDs':np.array([]),
             'n_trials':0,
             'facemap_corrected':False}
 
 def default_session_index():
     return {'n_neurons':0,
-            'trialIDs':array([]),
+            'trialIDs':np.array([]),
             'n_trials':0,
             'behavior':None, #instance of Behavior class
             'session':''}
