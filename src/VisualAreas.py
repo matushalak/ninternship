@@ -6,7 +6,7 @@ from matplotlib_venn import venn3
 from src.AUDVIS import AUDVIS, Behavior, load_in_data
 from src.Analyze import Analyze, neuron_typesVENN_analysis
 import src.analysis_utils as anut
-from src.utils import get_sig_label
+from src.utils import get_sig_label, hierBootstrapWrapper, mean_diff
 from typing import Literal
 from scipy.io.matlab import loadmat
 from tqdm import tqdm
@@ -21,6 +21,7 @@ import matplotlib.cm as mplcm
 from joblib import delayed, Parallel, cpu_count
 
 from statannotations.Annotator import Annotator
+from statannotations.stats.StatTest import StatTest
 import seaborn as sns
 import seaborn.objects as so
 import skimage as ski
@@ -575,7 +576,7 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
     
     trials = ['VT', 'AT', 'MS+', 'MS-']
     # Collect data for Quantification
-    QuantDict = {'Group':[], 'BRAIN_AREA': [], 'NeuronType':[], 'neuronID': [],
+    QuantDict = {'Group':[], 'BRAIN_AREA': [], 'NeuronType':[], 'neuronID': [], 'session_id':[],
                 'F_VIS':[], 'F_AUD':[],
                 # 'F_MST+':[],'F_MST-':[],
                 'F_MST':[]}
@@ -593,12 +594,14 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
                                                         return_single_neuron_data=True,
                                                         combineMST=combineMST)
                 
-                TT_info, group_size, ind_neuron_traces, ind_neuron_pvals, Fresps = singleNeuronRes
-                
+                TT_info, used_indices, ind_neuron_traces, ind_neuron_pvals, Fresps = singleNeuronRes
+                group_size = len(used_indices)
+
                 # Add quantification data
                 QuantDict['Group'] += [AV.NAME] * group_size
                 QuantDict['BRAIN_AREA'] += [area_name] * group_size
                 QuantDict['NeuronType'] += [neuronTYPE] * group_size
+                QuantDict['session_id'] += AV.sessions_vector[used_indices].tolist()
                 # responses to different trial types
                 QuantDict['F_VIS'] += [*Fresps[0]]
                 QuantDict['F_AUD'] += [*Fresps[1]]
@@ -643,7 +646,7 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
     # Transform to Long format
     QuantDF = QuantDF.melt(
         # columns to keep
-        id_vars=['Group', 'BRAIN_AREA', 'NeuronType', 'neuronID'],
+        id_vars=['Group', 'BRAIN_AREA', 'NeuronType', 'neuronID', 'session_id'],
         # columns to unpivot
         value_vars=['F_VIS','F_AUD',
                     # 'F_MST+','F_MST-',
@@ -746,6 +749,10 @@ def Quantification(df_long: pd.DataFrame,
             ]
 
         # first: Mann‑Whitney for all between‑group comparisons
+        # Hierarchical bootstrapping test
+        hierarchical_bootstrap = StatTest(func=hierBootstrapWrapper, 
+                                          test_long_name='Hierarchical bootstrap', test_short_name='HierBoot')
+
         annot_bw = Annotator(
             ax,
             between_pairs,
@@ -754,16 +761,31 @@ def Quantification(df_long: pd.DataFrame,
             y=yvar,
             hue='Group'
         )
+        # OLD
+        # annot_bw.configure(
+        #     # between‑group unpaired ['t-test_ind','Mann-Whitney']
+        #     test='Mann-Whitney',
+        #     comparisons_correction='Bonferroni',
+        #     text_format='star',
+        #     loc='outside',
+        #     hide_non_significant = False,
+        #     correction_format="replace"
+        # )
+        # annot_bw.apply_and_annotate()
+        
+        # NEW
         annot_bw.configure(
-            # between‑group unpaired ['t-test_ind','Mann-Whitney']
-            test='Mann-Whitney',
-            comparisons_correction='Bonferroni',
+            test=hierarchical_bootstrap,
+            comparisons_correction=None,
             text_format='star',
             loc='outside',
-            hide_non_significant = False,
+            hide_non_significant = True,
             correction_format="replace"
         )
-        annot_bw.apply_and_annotate()
+        stats_params = dict(animals = arDF['session_id'],
+                            Nboot = 10000,
+                            dist_comparison = mean_diff)
+        annot_bw.apply_test(**stats_params).annotate()
 
         # then: Wilcoxon signed‑rank (paired) for within‑group
         annot_wi = Annotator(
@@ -772,16 +794,29 @@ def Quantification(df_long: pd.DataFrame,
             y=yvar, 
             hue='Group'
         )
+        # OLD
+        # annot_wi.configure(
+        #     # within-group paired ['t-test_paired','Wilcoxon']
+        #     test='Wilcoxon', 
+        #     comparisons_correction='Bonferroni',
+        #     text_format='star',
+        #     loc='outside',
+        #     hide_non_significant = False,
+        #     correction_format="replace"
+        # )
+        # annot_wi.apply_and_annotate()
+
+        # NEW
         annot_wi.configure(
-            # within-group paired ['t-test_paired','Wilcoxon']
-            test='Wilcoxon', 
-            comparisons_correction='Bonferroni',
+            test=hierarchical_bootstrap,
+            comparisons_correction=None,
             text_format='star',
             loc='outside',
-            hide_non_significant = False,
+            hide_non_significant = True,
             correction_format="replace"
         )
-        annot_wi.apply_and_annotate()
+        annot_wi.apply_test(**stats_params).annotate()
+
         ax.set_ylim(*lim_by_nt[ntype])
         fg.tight_layout()
         fg.savefig(os.path.join(SAVEDIR,f'{ar.replace('/', '|'), ntype}_traces_QUANT{SUFFIX}'), dpi = 300)
@@ -1313,12 +1348,12 @@ if __name__ == '__main__':
     ### Venn diagram of neuron classes in in the 4 different regions
     NGDF, ARdict, SESSdict = by_areas_VENN(svg=True, pre_post='pre')
 
-    # # # Architecture analysis
-    Arch = Architecture(NGDF, ARdict, SESSdict)
-    Arch.spatial_distribution(nbins=10)
-    # Arch.neighbors()
-    # # Arch.neighbors(K = 3)
-    Arch.neighbors(K = 5)
+    # # # # Architecture analysis
+    # Arch = Architecture(NGDF, ARdict, SESSdict)
+    # Arch.spatial_distribution(nbins=10)
+    # # Arch.neighbors()
+    # # # Arch.neighbors(K = 3)
+    # Arch.neighbors(K = 5)
 
     ### Timeseries plots for neurons from different regions
     # by_areas_TSPLOT(GROUP_type = 'modulated', add_CASCADE=False)

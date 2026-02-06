@@ -258,6 +258,7 @@ def initializeMIdata()-> dict:
         'NeuronID':[],
         'Group':[],# collect group_names,
         'BrainRegion':[], # collect which brain region
+        'session_id':[], # collect which session
         
         # collect DSIs
         'DSI (VIS)' : [], 'DSI (AUD)': [], 
@@ -390,7 +391,7 @@ def prepare_long_format_Areas(out_size : int,
 
 def processFULLDFintoLONG(df: pd.DataFrame)->pd.DataFrame:
     # shared id-vars
-    id_vars = ['NeuronID','Group','BrainRegion','NeuronType']
+    id_vars = ['NeuronID','Group','BrainRegion','NeuronType', 'session_id']
     # ---------------------------------------------------
     # 1) Drop all idx columns
     idx_cols = [c for c in df.columns if c.endswith('_idx')]
@@ -462,7 +463,8 @@ def processFULLDFintoLONG(df: pd.DataFrame)->pd.DataFrame:
     df_long = df_long[
         ['NeuronID','Group','BrainRegion','NeuronType',
         'Modality','Preference','Congruency',
-        'DSI','RCI','FR']
+        'DSI','RCI','FR',
+        'session_id']
     ]
     return df_long
 

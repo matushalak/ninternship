@@ -1452,9 +1452,9 @@ def explained_variance(target_trial_locked:np.ndarray,
 # ----------- Running as a script ---------------
 if __name__ == '__main__':
     # get cleaned signals
-    # res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=True, 
-    #                           redo=True
-    #                           )
+    res1 = clean_group_signal(group_name='g1pre', yTYPE='neuron', exportDrives=True, 
+                              redo=True
+                              )
     # res2 = clean_group_signal(group_name='g2pre', yTYPE='neuron', exportDrives=True, 
     #                           redo=True
     #                           )

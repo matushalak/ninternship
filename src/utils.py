@@ -14,6 +14,7 @@ from joblib import Parallel, delayed
 from pandas import DataFrame, read_pickle
 from time import time
 from src import PYDATA, PLOTSDIR
+from types import FunctionType
 
 # ------- Hierarchical bootstrapping -----------
 ## -- helper functions --
@@ -33,7 +34,7 @@ def bootstrapAnimalOnly(values:np.ndarray, group:int, animal:int, grp:int)-> np.
     nAnimals = len(animals)
 
     # Resample animals WITH replacement
-    resampledAnimals = animals[np.random.randint(nAnimals)]
+    resampledAnimals = animals[np.random.randint(nAnimals, size = nAnimals)]
 
     sampledValues = []
 
@@ -45,12 +46,11 @@ def bootstrapAnimalOnly(values:np.ndarray, group:int, animal:int, grp:int)-> np.
 
         # Resample neurons WITH replacement (neurons are lowest level, must already contain summaries per neuron)
         nNeurons = len(v)
-        sampledValues.append(v[np.random.randint(nNeurons)])
-
+        sampledValues += v[np.random.randint(nNeurons, size=nNeurons)].tolist()
     return np.array(sampledValues)
 
 def hierBootstrapTwoGroupsAnimalNeuron(values:np.ndarray, group:np.ndarray, animal:np.ndarray, Nboot:int,
-                                       dist_comparison:function = mean_diff
+                                       dist_comparison:FunctionType = mean_diff
                                        )-> tuple[float, np.ndarray, tuple[float, float]]:
     '''
     Hierarchical bootstrap with 2 layers: animal → neuron. Based on Saravanan et al., 2020. 
@@ -74,10 +74,10 @@ def hierBootstrapTwoGroupsAnimalNeuron(values:np.ndarray, group:np.ndarray, anim
 
     # run bootstrapping for Nboot iterations
     for b in range(Nboot):
-        sampA = bootstrapAnimalOnly(values, group, animal, 1)
-        sampB = bootstrapAnimalOnly(values, group, animal, 2)
+        sampA = bootstrapAnimalOnly(values, group, animal, 0)
+        sampB = bootstrapAnimalOnly(values, group, animal, 1)
         # compute statistic of interest
-        bootDiff[b] = mean_diff(sampA, sampB)
+        bootDiff[b] = dist_comparison(sampA, sampB)
 
     # compute two-sided p-value
     pValue = 2 * min(np.mean(bootDiff >= 0), np.mean(bootDiff <= 0))
@@ -86,6 +86,42 @@ def hierBootstrapTwoGroupsAnimalNeuron(values:np.ndarray, group:np.ndarray, anim
     CI = np.percentile(bootDiff, [2.5, 97.5])
 
     return pValue, bootDiff, CI
+
+
+def hierBootstrapWrapper(valuesA:np.ndarray, valuesB:np.ndarray, **kwargs)->tuple[float, float]:
+    '''
+    Wrapper that can directly interact with statannotations package & pandas, 
+        to automatically produce significance values for pairwise tests
+    '''
+    # Preprocessing statannotations & pandas formats
+    animals = kwargs['animals']
+    Nboot:int = kwargs['Nboot']
+    dist_comparison:FunctionType = kwargs['dist_comparison']
+    
+    values = np.concat([valuesA, valuesB])
+    animalA = animals.loc[valuesA.index]
+    animalB = animals.loc[valuesB.index]
+    animal = np.concat([animalA, animalB])
+    group = np.concat([np.zeros(len(valuesA)), np.ones(len(valuesB))])
+    
+    # bootstrapped statistics
+    p, bootdiff, CI = hierBootstrapTwoGroupsAnimalNeuron(values, group, animal, Nboot, dist_comparison)
+
+    # actual statistics
+    group_ids = np.unique(group)
+    group_stats = {k:[] for k in group_ids}
+    for g in group_ids:
+        v = values[group == g]
+        anim = animal[group == g]
+        for a in np.unique(anim):
+            # animal average over its neurons
+            mean_a = v[anim == a].mean() 
+            group_stats[g].append(mean_a)
+    distg0, distg1 = [group_stats[k] for k in group_ids]
+
+    # difference on group level over per-animal summaries
+    test_stat = dist_comparison(distg0, distg1)
+    return test_stat, p
 
 
 # ------- Random -----------
@@ -156,7 +192,7 @@ def progress_bar(current_iteration: int,
 def get_sessions_overview()->dict[tuple:dict]:
     if os.path.exists(overview_file := os.path.join(PYDATA, 'SessionsOverview.pkl')):
         with open(overview_file, 'rb') as overview:
-            GROUPS_SESSIONS_DICT :dict = pickle.np.load(overview)
+            GROUPS_SESSIONS_DICT :dict = pickle.load(overview)
         return GROUPS_SESSIONS_DICT
     
     # otherwise make it
@@ -253,7 +289,7 @@ def load_audvis_files(group_condition_name:str)->tuple[
                     np.ndarray | None]:
     # indexing
     with open(f'{group_condition_name}_indexing.pkl', 'rb') as indx_f:
-        indexing = pickle.np.load(indx_f)
+        indexing = pickle.load(indx_f)
     
     neur_i = indexing['neuron_index']
     sess_i = indexing['session_index']

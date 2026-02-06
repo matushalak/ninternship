@@ -122,6 +122,7 @@ class AUDVIS:
         self.sessions = session_indexing # information about each session
         # ranges of neurons corresponding to one recording session
         self.session_neurons = self.update_session_index()
+        self.sessions_vector = np.array([s_id for s_id, (f, l) in enumerate(self.session_neurons) for _ in range(f, l)])
         # information about all ROI locations
         self.rois = ROIs 
         # per session, identify of all the presented trials

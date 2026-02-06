@@ -2,7 +2,7 @@ from src.GLM_new import design_matrix, clean_group_signal
 from src.AUDVIS import Behavior, AUDVIS, load_in_data
 from src.VisualAreas import Areas
 from src.analysis_utils import plot_avrg_trace, fluorescence_response, proportion_significance_test
-from src.utils import get_sig_label
+from src.utils import get_sig_label, hierBootstrapWrapper, mean_diff
 from src.glm_utils import drives_loader, glmSUPPLEMENT
 
 import pickle
@@ -15,6 +15,7 @@ import seaborn.objects as so
 import os
 import sklearn.cluster as skClust
 from statannotations.Annotator import Annotator
+from statannotations.stats.StatTest import StatTest
 
 from collections import defaultdict
 from typing import Literal
@@ -354,7 +355,10 @@ class EvAnalysis:
                     within_pairs.append(
                         ((reg, (g, 'A')), (reg, (g, 'Motor')))
                                         )
-            
+            # Hierarchical bootstrapping test
+            hierarchical_bootstrap = StatTest(func=hierBootstrapWrapper, 
+                                              test_long_name='Hierarchical bootstrap', test_short_name='HierBoot')
+
             # first: between‑group comparisons
             annot_bw = Annotator(
                 ax = bp.ax,
@@ -368,15 +372,30 @@ class EvAnalysis:
                             ('NR', 'A'), ('DR', 'A'),
                             ('NR', 'Motor'), ('DR', 'Motor')]
             )
+            # OLD
+            # annot_bw.configure(
+            #     test='Mann-Whitney',#'t-test_ind', 'Mann-Whitney',
+            #     comparisons_correction='Bonferroni',
+            #     text_format='star',
+            #     loc='outside',
+            #     hide_non_significant = True,
+            #     correction_format="replace"
+            # )
+            # annot_bw.apply_and_annotate()
+            
+            # NEW
             annot_bw.configure(
-                test='Mann-Whitney',#'t-test_ind', 'Mann-Whitney',
-                comparisons_correction='Bonferroni',
+                test=hierarchical_bootstrap,
+                comparisons_correction=None,
                 text_format='star',
                 loc='outside',
                 hide_non_significant = True,
                 correction_format="replace"
             )
-            annot_bw.apply_and_annotate()
+            stats_params = dict(animals = regdf['session_id'],
+                                Nboot = 10000,
+                                dist_comparison = mean_diff)
+            annot_bw.apply_test(**stats_params).annotate()
 
             # second: within-group comparison
             annot_wi = Annotator(
@@ -387,15 +406,27 @@ class EvAnalysis:
                         ('NR', 'A'), ('DR', 'A'),
                         ('NR', 'Motor'), ('DR', 'Motor')]
             )
+            # OLD
+            # annot_wi.configure(
+            #     test='Wilcoxon',#'t-test_paired', 'Wilcoxon',
+            #     comparisons_correction='Bonferroni',
+            #     text_format='star',
+            #     loc='outside',
+            #     hide_non_significant = True,
+            #     correction_format="replace"
+            # )
+            # annot_wi.apply_and_annotate()
+
+            # NEW
             annot_wi.configure(
-                test='Wilcoxon',#'t-test_paired', 'Wilcoxon',
-                comparisons_correction='Bonferroni',
+                test=hierarchical_bootstrap,
+                comparisons_correction=None,
                 text_format='star',
                 loc='outside',
                 hide_non_significant = True,
                 correction_format="replace"
             )
-            annot_wi.apply_and_annotate()
+            annot_wi.apply_test(**stats_params).annotate()
 
             plt.ylim(0, 1) if calc == 'averaged' else plt.ylim(0, 0.25)
             # plt.tight_layout()
@@ -570,6 +601,7 @@ def average_clean_plot(AVs:list[AUDVIS],
     # quant comparisons
     quantFRdrives = {'Group':[],
                       'Region':[],
+                      'session_id':[],
                       'Predictor':[],
                       'FR':[]
                       }
@@ -593,6 +625,8 @@ def average_clean_plot(AVs:list[AUDVIS],
 
         for iarea, (area_name, area_indices) in enumerate(AR.area_indices.items()):
             print(f"Analyzing drives in area {area_name}: {list(drives)}")
+            # Well-modelled neurons in this area
+            to_use_neurons = np.intersect1d(selection, area_indices)
             if supplement:
                 alldrives_neuron_trials = dict()
             for iname, (name, sig) in enumerate(drives.items()):
@@ -605,7 +639,7 @@ def average_clean_plot(AVs:list[AUDVIS],
                     for itg, tg in enumerate(trial_groups):
                         if tt in tg:
                             ttname = trial_group_labels[itg]
-                    sig2[ttname].append(sigtt[:,:,np.intersect1d(selection, area_indices)])
+                    sig2[ttname].append(sigtt[:,:,to_use_neurons])
                 del sig_dict # free up memory
                 # concatenate arrays within sig2
                 for trialname, trialarrays in sig2.items():
@@ -622,9 +656,11 @@ def average_clean_plot(AVs:list[AUDVIS],
                         if name in ('Adrive', 'Motordrive') and tn == 'A':
                             driveFR = fluorescence_response(signal=grouped_trial_all_neurons, window=AV.TRIAL, retMEAN_only=True)
                             outsize = driveFR.size
+                            assert outsize == len(to_use_neurons)
                             # save to dict
                             quantFRdrives['Group'] += [AV.NAME]*outsize
                             quantFRdrives['Region'] += [area_name]*outsize
+                            quantFRdrives['session_id'] += AV.sessions_vector[to_use_neurons].tolist()
                             quantFRdrives['Predictor'] += [name]*outsize
                             quantFRdrives['FR'] += driveFR.tolist()
 
@@ -714,6 +750,10 @@ def driveQuantPlot(savedir:str):
                         capsize = 0.3
                         )
         
+        # Hierarchical bootstrapping test
+        hierarchical_bootstrap = StatTest(func=hierBootstrapWrapper, 
+                                          test_long_name='Hierarchical bootstrap', test_short_name='HierBoot')
+
         # first: between‑group comparisons
         annot_bw = Annotator(
             ax = plot.ax,
@@ -724,15 +764,30 @@ def driveQuantPlot(savedir:str):
             hue='Group',
             hue_order=['NR', 'DR']
         )
+        # OLD
+        # annot_bw.configure(
+        #     test='t-test_ind',#'t-test_ind', 'Mann-Whitney',
+        #     comparisons_correction='Bonferroni',
+        #     text_format='star',
+        #     loc='outside',
+        #     hide_non_significant = True,
+        #     correction_format="replace"
+        # )
+        # annot_bw.apply_and_annotate()
+
+        # NEW
         annot_bw.configure(
-            test='t-test_ind',#'t-test_ind', 'Mann-Whitney',
-            comparisons_correction='Bonferroni',
+            test=hierarchical_bootstrap,
+            comparisons_correction=None,
             text_format='star',
             loc='outside',
             hide_non_significant = True,
             correction_format="replace"
         )
-        annot_bw.apply_and_annotate()
+        stats_params = dict(animals = regDF['session_id'],
+                            Nboot = 10000,
+                            dist_comparison = mean_diff)
+        annot_bw.apply_test(**stats_params).annotate()
 
         # second: within-group comparison
         annot_wi = Annotator(
@@ -743,15 +798,27 @@ def driveQuantPlot(savedir:str):
         hue='Group',
         hue_order=['NR', 'DR']
         )
+        # OLD
+        # annot_wi.configure(
+        #     test='t-test_paired',#'t-test_paired', 'Wilcoxon',
+        #     comparisons_correction='Bonferroni',
+        #     text_format='star',
+        #     loc='outside',
+        #     hide_non_significant = True,
+        #     correction_format="replace"
+        # )
+        # annot_wi.apply_and_annotate()
+
+        # NEW
         annot_wi.configure(
-            test='t-test_paired',#'t-test_paired', 'Wilcoxon',
-            comparisons_correction='Bonferroni',
+            test=hierarchical_bootstrap,
+            comparisons_correction=None,
             text_format='star',
             loc='outside',
             hide_non_significant = True,
             correction_format="replace"
         )
-        annot_wi.apply_and_annotate()
+        annot_wi.apply_test(**stats_params).annotate()
 
         plt.ylim(-0.01, 0.3)
         plt.yticks([0,0.15,0.3], ['0','0.15','0.3'])
@@ -781,13 +848,13 @@ if __name__ == '__main__':
     EVa.preditor_comparison(tt='A', calc='averaged', dataset='held_out')
 
     # Trial-level (low EV - but compared to other studies relatively high) supplementary
-    # would be better to quantify this only during stimulus presentation 
+    # NOTE: would be better to quantify this only during stimulus presentation 
     # or at least after stimulus onset:end of trial (right now quantified over the whole session essentially)
     EVa.preditor_comparison(tt = 'AV', calc='trial', dataset='held_out')
-    # EVa.preditor_comparison(tt = 'V', calc='trial', dataset='held_out')
-    # EVa.preditor_comparison(tt = 'A', calc='trial', dataset='held_out')
+    EVa.preditor_comparison(tt = 'V', calc='trial', dataset='held_out')
+    EVa.preditor_comparison(tt = 'A', calc='trial', dataset='held_out')
 
-    # # Analysis 2) Distribution of neurons based on explained variance
+    # Analysis 2) Distribution of neurons based on explained variance
     # XXX main!
     EVa.order_neurons(tt = 'AV', calc='averaged', dataset='held_out')
     # supplementary
@@ -821,10 +888,10 @@ if __name__ == '__main__':
                     # XXX this below will only plot significantly modelled auditory neurons
                        well_mod_for_quant=EVa.well_modelled(calc='averaged', tt = 'A') ,
                     # XXX this does supplemental analyses instead of the main figure
-                       supplement_type='onset'
+                      supplement_type='onset'
                        )
 
-    # # Analysis 4) Plot
+    # Analysis 4) Plot
     driveQuantPlot(savedir=EVa.saveDIR)
     
 

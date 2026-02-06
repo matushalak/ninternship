@@ -338,13 +338,13 @@ class Analyze:
         if not return_single_neuron_data:
             # returns just the average trace for across all neurons in indices
             return [(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
-                    for trace in neurons_to_study)], len(indices)
+                    for trace in neurons_to_study)], indices
         else:
             FRs = [FR[indices] for FR in fluorescences]
             # for each trial type, want the traces of all neurons in indices
             return ([(avr, sem) for _, avr, sem in (calc_avrg_trace(trace, self.time, PLOT = False)
                     for trace in neurons_to_study)], 
-                    len(indices), 
+                    indices, 
                     neurons_to_study, # traces of neurons per region
                     [ttStat.pvalue[indices] if hasattr(ttStat, 'pvalue') else ttStat[indices]
                      for ttStat in self.TT_STATS], # stats of neuron per region

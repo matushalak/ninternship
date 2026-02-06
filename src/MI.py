@@ -5,11 +5,13 @@ import os
 import seaborn as sns
 import matplotlib.pyplot as plt
 from statannotations.Annotator import Annotator
+from statannotations.stats.StatTest import StatTest
 import src.multisens_calcs as MScalc
 from src.Analyze import Analyze
 from src.AUDVIS import AUDVIS, Behavior, load_in_data
 from src.VisualAreas import Areas
 from src.analysis_utils import calc_avrg_trace, build_snake_grid, snake_plot, plot_avrg_trace
+from src.utils import hierBootstrapWrapper, mean_diff
 from typing import Literal
 from src import MIPLOTSDIR, PYDATA, PLOTSDIR
 NEWMIPLOTS = os.path.join(PLOTSDIR, 'MInewplots')
@@ -61,6 +63,8 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
         n_neurons = Analys.FLUORO_RESP.shape[0]
         MIdata_dict['NeuronID'] += np.arange(n_neurons).tolist()
         last_n_neur += n_neurons
+        MIdata_dict['session_id'] += Av.sessions_vector.tolist()
+
         if byAreas:
             # get indices for each
             Ar_indices = Areas.separate_areas(Av)
@@ -92,36 +96,37 @@ def MI(pre_post: Literal['pre', 'post', 'both'] = 'pre',
     
     # after making the dataframe for ALL neurons, 
     # do analysis for Areas & Neuron groups of interest
-    for sub, sub_indices in subsets.items():
-        if all_RESP:
-            if 'TOTAL' not in sub:
-                continue
-        MIdata = MIdataFULL.iloc[sub_indices,:].copy()
-        if GROUP_type is None:
-            assert MIdata.shape == MIdataFULL.shape, 'If not splitting by groups, should use the FULL dataframe'
-        else:
-            assert MIdata.isna().sum().all() == 0
-            saveDir_subset = os.path.join(saveDir, sub)
-            if not os.path.exists(saveDir_subset):
-                os.makedirs(saveDir_subset)
+    # NOTE: old analysis, still some good things not present in new analysis
+    # for sub, sub_indices in subsets.items():
+    #     if all_RESP:
+    #         if 'TOTAL' not in sub:
+    #             continue
+    #     MIdata = MIdataFULL.iloc[sub_indices,:].copy()
+    #     if GROUP_type is None:
+    #         assert MIdata.shape == MIdataFULL.shape, 'If not splitting by groups, should use the FULL dataframe'
+    #     else:
+    #         assert MIdata.isna().sum().all() == 0
+    #         saveDir_subset = os.path.join(saveDir, sub)
+    #         if not os.path.exists(saveDir_subset):
+    #             os.makedirs(saveDir_subset)
         
-        includeDict = {'VIS':(True, False),
-                       'AUD':(False, True),
-                       'MST':(True, True)}
+    #     includeDict = {'VIS':(True, False),
+    #                    'AUD':(False, True),
+    #                    'MST':(True, True)}
         
-        includeVIS, includeAUD = includeDict[sub]
+    #     includeVIS, includeAUD = includeDict[sub]
 
-        if byAreas: # do analysis for (Responsive) Neuron groups of interest separately for each area
-            # exclude neurons outside areas of interest
-            MIdata_bA = MIdata[~(MIdata['BrainRegion'] == '')]
-            for region in MIdata_bA['BrainRegion'].unique():
-                print('Starting MI analysis for {} region'.format(region))
-                MIdata_region = MIdata_bA.loc[MIdata_bA['BrainRegion'] == region].copy()
-                plot_MI_data(MIdata_region, name = region.replace('/', '|'), kde=False, savedir=saveDir_subset, 
-                             includeVIS=includeVIS, includeAUD=includeAUD)
+    #     if byAreas: # do analysis for (Responsive) Neuron groups of interest separately for each area
+    #         # exclude neurons outside areas of interest
+    #         MIdata_bA = MIdata[~(MIdata['BrainRegion'] == '')]
+    #         for region in MIdata_bA['BrainRegion'].unique():
+    #             print('Starting MI analysis for {} region'.format(region))
+    #             MIdata_region = MIdata_bA.loc[MIdata_bA['BrainRegion'] == region].copy()
+    #             plot_MI_data(MIdata_region, name = region.replace('/', '|'), kde=False, savedir=saveDir_subset, 
+    #                          includeVIS=includeVIS, includeAUD=includeAUD)
 
-        else: # just do analysis for (Responsive) Neuron groups of interest across all areas
-            plot_MI_data(MIdata, kde=False, savedir=saveDir_subset)
+    #     else: # just do analysis for (Responsive) Neuron groups of interest across all areas
+    #         plot_MI_data(MIdata, kde=False, savedir=saveDir_subset)
     
     return MIdataFULL
     
@@ -247,7 +252,7 @@ def MIanalysis(MIDF:pd.DataFrame):
 
     # to look at FR: filter on FRdf (where FR is not NaN)
     # FRall(longMIDF, hue_order, palette)
-
+    
     # # direction selectivity for different neuron types
     DSIall(longMIDF=longMIDF, hue_order=hue_order, palette=palette)
 
@@ -310,7 +315,7 @@ def FRall(longMIDF:pd.DataFrame, hue_order:list, palette:dict,
 
 def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
     # to look at DSI: filter on DSIdf (one where DSI is not None / NaN)
-    DSIdf = longMIDF.loc[~longMIDF['DSI'].isna()].iloc[:,[0,1,2,3,4,7]].copy()
+    DSIdf = longMIDF.loc[~longMIDF['DSI'].isna()].iloc[:,[0,1,2,3,4,7, -1]].copy()
     DSIdf['group_hue'] = DSIdf[['Group', 'Modality']].apply(tuple, axis = 1)
     hue_order=[('NRpre', 'VIS'),('DRpre', 'VIS'),
                 ('NRpre', 'AUD'),('DRpre', 'AUD')]
@@ -347,6 +352,10 @@ def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
                 if nt == 'M' or nt == mod[0]:
                     between_pairs.append(((reg, ('NRpre', mod)),(reg, ('DRpre', mod))))
         
+        # Hierarchical bootstrapping test
+        hierarchical_bootstrap = StatTest(func=hierBootstrapWrapper, 
+                                          test_long_name='Hierarchical bootstrap', test_short_name='HierBoot')
+
         annot_be = Annotator(
             ax = dsi.ax, pairs = between_pairs,
             plot = 'barplot',
@@ -355,15 +364,29 @@ def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
             y='DSI', 
             hue='group_hue', hue_order = hue_order
         )
+        # OLD
+        # annot_be.configure(
+        #     test='Mann-Whitney', 
+        #     comparisons_correction='Bonferroni',
+        #     text_format='star',
+        #     loc='outside',
+        #     hide_non_significant = True,
+        #     correction_format="replace"
+        # )
+        # annot_be.apply_and_annotate()
+        # NEW
         annot_be.configure(
-            test='Mann-Whitney', 
-            comparisons_correction='Bonferroni',
+            test=hierarchical_bootstrap,
+            comparisons_correction=None,
             text_format='star',
             loc='outside',
             hide_non_significant = True,
             correction_format="replace"
         )
-        annot_be.apply_and_annotate()
+        stats_params = dict(animals = ntdf['session_id'],
+                            Nboot = 10000,
+                            dist_comparison = mean_diff)
+        annot_be.apply_test(**stats_params).annotate()
 
         annot_wi = Annotator(
             ax = dsi.ax, pairs = within_pairs,
@@ -373,15 +396,28 @@ def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
             y='DSI', 
             hue='group_hue', hue_order = hue_order
         )
+        # OLD
+        # annot_wi.configure(
+        #     test='Wilcoxon', 
+        #     comparisons_correction='Bonferroni',
+        #     text_format='star',
+        #     loc='outside',
+        #     hide_non_significant = True,
+        #     correction_format="replace"
+        # )
+        # annot_wi.apply_and_annotate()
+
+        # NEW
         annot_wi.configure(
-            test='Wilcoxon', 
-            comparisons_correction='Bonferroni',
+            test=hierarchical_bootstrap,
+            comparisons_correction=None,
             text_format='star',
             loc='outside',
             hide_non_significant = True,
             correction_format="replace"
         )
-        annot_wi.apply_and_annotate()
+        annot_wi.apply_test(**stats_params).annotate()
+
         plt.tight_layout()
         plt.savefig(os.path.join(NEWMIPLOTS, f'DSIareas(NeuronType={nt}).svg'))
         plt.close()
@@ -391,7 +427,7 @@ def RCIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
     Does RCI proportions as well as RCI comparisons between congruent & incongruent etc.
     '''
     # to look at RCI: filter on RCIdf (one where RCI is not NaN)
-    RCIdf = longMIDF.loc[~longMIDF['RCI'].isna()].iloc[:,[0,1,2,3,4,5, 6, 8]].copy()
+    RCIdf = longMIDF.loc[~longMIDF['RCI'].isna()].iloc[:,[0,1,2,3,4,5, 6, 8, -1]].copy()
     pos = np.where(RCIdf['RCI'] > 0)[0]
     neg = np.where(RCIdf['RCI'] < 0)[0]
     sign = np.empty_like(RCIdf['RCI'], dtype=str)
@@ -465,6 +501,9 @@ def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict,
             for preference in ('pref', 'nonpref'):
                 between_pairs.append(((reg, ('NRpre', preference)),(reg, ('DRpre', preference))))
         
+        # Hierarchical bootstrapping test
+        hierarchical_bootstrap = StatTest(func=hierBootstrapWrapper, 
+                                          test_long_name='Hierarchical bootstrap', test_short_name='HierBoot')
         annot_be = Annotator(
             ax = rci.ax, pairs = between_pairs,
             plot = 'barplot',
@@ -473,15 +512,30 @@ def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict,
             y=yvar, 
             hue='group_hue', hue_order = hue_order
         )
+        # OLD
+        # annot_be.configure(
+        #     test='Mann-Whitney', 
+        #     comparisons_correction='Bonferroni',
+        #     text_format='star',
+        #     loc='outside',
+        #     hide_non_significant = True,
+        #     correction_format="replace"
+        # )
+        # annot_be.apply_and_annotate()
+
+        # NEW
         annot_be.configure(
-            test='Mann-Whitney', 
-            comparisons_correction='Bonferroni',
+            test=hierarchical_bootstrap,
+            comparisons_correction=None,
             text_format='star',
             loc='outside',
             hide_non_significant = True,
             correction_format="replace"
         )
-        annot_be.apply_and_annotate()
+        stats_params = dict(animals = TypeDF['session_id'],
+                            Nboot = 10000,
+                            dist_comparison = mean_diff)
+        annot_be.apply_test(**stats_params).annotate()
 
         annot_wi = Annotator(
             ax = rci.ax, pairs = within_pairs,
@@ -491,16 +545,28 @@ def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict,
             y=yvar, 
             hue='group_hue', hue_order = hue_order
         )
+        # OLD
+        # annot_wi.configure(
+        #     test='Wilcoxon', 
+        #     comparisons_correction='Bonferroni',
+        #     text_format='star',
+        #     loc='outside',
+        #     hide_non_significant = True,
+        #     correction_format="replace"
+        # )
+        # annot_wi.apply_and_annotate()
+
+        # NEW
         annot_wi.configure(
-            test='Wilcoxon', 
-            comparisons_correction='Bonferroni',
+            test=hierarchical_bootstrap,
+            comparisons_correction=None,
             text_format='star',
             loc='outside',
             hide_non_significant = True,
             correction_format="replace"
         )
-        annot_wi.apply_and_annotate()
-
+        annot_wi.apply_test(**stats_params).annotate()
+        
         plt.tight_layout()
         abstag = '' if not abs else 'abs'
         if Type == 'M':
