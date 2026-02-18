@@ -659,7 +659,7 @@ def by_areas_TSPLOT(GROUP_type:Literal['modulated',
     plt.close()
     return QuantDF
 
-# TODO: Two-way ANOVA / Kruskal-Wallis
+# TODO: Two-way ANOVA / Kruskal-Wallis?
 # Main effect of GROUP & Main effect of TT + Post-hoc (Tukey)
 def Quantification(df_long: pd.DataFrame,
                    pre_post: Literal['pre', 'post', 'both'] = 'pre',
@@ -885,7 +885,7 @@ class Architecture:
         self.df['Caudo-Rostral'] = (self.df['y'].max() - self.df['y']
                                     ) / (self.df['y'].max() - self.df['y'].min())
         
-        # HARDCODED 
+        # NOTE: HARDCODED 
         # V1cX = np.float64(1711.7525966108533), V1cY = np.float64(2372.725249665462)
         v1center = np.array((1711.7525966108533, 2372.725249665462))[np.newaxis,:]
         positions = np.column_stack((self.df.x.to_numpy(), self.df.y.to_numpy()))
@@ -1343,8 +1343,25 @@ def get_histogramDF(spatialDF:pd.DataFrame, vars:list[str], nbins:int,
     out = pd.concat(bigdfs, ignore_index=True)
     return out
 
+### helper function to generate one DF with neuron, session, group, area overview for all recorded neurons across areas and sessions (for architecture analysis)
+def make_neuron_session_group_area_DF(pre_post:Literal['pre', 'post', 'both'] = 'both')->pd.DataFrame:
+    out_df = {'NeuronID':[], 'Session':[], 'Group':[], 'Area':[]}
+    AVs : tuple[AUDVIS] = load_in_data(pre_post=pre_post)
+    ARs: tuple[Areas] = tuple(Areas(av) for av in AVs)
+    for av, ar in zip(AVs, ARs):
+        out_df['NeuronID'] += list(range(av.session_neurons[-1][-1]))
+        out_df['Session'] += av.sessions_vector.tolist()
+        out_df['Group'] += [av.NAME] * av.session_neurons[-1][-1]
+        out_df['Area'] += ar.dfROI['Region'].tolist()
+    
+    out_df = pd.DataFrame(out_df)
+    out_df.to_csv(os.path.join(PYDATA, f'NeuronSessionGroupAreaDF_{pre_post}.csv'), index=False)
+    print(f'Neuron-session-group-area DF saved to {os.path.join(PYDATA, f"NeuronSessionGroupAreaDF_{pre_post}.csv")}')
+    return out_df   
 
 if __name__ == '__main__':
+    make_neuron_session_group_area_DF()
+    breakpoint()
     ### Venn diagram of neuron classes in in the 4 different regions
     NGDF, ARdict, SESSdict = by_areas_VENN(svg=True, pre_post='pre')
 

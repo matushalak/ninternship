@@ -23,6 +23,17 @@ from typing import Literal
 from src import PYDATA, PLOTSDIR
 
 # ------------ Class that analyzes explained variance calculated above -----------
+def fix_df(resultsDF:pd.DataFrame):
+    neuron_session_group_area_df = pd.read_csv(os.path.join(PYDATA, 'NeuronSessionGroupAreaDF_both.csv'))
+    tiled_ids = np.repeat(neuron_session_group_area_df['NeuronID'].tolist(), 4)
+    resDF = resultsDF.copy()
+    resDF['neuron_id'] = tiled_ids
+    neuron_session_group_area_df.rename(columns={'NeuronID':'neuron_id',
+                                                 'Session':'session_id',
+                                                 'Group':'group_id'}, inplace=True)
+    new_df = resDF.merge(neuron_session_group_area_df, on=['neuron_id', 'session_id', 'group_id'], how='left')
+    new_df.to_csv(os.path.join(PYDATA, 'GLMresults_w_areas.csv'), index=False)
+
 class EvAnalysis:
     def __init__(self,
                  resultsDF: str | pd.DataFrame,
@@ -61,6 +72,8 @@ class EvAnalysis:
         
         # load DF with results
         self.df = resultsDF
+        fix_df(resultsDF)
+        breakpoint()
         
         # load in areas into a dictionary
         self.Areas =  {ar.NAME:ar for ar in ARs}
@@ -858,9 +871,9 @@ if __name__ == '__main__':
     # XXX main!
     EVa.order_neurons(tt = 'AV', calc='averaged', dataset='held_out')
     # supplementary
-    EVa.order_neurons(tt = 'A', calc='averaged', dataset='held_out')
-    EVa.order_neurons(tt = 'V', calc='averaged', dataset='held_out')
-    EVa.order_neurons(tt = 'AV', calc='trial', dataset='held_out')
+    # EVa.order_neurons(tt = 'A', calc='averaged', dataset='held_out')
+    # EVa.order_neurons(tt = 'V', calc='averaged', dataset='held_out')
+    # EVa.order_neurons(tt = 'AV', calc='trial', dataset='held_out')
     
     # # Analysis 3-4) Average drives plot over well-modelled neurons + examples of well-modelled neurons
     # main

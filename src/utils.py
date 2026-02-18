@@ -21,17 +21,26 @@ from types import FunctionType
 def mean_diff(distA:np.ndarray, distB:np.ndarray)->float:
     return np.mean(distA) - np.mean(distB)
 
-def bootstrapAnimalOnly(values:np.ndarray, group:int, animal:int, grp:int)-> np.ndarray:
+def bootstrapAnimalOnly(values:np.ndarray, group:np.ndarray, animal:np.ndarray, grp:int,
+                        size_restrict:bool)-> np.ndarray:
     '''
     Sample animals (with replacement), then sample neurons within animals (with replacement)
     '''
+    groups = np.unique(group)
+    assert len(groups) == 2, 'This function is designed for 2 groups only'
+    
+    # Sample minimum number of animals per group
+    min_nAnimals = min([len(np.unique(animal[group == g])) for g in groups])
+    # Sample minimum number of neurons per animal
+    min_nNeurons = min([len(values[(group == g) & (animal == a)]) for g in groups for a in np.unique(animal[group == g])])
+    
     # Select group
     idxG = group == grp
     values = values[idxG]
     animal = animal[idxG]
 
     animals = np.unique(animal)
-    nAnimals = len(animals)
+    nAnimals = len(animals) if not size_restrict else min_nAnimals
 
     # Resample animals WITH replacement
     resampledAnimals = animals[np.random.randint(nAnimals, size = nAnimals)]
@@ -45,12 +54,12 @@ def bootstrapAnimalOnly(values:np.ndarray, group:int, animal:int, grp:int)-> np.
         v = values[idxA]
 
         # Resample neurons WITH replacement (neurons are lowest level, must already contain summaries per neuron)
-        nNeurons = len(v)
+        nNeurons = len(v) if not size_restrict else min_nNeurons
         sampledValues += v[np.random.randint(nNeurons, size=nNeurons)].tolist()
     return np.array(sampledValues)
 
 def hierBootstrapTwoGroupsAnimalNeuron(values:np.ndarray, group:np.ndarray, animal:np.ndarray, Nboot:int,
-                                       dist_comparison:FunctionType = mean_diff
+                                       dist_comparison:FunctionType = mean_diff, size_restrict:bool = True
                                        )-> tuple[float, np.ndarray, tuple[float, float]]:
     '''
     Hierarchical bootstrap with 2 layers: animal → neuron. Based on Saravanan et al., 2020. 
@@ -61,6 +70,7 @@ def hierBootstrapTwoGroupsAnimalNeuron(values:np.ndarray, group:np.ndarray, anim
         animal = (M,) np.ndarray of np.unique number per animal.
         Nboot = int number of bootstraps for calculation. 1000 to 10000 acceptable.
         dist_comparison(distA, distB)->float: function that compares two distributions to produce statistic of interest
+        size_restrict: bool, whether to restrict the number of animals and neurons for bootstrapping to the minimum across groups.
     
     Returns:
         pValue: float, bootstrapped p-value for statistical test of interest
@@ -74,8 +84,8 @@ def hierBootstrapTwoGroupsAnimalNeuron(values:np.ndarray, group:np.ndarray, anim
 
     # run bootstrapping for Nboot iterations
     for b in range(Nboot):
-        sampA = bootstrapAnimalOnly(values, group, animal, 0)
-        sampB = bootstrapAnimalOnly(values, group, animal, 1)
+        sampA = bootstrapAnimalOnly(values, group, animal, 0, size_restrict=size_restrict)
+        sampB = bootstrapAnimalOnly(values, group, animal, 1, size_restrict=size_restrict)
         # compute statistic of interest
         bootDiff[b] = dist_comparison(sampA, sampB)
 
@@ -97,6 +107,7 @@ def hierBootstrapWrapper(valuesA:np.ndarray, valuesB:np.ndarray, **kwargs)->tupl
     animals = kwargs['animals']
     Nboot:int = kwargs['Nboot']
     dist_comparison:FunctionType = kwargs['dist_comparison']
+    size_restrict:bool = kwargs.get('size_restrict', True)
     
     values = np.concat([valuesA, valuesB])
     animalA = animals.loc[valuesA.index]
@@ -105,8 +116,8 @@ def hierBootstrapWrapper(valuesA:np.ndarray, valuesB:np.ndarray, **kwargs)->tupl
     group = np.concat([np.zeros(len(valuesA)), np.ones(len(valuesB))])
     
     # bootstrapped statistics
-    p, bootdiff, CI = hierBootstrapTwoGroupsAnimalNeuron(values, group, animal, Nboot, dist_comparison)
-
+    p, bootdiff, CI = hierBootstrapTwoGroupsAnimalNeuron(values, group, animal, Nboot, dist_comparison, size_restrict)
+    
     # actual statistics
     group_ids = np.unique(group)
     group_stats = {k:[] for k in group_ids}
