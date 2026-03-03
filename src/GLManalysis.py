@@ -73,7 +73,6 @@ class EvAnalysis:
         # load DF with results
         self.df = resultsDF
         fix_df(resultsDF)
-        breakpoint()
         
         # load in areas into a dictionary
         self.Areas =  {ar.NAME:ar for ar in ARs}
@@ -98,6 +97,7 @@ class EvAnalysis:
         # add brain areas to each neuron
         self.df = self.add_brain_areas()
 
+        self.df.to_csv(os.path.join(PYDATA, 'GLM_ev_big_df.csv'), index=False)
         self.saveDIR = os.path.join(PLOTSDIR, 'GLManalysis')
         if not os.path.exists(self.saveDIR):
             os.makedirs(self.saveDIR)
@@ -199,12 +199,13 @@ class EvAnalysis:
         
         return long_significanceDF
 
-
     def add_absolute_neuron_ids(self):
-        n_per_group = self.df.groupby("group_id").size().values // self.df["trial_type"].nunique()
-        neuron_ids = np.concatenate([np.repeat(np.arange(npg), repeats=self.df["trial_type"].nunique())
-                                    for npg in n_per_group])
-        self.df["neuron_id_overall"] = neuron_ids
+        n_trial_types = self.df["trial_type"].nunique()
+        group_row_counts = self.df.groupby("group_id", sort=False).size()
+        n_per_group = (group_row_counts // n_trial_types).astype(int).to_dict()
+        self.df["neuron_id_overall"] = (
+            self.df.groupby("group_id", sort=False).cumcount() // n_trial_types
+        ).to_numpy()
         return n_per_group
     
 
@@ -841,11 +842,9 @@ def driveQuantPlot(savedir:str):
 
 if __name__ == '__main__':
     # don't actually need design matrix
-    gXY, AVs = design_matrix(pre_post='pre', group='both', returnAVs=True, 
+    gXY, AVs = design_matrix(pre_post='both', group='both', returnAVs=True, 
                             #  show=True
                              )
-    AVs = load_in_data(pre_post='pre')
-    
     # Initialize class
     EVa = EvAnalysis(resultsDF=os.path.join(PYDATA, 
                                             'GLM_ev_results_neuron.csv'), 
@@ -906,7 +905,4 @@ if __name__ == '__main__':
 
     # Analysis 4) Plot
     driveQuantPlot(savedir=EVa.saveDIR)
-    
-
-    
     
