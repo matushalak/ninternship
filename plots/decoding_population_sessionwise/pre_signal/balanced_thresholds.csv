@@ -1,0 +1,5 @@
+area,balanced_min_sessions_per_group,balanced_neuron_threshold,g1pre_sessions_total,g1pre_sessions_balanced,g1pre_neurons_max,g1pre_neurons_min,g2pre_sessions_total,g2pre_sessions_balanced,g2pre_neurons_max,g2pre_neurons_min
+A/RL/AL,2,113,8,2,169,3,7,2,149,15
+AM/PM,2,11,3,2,96,10,4,3,186,5
+LM,2,2,2,2,64,45,2,2,71,2
+V1,2,334,6,2,397,26,8,2,442,10

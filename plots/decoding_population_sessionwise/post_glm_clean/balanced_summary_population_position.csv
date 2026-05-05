@@ -1,0 +1,17 @@
+group,area,task,analysis,signal_source,scoring,mean_score,std_score,sem_score,n_sessions,mean_neurons,min_neurons,max_neurons
+g1post,A/RL/AL,A_position,timepoint_position,glm_clean,balanced_accuracy,0.1325308641975308,0.0011348627352377242,0.0008024691358025082,2,166.0,157,175
+g1post,A/RL/AL,V_position,timepoint_position,glm_clean,balanced_accuracy,0.18185185185185185,0.09899494936611672,0.07000000000000005,2,166.0,157,175
+g1post,AM/PM,A_position,timepoint_position,glm_clean,balanced_accuracy,0.11203703703703699,0.008817010481461935,0.006234567901234601,2,49.5,34,65
+g1post,AM/PM,V_position,timepoint_position,glm_clean,balanced_accuracy,0.1229012345679012,0.01283267862153367,0.009074074074074095,2,49.5,34,65
+g1post,LM,A_position,timepoint_position,glm_clean,balanced_accuracy,0.11148148148148146,0.0015713484026368364,0.0011111111111111564,2,76.0,75,77
+g1post,LM,V_position,timepoint_position,glm_clean,balanced_accuracy,0.18518518518518515,0.019903746433399074,0.014074074074074044,2,76.0,75,77
+g1post,V1,A_position,timepoint_position,glm_clean,balanced_accuracy,0.15895061728395055,0.011435924485856544,0.008086419753086445,2,388.5,385,392
+g1post,V1,V_position,timepoint_position,glm_clean,balanced_accuracy,0.28888888888888886,0.02461779164130944,0.017407407407407413,2,388.5,385,392
+g2post,A/RL/AL,A_position,timepoint_position,glm_clean,balanced_accuracy,0.15302469135802466,0.004102965273551603,0.0029012345679012563,2,127.5,120,135
+g2post,A/RL/AL,V_position,timepoint_position,glm_clean,balanced_accuracy,0.21586419753086417,0.0594493478997579,0.042037037037037046,2,127.5,120,135
+g2post,AM/PM,A_position,timepoint_position,glm_clean,balanced_accuracy,0.13864197530864197,0.017983209496843067,0.012716049382716053,2,188.0,181,195
+g2post,AM/PM,V_position,timepoint_position,glm_clean,balanced_accuracy,0.18469135802469128,0.03963289859983859,0.02802469135802469,2,188.0,181,195
+g2post,LM,A_position,timepoint_position,glm_clean,balanced_accuracy,0.11234567901234566,0.05080693168525568,0.03592592592592595,2,32.5,5,60
+g2post,LM,V_position,timepoint_position,glm_clean,balanced_accuracy,0.19413580246913575,0.11392275919116598,0.08055555555555556,2,32.5,5,60
+g2post,V1,A_position,timepoint_position,glm_clean,balanced_accuracy,0.16209876543209875,0.01553888975940806,0.010987654320987639,2,449.5,379,520
+g2post,V1,V_position,timepoint_position,glm_clean,balanced_accuracy,0.2833333333333333,0.016411861094206236,0.0116049382716049,2,449.5,379,520
