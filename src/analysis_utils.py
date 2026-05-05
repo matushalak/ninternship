@@ -25,7 +25,6 @@ def trialsSessionToNeurons(trials:np.ndarray,
         start_neur, end_neur = session_neurons[isess]
         n_sess_neur = end_neur - start_neur
         neur_trials.append(np.tile(sess_tr, (1, n_sess_neur)))
-    breakpoint()
     neur_trials = np.column_stack(neur_trials)
     return neur_trials
 

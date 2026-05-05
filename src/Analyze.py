@@ -60,7 +60,8 @@ class Analyze:
             self.TT_zeta = responsive_zeta(SPECIFIEDcond = av.NAME, signal_to_use = 'dF/F0',
                                            RegressOUT_behavior=False)
         # get GLM cleaned signal
-        self.SIG = clean_group_signal(group_name=av.NAME) #av.zsig_CORR
+        pre_post = 'post' if 'post' in av.NAME else 'pre'
+        self.SIG = clean_group_signal(group_name=av.NAME, pre_post=pre_post) #av.zsig_CORR
         # Get Fluorescence response statistics
         self.FLUORO_RESP: np.ndarray = fluorescence_response(
             signal = av.separate_signal_by_trial_types(
