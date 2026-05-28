@@ -62,7 +62,7 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(result.scores.shape[0], n_time)
         self.assertTrue(np.all(result.mean_score > 0.9))
 
-    def test_bootstrap_utilities_return_expected_row_counts(self):
+    def test_equal_neuron_subsampling_returns_expected_row_counts(self):
         rng = np.random.default_rng(3)
         labels = np.repeat([0, 1], 30)
         signal = rng.normal(scale=0.35, size=(60, 5, 8))
@@ -81,20 +81,8 @@ class DecoderTests(unittest.TestCase):
             neuron_mode="population",
             temporal_mode="aggregate",
         )
-        learning_curve = decoder.learning_curve(
-            signal=signal,
-            labels=labels,
-            neuron_indices=np.arange(6),
-            neuron_counts=[1, 3, 6],
-            n_boot=2,
-            neuron_mode="population",
-            temporal_mode="aggregate",
-        )
-
         self.assertEqual(len(subsampling), 8)
         self.assertEqual(set(subsampling["n_neurons"]), {3})
-        self.assertEqual(len(learning_curve), 6)
-        self.assertEqual(set(learning_curve["n_neurons"]), {1, 3, 6})
 
 
 if __name__ == "__main__":

@@ -11,7 +11,11 @@ from src.Analyze import Analyze
 from src.AUDVIS import AUDVIS, Behavior, load_in_data
 from src.VisualAreas import Areas
 from src.analysis_utils import calc_avrg_trace, build_snake_grid, snake_plot, plot_avrg_trace
-from src.utils import hierBootstrapWrapper, mean_diff
+from src.utils import (
+    MIN_BOOTSTRAP_NEURONS_PER_SESSION,
+    hierBootstrapWrapper,
+    mean_diff,
+)
 from typing import Literal
 from src import MIPLOTSDIR, PYDATA, PLOTSDIR
 NEWMIPLOTS = os.path.join(PLOTSDIR, 'MInewplots')
@@ -385,7 +389,8 @@ def DSIall(longMIDF:pd.DataFrame, hue_order:list, palette:dict):
         )
         stats_params = dict(animals = ntdf['session_id'],
                             Nboot = 10000,
-                            dist_comparison = mean_diff)
+                            dist_comparison = mean_diff,
+                            min_neurons_per_session = MIN_BOOTSTRAP_NEURONS_PER_SESSION)
         annot_be.apply_test(**stats_params).annotate()
 
         annot_wi = Annotator(
@@ -534,7 +539,8 @@ def RCI_within_Type(Type:str, RCIdf:pd.DataFrame, hue_order:list, palette:dict,
         )
         stats_params = dict(animals = TypeDF['session_id'],
                             Nboot = 10000,
-                            dist_comparison = mean_diff)
+                            dist_comparison = mean_diff,
+                            min_neurons_per_session = MIN_BOOTSTRAP_NEURONS_PER_SESSION)
         annot_be.apply_test(**stats_params).annotate()
 
         annot_wi = Annotator(
@@ -586,4 +592,3 @@ if __name__ == '__main__':
                 LOADdf=True
                 )
     MIanalysis(MIdata)
-

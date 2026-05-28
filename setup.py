@@ -1,8 +1,13 @@
-# setup.py
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
+
 
 setup(
     name="nin",
-    version='0.1',
-    packages = find_packages()
+    version="0.1",
+    packages=find_packages(),
+    install_requires=[
+        "dPCA==1.0.5",
+        "numexpr",
+        "numba",
+    ],
 )

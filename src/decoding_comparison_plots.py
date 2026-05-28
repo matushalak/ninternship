@@ -63,6 +63,8 @@ def load_condition_outputs(pydata_root: str | Path, plots_root: str | Path) -> d
     outputs: dict[str, list[pd.DataFrame]] = {
         "averaged_session": [],
         "averaged_summary": [],
+        "temporal_session": [],
+        "temporal_summary": [],
         "position_session": [],
         "position_summary": [],
         "counts": [],
@@ -74,12 +76,16 @@ def load_condition_outputs(pydata_root: str | Path, plots_root: str | Path) -> d
 
         averaged_session = pd.read_csv(data_dir / "session_population_averaged.csv")
         averaged_summary = pd.read_csv(data_dir / "summary_population_averaged.csv")
+        temporal_session = pd.read_csv(data_dir / "session_population_temporal.csv")
+        temporal_summary = pd.read_csv(data_dir / "summary_population_temporal.csv")
         position_session = pd.read_csv(data_dir / "session_population_position.csv")
         position_summary = pd.read_csv(data_dir / "summary_population_position.csv")
         counts = pd.read_csv(plot_dir / "session_area_neuron_counts.csv")
 
         outputs["averaged_session"].append(averaged_session)
         outputs["averaged_summary"].append(averaged_summary)
+        outputs["temporal_session"].append(temporal_session)
+        outputs["temporal_summary"].append(temporal_summary)
         outputs["position_session"].append(position_session)
         outputs["position_summary"].append(position_summary)
         outputs["counts"].append(counts)
@@ -158,6 +164,48 @@ def compute_count_g2_minus_g1(summary: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
     wide["delta_g2_minus_g1"] = wide["g2"] - wide["g1"]
+    return wide
+
+
+def compute_temporal_post_minus_pre(summary: pd.DataFrame, value_col: str) -> pd.DataFrame:
+    wide = (
+        summary.pivot_table(
+            index=["group_base", "area", "task", "time_index", "time_s", "stimulus_offset_s"],
+            columns="condition",
+            values=value_col,
+            observed=True,
+        )
+        .reset_index()
+    )
+    wide["delta_post_minus_pre"] = wide["post"] - wide["pre"]
+    return wide
+
+
+def compute_temporal_g2_minus_g1(summary: pd.DataFrame, value_col: str) -> pd.DataFrame:
+    wide = (
+        summary.pivot_table(
+            index=["condition", "area", "task", "time_index", "time_s", "stimulus_offset_s"],
+            columns="group_base",
+            values=value_col,
+            observed=True,
+        )
+        .reset_index()
+    )
+    wide["delta_g2_minus_g1"] = wide["g2"] - wide["g1"]
+    return wide
+
+
+def compute_temporal_group_difference_change(g2_g1: pd.DataFrame) -> pd.DataFrame:
+    wide = (
+        g2_g1.pivot_table(
+            index=["area", "task", "time_index", "time_s", "stimulus_offset_s"],
+            columns="condition",
+            values="delta_g2_minus_g1",
+            observed=True,
+        )
+        .reset_index()
+    )
+    wide["delta_group_difference_post_minus_pre"] = wide["post"] - wide["pre"]
     return wide
 
 
@@ -264,6 +312,119 @@ def plot_session_grid(
         )
 
     fig.suptitle(title, y=1.01)
+    fig.tight_layout()
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_temporal_delta_grid(
+    frame: pd.DataFrame,
+    value_col: str,
+    save_path: str | Path,
+    title: str,
+    hue_col: str | None = None,
+    hue_order: list[str] | None = None,
+    palette: dict[str, str] | str | None = None,
+    y_label: str = "Delta balanced accuracy",
+) -> None:
+    if frame.empty:
+        return
+
+    tasks = [task for task in AVERAGED_TASK_ORDER if task in frame["task"].unique()]
+    areas = [area for area in AREA_ORDER if area in frame["area"].unique()]
+    if not tasks or not areas:
+        return
+
+    data = frame.copy()
+    data["task"] = pd.Categorical(data["task"], categories=tasks, ordered=True)
+    data["area"] = pd.Categorical(data["area"], categories=areas, ordered=True)
+
+    stimulus_offset_s = data["stimulus_offset_s"].dropna()
+    stimulus_offset_s = float(stimulus_offset_s.iloc[0]) if not stimulus_offset_s.empty else 1.0
+
+    sns.set_theme(style="whitegrid", context="talk")
+    fig, axes = plt.subplots(
+        nrows=len(areas),
+        ncols=len(tasks),
+        figsize=(4.1 * len(tasks), 3.2 * len(areas)),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+    )
+
+    for row_idx, area in enumerate(areas):
+        for col_idx, task in enumerate(tasks):
+            ax = axes[row_idx, col_idx]
+            panel = data.loc[(data["area"] == area) & (data["task"] == task)].copy()
+            if panel.empty:
+                ax.set_visible(False)
+                continue
+
+            if hue_col is None:
+                sns.lineplot(
+                    data=panel,
+                    x="time_s",
+                    y=value_col,
+                    color="#222222",
+                    linewidth=2,
+                    ax=ax,
+                )
+            else:
+                sns.lineplot(
+                    data=panel,
+                    x="time_s",
+                    y=value_col,
+                    hue=hue_col,
+                    hue_order=hue_order,
+                    palette=palette,
+                    linewidth=2,
+                    ax=ax,
+                )
+
+            ax.axhline(0.0, color="#333333", linestyle="--", linewidth=1.1)
+            ax.axvline(0.0, color="#111111", linestyle="-", linewidth=1.0)
+            ax.axvline(stimulus_offset_s, color="#111111", linestyle=":", linewidth=1.0)
+
+            if row_idx == 0:
+                ax.set_title(task.replace("_", " "))
+            else:
+                ax.set_title("")
+            if col_idx == 0:
+                ax.set_ylabel(f"{area}\n{y_label}")
+            else:
+                ax.set_ylabel("")
+            if row_idx == len(areas) - 1:
+                ax.set_xlabel("Time from stimulus onset (s)")
+            else:
+                ax.set_xlabel("")
+            if ax.get_legend() is not None:
+                ax.get_legend().remove()
+
+    handles, labels = [], []
+    if hue_col is not None:
+        for ax in axes.flat:
+            ax_handles, ax_labels = ax.get_legend_handles_labels()
+            if ax_handles:
+                handles, labels = ax_handles, ax_labels
+                break
+    if handles:
+        unique = []
+        seen = set()
+        for handle, label in zip(handles, labels):
+            if label not in seen:
+                seen.add(label)
+                unique.append((handle, label))
+        fig.legend(
+            [item[0] for item in unique],
+            [item[1] for item in unique],
+            loc="upper center",
+            ncol=min(4, len(unique)),
+            frameon=False,
+        )
+
+    fig.suptitle(title, y=1.02)
     fig.tight_layout()
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -461,25 +622,36 @@ def main() -> None:
     data = load_condition_outputs(args.pydata_root, args.plots_root)
     averaged_session = data["averaged_session"]
     averaged_summary = data["averaged_summary"]
+    temporal_summary = data["temporal_summary"]
     position_session = data["position_session"]
     position_summary = data["position_summary"]
     counts = data["counts"]
     count_summary = summarise_counts(counts)
 
     averaged_summary.to_csv(save_pydata_dir / "comparison_summary_population_averaged.csv", index=False)
+    temporal_summary.to_csv(save_pydata_dir / "comparison_summary_population_temporal.csv", index=False)
     position_summary.to_csv(save_pydata_dir / "comparison_summary_population_position.csv", index=False)
     count_summary.to_csv(save_pydata_dir / "comparison_summary_neuron_counts.csv", index=False)
 
     avg_post_pre = compute_post_minus_pre(averaged_summary, "mean_score")
+    temporal_post_pre = compute_temporal_post_minus_pre(temporal_summary, "mean_score")
     pos_post_pre = compute_post_minus_pre(position_summary, "mean_score")
     avg_g2_g1 = compute_g2_minus_g1(averaged_summary, "mean_score")
+    temporal_g2_g1 = compute_temporal_g2_minus_g1(temporal_summary, "mean_score")
+    temporal_group_difference_change = compute_temporal_group_difference_change(temporal_g2_g1)
     pos_g2_g1 = compute_g2_minus_g1(position_summary, "mean_score")
     count_post_pre = compute_count_post_minus_pre(count_summary)
     count_g2_g1 = compute_count_g2_minus_g1(count_summary)
 
     avg_post_pre.to_csv(save_pydata_dir / "delta_post_minus_pre_population_averaged.csv", index=False)
+    temporal_post_pre.to_csv(save_pydata_dir / "delta_post_minus_pre_population_temporal.csv", index=False)
     pos_post_pre.to_csv(save_pydata_dir / "delta_post_minus_pre_population_position.csv", index=False)
     avg_g2_g1.to_csv(save_pydata_dir / "delta_g2_minus_g1_population_averaged.csv", index=False)
+    temporal_g2_g1.to_csv(save_pydata_dir / "delta_g2_minus_g1_population_temporal.csv", index=False)
+    temporal_group_difference_change.to_csv(
+        save_pydata_dir / "delta_group_difference_post_minus_pre_population_temporal.csv",
+        index=False,
+    )
     pos_g2_g1.to_csv(save_pydata_dir / "delta_g2_minus_g1_population_position.csv", index=False)
     count_post_pre.to_csv(save_pydata_dir / "delta_post_minus_pre_neuron_counts.csv", index=False)
     count_g2_g1.to_csv(save_pydata_dir / "delta_g2_minus_g1_neuron_counts.csv", index=False)
@@ -539,6 +711,23 @@ def main() -> None:
         task_order=POSITION_TASK_ORDER,
         save_path=save_plots_dir / "difference_heatmap_g2_minus_g1_population_position.svg",
         title="Position Between-Group Difference (g2 - g1) by Condition",
+    )
+    plot_temporal_delta_grid(
+        temporal_post_pre,
+        value_col="delta_post_minus_pre",
+        hue_col="group_base",
+        hue_order=GROUP_BASE_ORDER,
+        palette=GROUP_BASE_PALETTE,
+        save_path=save_plots_dir / "difference_temporal_post_minus_pre_by_group.svg",
+        title="Temporal Decoding Change (Post - Pre) by Group",
+        y_label="Post - pre accuracy",
+    )
+    plot_temporal_delta_grid(
+        temporal_group_difference_change,
+        value_col="delta_group_difference_post_minus_pre",
+        save_path=save_plots_dir / "difference_temporal_group_difference_post_minus_pre.svg",
+        title="Temporal Between-Group Difference Change: (g2 - g1)post - (g2 - g1)pre",
+        y_label="Delta group difference",
     )
     plot_count_difference_bars(
         count_post_pre,

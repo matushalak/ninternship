@@ -269,6 +269,35 @@ class PopulationAnalysis:
         return matrix, sample_metadata, feature_metadata
 
     @staticmethod
+    def _build_trial_average_tensor(
+        grouped_signal: Mapping[str, np.ndarray],
+        neuron_ids: np.ndarray,
+        time_indices: np.ndarray,
+    ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+        trial_labels = []
+        tensors = []
+
+        for label, signal in grouped_signal.items():
+            if signal.shape[0] == 0:
+                continue
+            mean_signal = np.nanmean(signal[:, time_indices, :], axis=0)
+            trial_labels.append(label)
+            tensors.append(np.moveaxis(mean_signal, 1, 0)[:, :, None])
+
+        if not tensors:
+            raise ValueError("No signal remained after trial grouping.")
+
+        tensor = np.concatenate(tensors, axis=2)
+        valid_neurons = np.isfinite(tensor).all(axis=(1, 2))
+        tensor = tensor[valid_neurons]
+        metadata = {
+            "neuron_id": neuron_ids[valid_neurons],
+            "trial_label": np.asarray(trial_labels, dtype=object),
+            "time_index": np.asarray(time_indices, dtype=int),
+        }
+        return tensor, metadata
+
+    @staticmethod
     def _fit_pca(
         matrix: np.ndarray,
         n_components: int | float | None,
@@ -385,6 +414,42 @@ class PopulationAnalysis:
                 continue
             trajectories[label] = session_result.pca.transform(mean_signal[valid_timepoints])
         return trajectories
+
+    def build_session_trial_average_tensor(
+        self,
+        *,
+        trial_groups: Mapping[str, Iterable[int]] | None = None,
+        neuron_indices: np.ndarray | Iterable[int] | None = None,
+        session_index: int,
+        time_window: tuple[int, int] | slice | Iterable[int] | None = None,
+    ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+        if time_window is None:
+            time_window = self.fit_time_window
+
+        session = self.iter_sessions(session_indices=[session_index])[0]
+        session_signal, session_neuron_ids = self._select_neurons(
+            session,
+            neuron_indices=neuron_indices,
+        )
+        time_indices = self._resolve_time_indices(
+            session_signal.shape[1],
+            time_window=time_window,
+        )
+        session_trial_groups = normalize_trial_groups(
+            trial_groups,
+            session.trial_types,
+            trial_label_map=self.trial_label_map,
+        )
+        grouped_signal = self._group_session_signal(
+            session_signal,
+            session.trial_types,
+            session_trial_groups,
+        )
+        return self._build_trial_average_tensor(
+            grouped_signal,
+            neuron_ids=session_neuron_ids,
+            time_indices=time_indices,
+        )
 
     def neuronal_embeddings(
         self,

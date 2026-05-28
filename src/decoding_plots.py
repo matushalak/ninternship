@@ -49,15 +49,31 @@ def parse_args() -> argparse.Namespace:
         "--save-dir",
         default=str(Path(PLOTSDIR) / "decoding_population_sessionwise" / "pre_glm_clean"),
     )
-    parser.add_argument("--balanced-min-sessions", type=int, default=2)
+    parser.add_argument("--balanced-min-sessions", type=int, default=1)
+    parser.add_argument("--balanced-min-neurons", type=int, default=40)
+    parser.add_argument("--skip-balanced", action="store_true")
     return parser.parse_args()
 
 
-def load_outputs(input_dir: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _read_optional_csv(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path)
+
+
+def load_outputs(
+    input_dir: str | Path,
+) -> dict[str, pd.DataFrame]:
     input_dir = Path(input_dir)
-    averaged = pd.read_csv(input_dir / "session_population_averaged.csv")
-    position = pd.read_csv(input_dir / "session_population_position.csv")
-    return averaged, position
+    return {
+        "averaged": pd.read_csv(input_dir / "session_population_averaged.csv"),
+        "position": pd.read_csv(input_dir / "session_population_position.csv"),
+        "temporal": _read_optional_csv(input_dir / "session_population_temporal.csv"),
+        "counts": _read_optional_csv(input_dir / "session_area_neuron_counts.csv"),
+        "balanced_averaged": _read_optional_csv(input_dir / "balanced_session_population_averaged.csv"),
+        "balanced_position": _read_optional_csv(input_dir / "balanced_session_population_position.csv"),
+        "balanced_temporal": _read_optional_csv(input_dir / "balanced_session_population_temporal.csv"),
+    }
 
 
 def unique_neuron_counts(
@@ -73,6 +89,7 @@ def unique_neuron_counts(
 def compute_balanced_thresholds(
     counts: pd.DataFrame,
     min_sessions_per_group: int = 2,
+    min_neurons_per_session: int = 40,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     threshold_rows = []
     inclusion_frames = []
@@ -87,15 +104,27 @@ def compute_balanced_thresholds(
             for group in groups
         }
 
-        if any(len(vals) < min_sessions_per_group for vals in per_group_counts.values()):
+        eligible_counts = {
+            group: [val for val in vals if val >= min_neurons_per_session]
+            for group, vals in per_group_counts.items()
+        }
+
+        if any(len(vals) < min_sessions_per_group for vals in eligible_counts.values()):
             threshold = np.nan
+            raw_threshold = np.nan
+            threshold_reason = "too_few_sessions_after_neuron_filter"
         else:
-            threshold = min(vals[min_sessions_per_group - 1] for vals in per_group_counts.values())
+            raw_threshold = min(val for vals in eligible_counts.values() for val in vals)
+            threshold = raw_threshold
+            threshold_reason = "ok"
 
         summary = {
             "area": area,
             "balanced_min_sessions_per_group": min_sessions_per_group,
+            "balanced_min_neurons_per_session": min_neurons_per_session,
+            "balanced_raw_neuron_threshold": raw_threshold,
             "balanced_neuron_threshold": threshold,
+            "balanced_threshold_reason": threshold_reason,
         }
 
         for group in groups:
@@ -118,6 +147,32 @@ def compute_balanced_thresholds(
     thresholds = pd.DataFrame(threshold_rows)
     inclusion = pd.concat(inclusion_frames, ignore_index=True)
     inclusion["balanced_included"] = inclusion["balanced_included"].astype(bool)
+    return thresholds, inclusion
+
+
+def compute_decoding_inclusion(
+    counts: pd.DataFrame,
+    min_neurons_per_session: int = 40,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    inclusion = counts.copy()
+    if "decoding_included" in inclusion.columns:
+        inclusion["balanced_included"] = inclusion["decoding_included"].astype(bool)
+    else:
+        inclusion["balanced_included"] = inclusion["n_neurons"] >= min_neurons_per_session
+
+    thresholds = pd.DataFrame(
+        [
+            {
+                "area": area,
+                "balanced_min_sessions_per_group": np.nan,
+                "balanced_min_neurons_per_session": min_neurons_per_session,
+                "balanced_raw_neuron_threshold": min_neurons_per_session,
+                "balanced_neuron_threshold": min_neurons_per_session,
+                "balanced_threshold_reason": "decoding_min_neurons",
+            }
+            for area in _ordered_areas(inclusion["area"])
+        ]
+    )
     return thresholds, inclusion
 
 
@@ -318,7 +373,7 @@ def plot_neuron_count_diagnostic(
             ax.text(
                 0.02,
                 threshold,
-                f" balanced N = {int(threshold)}",
+                f" min N = {int(threshold)}",
                 ha="left",
                 va="bottom",
                 fontsize=10,
@@ -346,7 +401,7 @@ def plot_neuron_count_diagnostic(
             markeredgecolor="#111111",
             markeredgewidth=1.4,
             color="#999999",
-            label="included in balanced subset",
+            label="included in decoding analysis",
             markersize=9,
         ),
         plt.Line2D(
@@ -358,7 +413,7 @@ def plot_neuron_count_diagnostic(
             markeredgecolor="#999999",
             color="#999999",
             alpha=1.0,
-            label="outside balanced subset, still used in all-session analysis",
+            label="excluded from decoding analysis",
             markersize=8,
         ),
     ]
@@ -369,7 +424,7 @@ def plot_neuron_count_diagnostic(
         frameon=False,
     )
     fig.suptitle(
-        "Session x Area Neuron Counts: all sessions shown, balanced subset highlighted",
+        "Session x Area Neuron Counts: all sessions shown, decoding inclusion highlighted",
         y=1.04,
     )
     fig.tight_layout()
@@ -432,18 +487,139 @@ def plot_ranked_neuron_counts(
     plt.close(fig)
 
 
+def plot_temporal_decoding(
+    frame: pd.DataFrame,
+    task_order: list[str],
+    save_path: str | Path,
+    title: str,
+) -> None:
+    if frame.empty:
+        return
+
+    data = frame.copy()
+    data["group"] = pd.Categorical(data["group"], categories=_ordered_groups(data["group"]), ordered=True)
+    data["area"] = pd.Categorical(data["area"], categories=_ordered_areas(data["area"]), ordered=True)
+    data["task"] = pd.Categorical(
+        data["task"],
+        categories=[task for task in task_order if task in data["task"].unique()],
+        ordered=True,
+    )
+
+    tasks = [task for task in task_order if task in data["task"].unique()]
+    areas = _ordered_areas(data["area"])
+    if not tasks or not areas:
+        return
+
+    stimulus_offset_s = data["stimulus_offset_s"].dropna()
+    stimulus_offset_s = float(stimulus_offset_s.iloc[0]) if not stimulus_offset_s.empty else 1.0
+
+    sns.set_theme(style="whitegrid", context="talk")
+    fig, axes = plt.subplots(
+        nrows=len(areas),
+        ncols=len(tasks),
+        figsize=(4.1 * len(tasks), 3.2 * len(areas)),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+    )
+
+    for row_idx, area in enumerate(areas):
+        for col_idx, task in enumerate(tasks):
+            ax = axes[row_idx, col_idx]
+            panel = data.loc[(data["area"] == area) & (data["task"] == task)]
+            if panel.empty:
+                ax.set_visible(False)
+                continue
+
+            sns.lineplot(
+                data=panel,
+                x="time_s",
+                y="score",
+                hue="group",
+                estimator="mean",
+                errorbar="se",
+                linewidth=2,
+                palette=GROUP_PALETTE,
+                ax=ax,
+            )
+
+            chance_level = TASK_CHANCE_LEVELS.get(task)
+            if chance_level is not None:
+                ax.axhline(chance_level, color="#444444", linestyle="--", linewidth=1.1)
+            ax.axvline(0.0, color="#111111", linestyle="-", linewidth=1.1)
+            ax.axvline(stimulus_offset_s, color="#111111", linestyle=":", linewidth=1.1)
+
+            if row_idx == 0:
+                ax.set_title(task.replace("_", " "))
+            else:
+                ax.set_title("")
+            if col_idx == 0:
+                ax.set_ylabel(f"{area}\nBalanced accuracy")
+            else:
+                ax.set_ylabel("")
+            if row_idx == len(areas) - 1:
+                ax.set_xlabel("Time from stimulus onset (s)")
+            else:
+                ax.set_xlabel("")
+            ax.set_ylim(0, 1.02)
+            if ax.get_legend() is not None:
+                ax.get_legend().remove()
+
+    handles, labels = [], []
+    for ax in axes.flat:
+        ax_handles, ax_labels = ax.get_legend_handles_labels()
+        if ax_handles:
+            handles, labels = ax_handles, ax_labels
+            break
+    if handles:
+        unique = []
+        seen = set()
+        for handle, label in zip(handles, labels):
+            if label not in seen:
+                seen.add(label)
+                unique.append((handle, label))
+        fig.legend(
+            [item[0] for item in unique],
+            [item[1] for item in unique],
+            loc="upper center",
+            ncol=min(4, len(unique)),
+            frameon=False,
+        )
+
+    fig.suptitle(title, y=1.02)
+    fig.tight_layout()
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> None:
     args = parse_args()
     input_dir = Path(args.input_dir)
     save_dir = Path(args.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    averaged, position = load_outputs(input_dir)
-    counts = unique_neuron_counts(averaged, position)
-    thresholds, inclusion = compute_balanced_thresholds(
-        counts,
-        min_sessions_per_group=args.balanced_min_sessions,
-    )
+    outputs = load_outputs(input_dir)
+    averaged = outputs["averaged"]
+    position = outputs["position"]
+    temporal = outputs["temporal"]
+    counts = outputs["counts"]
+    if counts.empty:
+        counts = unique_neuron_counts(averaged, position)
+    else:
+        counts = counts.sort_values(["group", "area", "n_neurons"], ascending=[True, True, False])
+    if args.skip_balanced:
+        thresholds, inclusion = compute_decoding_inclusion(
+            counts,
+            min_neurons_per_session=args.balanced_min_neurons,
+        )
+    else:
+        thresholds, inclusion = compute_balanced_thresholds(
+            counts,
+            min_sessions_per_group=args.balanced_min_sessions,
+            min_neurons_per_session=args.balanced_min_neurons,
+        )
 
     averaged = averaged.merge(
         inclusion[["group", "session_index", "session_name", "area", "balanced_included"]],
@@ -455,23 +631,39 @@ def main() -> None:
         on=["group", "session_index", "session_name", "area"],
         how="left",
     )
+    if not temporal.empty:
+        temporal = temporal.merge(
+            inclusion[["group", "session_index", "session_name", "area", "balanced_included"]],
+            on=["group", "session_index", "session_name", "area"],
+            how="left",
+        )
     averaged["balanced_included"] = averaged["balanced_included"].fillna(False).astype(bool)
     position["balanced_included"] = position["balanced_included"].fillna(False).astype(bool)
+    if not temporal.empty:
+        temporal["balanced_included"] = temporal["balanced_included"].fillna(False).astype(bool)
 
-    balanced_averaged = averaged.loc[averaged["balanced_included"]].copy()
-    balanced_position = position.loc[position["balanced_included"]].copy()
-
-    thresholds.to_csv(save_dir / "balanced_thresholds.csv", index=False)
-    inclusion.to_csv(save_dir / "session_area_balanced_inclusion.csv", index=False)
     counts.to_csv(save_dir / "session_area_neuron_counts.csv", index=False)
-    summarise_balanced_performance(balanced_averaged).to_csv(
-        save_dir / "balanced_summary_population_averaged.csv",
-        index=False,
-    )
-    summarise_balanced_performance(balanced_position).to_csv(
-        save_dir / "balanced_summary_population_position.csv",
-        index=False,
-    )
+    if not args.skip_balanced:
+        inclusion.to_csv(save_dir / "session_area_balanced_inclusion.csv", index=False)
+        balanced_averaged = outputs["balanced_averaged"]
+        if balanced_averaged.empty:
+            balanced_averaged = averaged.loc[averaged["balanced_included"]].copy()
+        balanced_position = outputs["balanced_position"]
+        if balanced_position.empty:
+            balanced_position = position.loc[position["balanced_included"]].copy()
+        balanced_temporal = outputs["balanced_temporal"]
+        if balanced_temporal.empty and not temporal.empty:
+            balanced_temporal = temporal.loc[temporal["balanced_included"]].copy()
+
+        thresholds.to_csv(save_dir / "balanced_thresholds.csv", index=False)
+        summarise_balanced_performance(balanced_averaged).to_csv(
+            save_dir / "balanced_summary_population_averaged.csv",
+            index=False,
+        )
+        summarise_balanced_performance(balanced_position).to_csv(
+            save_dir / "balanced_summary_population_position.csv",
+            index=False,
+        )
 
     plot_performance(
         averaged,
@@ -480,22 +672,10 @@ def main() -> None:
         title="Population Decoding From Averaged Trial Responses",
     )
     plot_performance(
-        balanced_averaged,
-        task_order=AVERAGED_TASK_ORDER,
-        save_path=save_dir / "session_population_averaged_balanced.svg",
-        title="Population Decoding From Averaged Trial Responses (Balanced Sessions)",
-    )
-    plot_performance(
         position,
         task_order=POSITION_TASK_ORDER,
         save_path=save_dir / "session_population_position_all.svg",
         title="Population Decoding Of Stimulus Position",
-    )
-    plot_performance(
-        balanced_position,
-        task_order=POSITION_TASK_ORDER,
-        save_path=save_dir / "session_population_position_balanced.svg",
-        title="Population Decoding Of Stimulus Position (Balanced Sessions)",
     )
     plot_neuron_count_diagnostic(
         inclusion,
@@ -507,6 +687,31 @@ def main() -> None:
         thresholds,
         save_dir / "session_area_neuron_count_ranked.svg",
     )
+    plot_temporal_decoding(
+        temporal,
+        task_order=AVERAGED_TASK_ORDER,
+        save_path=save_dir / "session_population_temporal.svg",
+        title="Population Decoding Across Trial Time",
+    )
+    if not args.skip_balanced:
+        plot_performance(
+            balanced_averaged,
+            task_order=AVERAGED_TASK_ORDER,
+            save_path=save_dir / "session_population_averaged_balanced.svg",
+            title="Population Decoding From Averaged Trial Responses (Balanced Sessions)",
+        )
+        plot_performance(
+            balanced_position,
+            task_order=POSITION_TASK_ORDER,
+            save_path=save_dir / "session_population_position_balanced.svg",
+            title="Population Decoding Of Stimulus Position (Balanced Sessions)",
+        )
+        plot_temporal_decoding(
+            balanced_temporal,
+            task_order=AVERAGED_TASK_ORDER,
+            save_path=save_dir / "session_population_temporal_balanced.svg",
+            title="Population Decoding Across Trial Time (Balanced Sessions)",
+        )
 
 
 if __name__ == "__main__":

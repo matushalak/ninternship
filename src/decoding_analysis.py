@@ -9,6 +9,7 @@ from typing import Iterable, Literal
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from sklearn.model_selection import GroupKFold
 
 from src import PYDATA
@@ -42,6 +43,7 @@ AVERAGED_TASKS = OrderedDict(
 )
 
 POSITION_TASKS = {"V": (6, 7, 1, 2, 4, 5), "A": (0, 3, 1, 2, 4, 5)}
+MIN_DECODING_NEURONS_PER_SESSION = 40
 
 
 @dataclass
@@ -59,6 +61,19 @@ class SessionPopulation:
     signal: np.ndarray
     trial_types: np.ndarray
     area_masks: dict[str, np.ndarray]
+
+
+@dataclass
+class BalancedSessionAreaPopulation:
+    group: str
+    session_index: int
+    session_name: str
+    signal: np.ndarray
+    trial_types: np.ndarray
+    area: str
+    neuron_indices: np.ndarray
+    available_neurons: int
+    subsampled_neurons: int
 
 
 def parse_args() -> argparse.Namespace:
@@ -79,7 +94,11 @@ def parse_args() -> argparse.Namespace:
         default=["V1", "AM/PM", "A/RL/AL", "LM"],
     )
     parser.add_argument("--cv", type=int, default=5)
-    parser.add_argument("--min-neurons", type=int, default=2)
+    parser.add_argument("--min-neurons", type=int, default=MIN_DECODING_NEURONS_PER_SESSION)
+    parser.add_argument("--balanced-min-neurons", type=int, default=MIN_DECODING_NEURONS_PER_SESSION)
+    parser.add_argument("--balanced-subsamples", type=int, default=1000)
+    parser.add_argument("--balanced-n-jobs", type=int, default=1)
+    parser.add_argument("--skip-balanced", action="store_true")
     parser.add_argument("--position-classes", type=int, default=15)
     parser.add_argument(
         "--save-dir",
@@ -158,6 +177,106 @@ def iter_session_populations(
             )
 
     return populations
+
+
+def session_area_neuron_counts(
+    datasets: dict[str, GroupDataset],
+    area_names: Iterable[str],
+    signal_source: str,
+    min_neurons: int = MIN_DECODING_NEURONS_PER_SESSION,
+) -> pd.DataFrame:
+    rows = []
+    for population in [
+        pop
+        for dataset in datasets.values()
+        for pop in iter_session_populations(dataset, area_names, min_neurons=1)
+    ]:
+        for area_name, neuron_indices in population.area_masks.items():
+            n_neurons = int(neuron_indices.size)
+            rows.append(
+                {
+                    "group": population.group,
+                    "session_index": population.session_index,
+                    "session_name": population.session_name,
+                    "area": area_name,
+                    "n_neurons": n_neurons,
+                    "decoding_included": n_neurons >= min_neurons,
+                    "min_decoding_neurons": int(min_neurons),
+                    "signal_source": signal_source,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def iter_balanced_session_area_populations(
+    datasets: dict[str, GroupDataset],
+    area_names: Iterable[str],
+    min_neurons: int = 40,
+) -> list[BalancedSessionAreaPopulation]:
+    requested_groups = set(datasets)
+    candidates = []
+
+    for dataset in datasets.values():
+        for population in iter_session_populations(dataset, area_names, min_neurons=1):
+            for area_name, neuron_indices in population.area_masks.items():
+                if neuron_indices.size < min_neurons:
+                    continue
+                candidates.append(
+                    {
+                        "population": population,
+                        "area": area_name,
+                        "neuron_indices": neuron_indices,
+                        "n_neurons": int(neuron_indices.size),
+                    }
+                )
+
+    balanced = []
+    for area_name in sorted({row["area"] for row in candidates}):
+        area_rows = [row for row in candidates if row["area"] == area_name]
+        area_groups = {row["population"].group for row in area_rows}
+        if not requested_groups.issubset(area_groups):
+            continue
+
+        subsampled_neurons = min(row["n_neurons"] for row in area_rows)
+        for row in area_rows:
+            population = row["population"]
+            neuron_indices = np.asarray(row["neuron_indices"], dtype=int)
+            balanced.append(
+                BalancedSessionAreaPopulation(
+                    group=population.group,
+                    session_index=population.session_index,
+                    session_name=population.session_name,
+                    signal=population.signal,
+                    trial_types=population.trial_types,
+                    area=area_name,
+                    neuron_indices=neuron_indices,
+                    available_neurons=int(neuron_indices.size),
+                    subsampled_neurons=int(subsampled_neurons),
+                )
+            )
+
+    return balanced
+
+
+def balanced_neuron_subsamples(
+    population: BalancedSessionAreaPopulation,
+    n_subsamples: int,
+    rng: np.random.Generator,
+) -> list[np.ndarray]:
+    if population.available_neurons <= population.subsampled_neurons:
+        return [np.asarray(population.neuron_indices, dtype=int)]
+
+    n_subsamples = max(1, int(n_subsamples))
+    return [
+        np.sort(
+            rng.choice(
+                population.neuron_indices,
+                size=population.subsampled_neurons,
+                replace=False,
+            )
+        )
+        for _ in range(n_subsamples)
+    ]
 
 
 def stack_session_task_signal(
@@ -261,6 +380,41 @@ def summarise_session_results(frame: pd.DataFrame) -> pd.DataFrame:
     return summary
 
 
+def trial_time_axis(av: AUDVIS, n_timepoints: int) -> np.ndarray:
+    return (np.arange(n_timepoints, dtype=float) - float(av.TRIAL[0])) / float(av.SF)
+
+
+def summarise_temporal_session_results(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+
+    return (
+        frame.groupby(
+            [
+                "group",
+                "area",
+                "task",
+                "analysis",
+                "signal_source",
+                "scoring",
+                "time_index",
+                "time_s",
+                "stimulus_offset_s",
+            ],
+            as_index=False,
+        )
+        .agg(
+            mean_score=("score", "mean"),
+            std_score=("score", "std"),
+            sem_score=("score", "sem"),
+            n_sessions=("session_name", "nunique"),
+            mean_neurons=("n_neurons", "mean"),
+            min_neurons=("n_neurons", "min"),
+            max_neurons=("n_neurons", "max"),
+        )
+    )
+
+
 def run_population_averaged_tasks(
     datasets: dict[str, GroupDataset],
     area_names: Iterable[str],
@@ -306,6 +460,390 @@ def run_population_averaged_tasks(
                         }
                     )
 
+    return pd.DataFrame(rows)
+
+
+def run_population_temporal_tasks(
+    datasets: dict[str, GroupDataset],
+    area_names: Iterable[str],
+    signal_source: str,
+    cv: int = 5,
+    min_neurons: int = 2,
+    random_state: int = 0,
+) -> pd.DataFrame:
+    decoder = Decoder(task="classification", cv=cv, random_state=random_state)
+    rows = []
+
+    for dataset in datasets.values():
+        for population in iter_session_populations(dataset, area_names, min_neurons=min_neurons):
+            time_s = trial_time_axis(dataset.av, population.signal.shape[1])
+            stimulus_offset_s = (dataset.av.TRIAL[1] - dataset.av.TRIAL[0]) / dataset.av.SF
+
+            for area_name, neuron_indices in population.area_masks.items():
+                for task_name, label_groups in AVERAGED_TASKS.items():
+                    signal, labels = stack_session_task_signal(
+                        population.signal,
+                        population.trial_types,
+                        label_groups,
+                        neuron_indices,
+                    )
+                    result = decoder.decode(
+                        signal=signal,
+                        labels=labels,
+                        neuron_mode="population",
+                        temporal_mode="per-timepoint",
+                    )
+
+                    scores = np.asarray(result.mean_score, dtype=float).ravel()
+                    std_scores = np.asarray(result.std_score, dtype=float).ravel()
+                    time_indices = (
+                        np.asarray(result.timepoints, dtype=int)
+                        if result.timepoints is not None
+                        else np.arange(scores.size, dtype=int)
+                    )
+
+                    for row_idx, time_index in enumerate(time_indices):
+                        rows.append(
+                            {
+                                "group": population.group,
+                                "session_index": population.session_index,
+                                "session_name": population.session_name,
+                                "area": area_name,
+                                "task": task_name,
+                                "analysis": "time_resolved_trial_response",
+                                "time_index": int(time_index),
+                                "time_s": float(time_s[time_index]),
+                                "stimulus_offset_s": float(stimulus_offset_s),
+                                "score": float(scores[row_idx]),
+                                "std_score": float(std_scores[row_idx]),
+                                "n_neurons": neuron_indices.size,
+                                "n_samples": signal.shape[0],
+                                "n_classes": np.unique(labels).size,
+                                "signal_source": signal_source,
+                                "scoring": str(decoder.scoring),
+                            }
+                        )
+
+    return pd.DataFrame(rows)
+
+
+def _parallel_decode_balanced_jobs(
+    jobs: list[tuple],
+    worker,
+    n_jobs: int,
+) -> list:
+    if not jobs:
+        return []
+    if int(n_jobs) == 1:
+        return [worker(*job) for job in jobs]
+    return Parallel(n_jobs=n_jobs, prefer="threads", verbose=10)(
+        delayed(worker)(*job) for job in jobs
+    )
+
+
+def _decode_balanced_averaged_job(
+    population: BalancedSessionAreaPopulation,
+    task_name: str,
+    label_groups: OrderedDict[str, tuple[int, ...]],
+    subsamples: list[np.ndarray],
+    trial_window: tuple[int, int],
+    signal_source: str,
+    cv: int,
+    random_state: int,
+) -> dict:
+    decoder = Decoder(task="classification", cv=cv, random_state=random_state)
+    scores = []
+    signal = labels = None
+    for sampled_neurons in subsamples:
+        signal, labels = stack_session_task_signal(
+            population.signal,
+            population.trial_types,
+            label_groups,
+            sampled_neurons,
+        )
+        result = decoder.decode(
+            signal=signal,
+            labels=labels,
+            neuron_mode="population",
+            temporal_mode="aggregate",
+            time_window=trial_window,
+        )
+        scores.append(result.scalar_score())
+
+    scores = np.asarray(scores, dtype=float)
+    return {
+        "group": population.group,
+        "session_index": population.session_index,
+        "session_name": population.session_name,
+        "area": population.area,
+        "task": task_name,
+        "analysis": "balanced_averaged_trial_response",
+        "score": float(np.nanmean(scores)),
+        "std_score": float(np.nanstd(scores)),
+        "n_neurons": population.subsampled_neurons,
+        "available_neurons": population.available_neurons,
+        "n_subsamples": len(subsamples),
+        "n_samples": signal.shape[0],
+        "n_classes": np.unique(labels).size,
+        "signal_source": signal_source,
+        "scoring": str(decoder.scoring),
+    }
+
+
+def _decode_balanced_temporal_job(
+    population: BalancedSessionAreaPopulation,
+    task_name: str,
+    label_groups: OrderedDict[str, tuple[int, ...]],
+    subsamples: list[np.ndarray],
+    time_s: np.ndarray,
+    stimulus_offset_s: float,
+    signal_source: str,
+    cv: int,
+    random_state: int,
+) -> list[dict]:
+    decoder = Decoder(task="classification", cv=cv, random_state=random_state)
+    score_list = []
+    fold_std_list = []
+    signal = labels = time_indices = None
+    for sampled_neurons in subsamples:
+        signal, labels = stack_session_task_signal(
+            population.signal,
+            population.trial_types,
+            label_groups,
+            sampled_neurons,
+        )
+        result = decoder.decode(
+            signal=signal,
+            labels=labels,
+            neuron_mode="population",
+            temporal_mode="per-timepoint",
+        )
+        score_list.append(np.asarray(result.mean_score, dtype=float).ravel())
+        fold_std_list.append(np.asarray(result.std_score, dtype=float).ravel())
+        time_indices = (
+            np.asarray(result.timepoints, dtype=int)
+            if result.timepoints is not None
+            else np.arange(score_list[-1].size, dtype=int)
+        )
+
+    scores = np.vstack(score_list)
+    fold_std_scores = np.vstack(fold_std_list)
+    rows = []
+    for row_idx, time_index in enumerate(time_indices):
+        rows.append(
+            {
+                "group": population.group,
+                "session_index": population.session_index,
+                "session_name": population.session_name,
+                "area": population.area,
+                "task": task_name,
+                "analysis": "balanced_time_resolved_trial_response",
+                "time_index": int(time_index),
+                "time_s": float(time_s[time_index]),
+                "stimulus_offset_s": float(stimulus_offset_s),
+                "score": float(np.nanmean(scores[:, row_idx])),
+                "std_score": float(np.nanstd(scores[:, row_idx])),
+                "fold_std_score": float(np.nanmean(fold_std_scores[:, row_idx])),
+                "n_neurons": population.subsampled_neurons,
+                "available_neurons": population.available_neurons,
+                "n_subsamples": len(subsamples),
+                "n_samples": signal.shape[0],
+                "n_classes": np.unique(labels).size,
+                "signal_source": signal_source,
+                "scoring": str(decoder.scoring),
+            }
+        )
+    return rows
+
+
+def _decode_balanced_position_job(
+    population: BalancedSessionAreaPopulation,
+    modality: str,
+    subsamples: list[np.ndarray],
+    trial_window: tuple[int, int],
+    n_positions: int,
+    signal_source: str,
+    cv: int,
+    random_state: int,
+) -> dict | None:
+    scores = []
+    X = labels = groups = None
+    for sampled_neurons in subsamples:
+        X, labels, groups = build_session_position_dataset(
+            SessionPopulation(
+                group=population.group,
+                session_index=population.session_index,
+                session_name=population.session_name,
+                signal=population.signal,
+                trial_types=population.trial_types,
+                area_masks={population.area: sampled_neurons},
+            ),
+            modality=modality,
+            neuron_indices=sampled_neurons,
+            stimulus_window=trial_window,
+            n_positions=n_positions,
+        )
+        if X.shape[0] == 0:
+            continue
+
+        n_splits = min(cv, np.unique(groups).size)
+        if n_splits < 2:
+            continue
+
+        decoder = Decoder(
+            task="classification",
+            cv=GroupKFold(n_splits=n_splits),
+            random_state=random_state,
+        )
+        result = decoder.decode(
+            X=X,
+            labels=labels,
+            groups=groups,
+        )
+        scores.append(result.scalar_score())
+
+    if not scores:
+        return None
+
+    scores = np.asarray(scores, dtype=float)
+    return {
+        "group": population.group,
+        "session_index": population.session_index,
+        "session_name": population.session_name,
+        "area": population.area,
+        "task": f"{modality}_position",
+        "analysis": "balanced_timepoint_position",
+        "score": float(np.nanmean(scores)),
+        "std_score": float(np.nanstd(scores)),
+        "n_neurons": population.subsampled_neurons,
+        "available_neurons": population.available_neurons,
+        "n_subsamples": len(scores),
+        "n_samples": X.shape[0],
+        "n_classes": np.unique(labels).size,
+        "signal_source": signal_source,
+        "scoring": str(decoder.scoring),
+    }
+
+
+def run_balanced_population_averaged_tasks(
+    balanced_populations: list[BalancedSessionAreaPopulation],
+    datasets: dict[str, GroupDataset],
+    signal_source: str,
+    cv: int = 5,
+    n_subsamples: int = 1000,
+    random_state: int = 0,
+    n_jobs: int = 1,
+) -> pd.DataFrame:
+    dataset_by_group = {dataset.av.NAME: dataset for dataset in datasets.values()}
+    rng = np.random.default_rng(random_state)
+    jobs = []
+    for population in balanced_populations:
+        dataset = dataset_by_group[population.group]
+        subsamples = balanced_neuron_subsamples(population, n_subsamples, rng)
+        trial_window = tuple(dataset.av.TRIAL)
+        for task_name, label_groups in AVERAGED_TASKS.items():
+            jobs.append(
+                (
+                    population,
+                    task_name,
+                    label_groups,
+                    subsamples,
+                    trial_window,
+                    signal_source,
+                    cv,
+                    random_state,
+                )
+            )
+
+    rows = _parallel_decode_balanced_jobs(
+        jobs,
+        _decode_balanced_averaged_job,
+        n_jobs=n_jobs,
+    )
+    return pd.DataFrame(rows)
+
+
+def run_balanced_population_temporal_tasks(
+    balanced_populations: list[BalancedSessionAreaPopulation],
+    datasets: dict[str, GroupDataset],
+    signal_source: str,
+    cv: int = 5,
+    n_subsamples: int = 1000,
+    random_state: int = 0,
+    n_jobs: int = 1,
+) -> pd.DataFrame:
+    dataset_by_group = {dataset.av.NAME: dataset for dataset in datasets.values()}
+    rng = np.random.default_rng(random_state)
+    jobs = []
+    for population in balanced_populations:
+        dataset = dataset_by_group[population.group]
+        time_s = trial_time_axis(dataset.av, population.signal.shape[1])
+        stimulus_offset_s = (dataset.av.TRIAL[1] - dataset.av.TRIAL[0]) / dataset.av.SF
+        subsamples = balanced_neuron_subsamples(population, n_subsamples, rng)
+        for task_name, label_groups in AVERAGED_TASKS.items():
+            jobs.append(
+                (
+                    population,
+                    task_name,
+                    label_groups,
+                    subsamples,
+                    time_s,
+                    stimulus_offset_s,
+                    signal_source,
+                    cv,
+                    random_state,
+                )
+            )
+
+    row_groups = _parallel_decode_balanced_jobs(
+        jobs,
+        _decode_balanced_temporal_job,
+        n_jobs=n_jobs,
+    )
+    rows = [row for group in row_groups for row in group]
+    return pd.DataFrame(rows)
+
+
+def run_balanced_population_position_tasks(
+    balanced_populations: list[BalancedSessionAreaPopulation],
+    datasets: dict[str, GroupDataset],
+    signal_source: str,
+    cv: int = 5,
+    n_positions: int = 15,
+    n_subsamples: int = 1000,
+    random_state: int = 0,
+    n_jobs: int = 1,
+) -> pd.DataFrame:
+    dataset_by_group = {dataset.av.NAME: dataset for dataset in datasets.values()}
+    rng = np.random.default_rng(random_state)
+    jobs = []
+
+    for population in balanced_populations:
+        dataset = dataset_by_group[population.group]
+        subsamples = balanced_neuron_subsamples(population, n_subsamples, rng)
+        for modality in ("V", "A"):
+            jobs.append(
+                (
+                    population,
+                    modality,
+                    subsamples,
+                    tuple(dataset.av.TRIAL),
+                    n_positions,
+                    signal_source,
+                    cv,
+                    random_state,
+                )
+            )
+
+    rows = [
+        row
+        for row in _parallel_decode_balanced_jobs(
+            jobs,
+            _decode_balanced_position_job,
+            n_jobs=n_jobs,
+        )
+        if row is not None
+    ]
     return pd.DataFrame(rows)
 
 
@@ -381,7 +919,14 @@ def run_all_population_analyses(args: argparse.Namespace) -> dict[str, pd.DataFr
         pre_post=args.pre_post,
         signal_source=args.signal_source,
     )
+    counts = session_area_neuron_counts(
+        datasets=datasets,
+        area_names=args.areas,
+        signal_source=args.signal_source,
+        min_neurons=args.min_neurons,
+    )
 
+    print("Running full-trial averaged population decoding", flush=True)
     averaged_session = run_population_averaged_tasks(
         datasets=datasets,
         area_names=args.areas,
@@ -389,6 +934,15 @@ def run_all_population_analyses(args: argparse.Namespace) -> dict[str, pd.DataFr
         cv=args.cv,
         min_neurons=args.min_neurons,
     )
+    print("Running time-resolved population decoding", flush=True)
+    temporal_session = run_population_temporal_tasks(
+        datasets=datasets,
+        area_names=args.areas,
+        signal_source=args.signal_source,
+        cv=args.cv,
+        min_neurons=args.min_neurons,
+    )
+    print("Running position population decoding", flush=True)
     position_session = run_population_position_tasks(
         datasets=datasets,
         area_names=args.areas,
@@ -401,9 +955,58 @@ def run_all_population_analyses(args: argparse.Namespace) -> dict[str, pd.DataFr
     results = {
         "session_population_averaged": averaged_session,
         "summary_population_averaged": summarise_session_results(averaged_session),
+        "session_population_temporal": temporal_session,
+        "summary_population_temporal": summarise_temporal_session_results(temporal_session),
         "session_population_position": position_session,
         "summary_population_position": summarise_session_results(position_session),
+        "session_area_neuron_counts": counts,
     }
+
+    if not args.skip_balanced:
+        balanced_populations = iter_balanced_session_area_populations(
+            datasets=datasets,
+            area_names=args.areas,
+            min_neurons=args.balanced_min_neurons,
+        )
+        print("Running balanced averaged population decoding", flush=True)
+        balanced_averaged_session = run_balanced_population_averaged_tasks(
+            balanced_populations=balanced_populations,
+            datasets=datasets,
+            signal_source=args.signal_source,
+            cv=args.cv,
+            n_subsamples=args.balanced_subsamples,
+            n_jobs=args.balanced_n_jobs,
+        )
+        print("Running balanced time-resolved population decoding", flush=True)
+        balanced_temporal_session = run_balanced_population_temporal_tasks(
+            balanced_populations=balanced_populations,
+            datasets=datasets,
+            signal_source=args.signal_source,
+            cv=args.cv,
+            n_subsamples=args.balanced_subsamples,
+            n_jobs=args.balanced_n_jobs,
+        )
+        print("Running balanced position population decoding", flush=True)
+        balanced_position_session = run_balanced_population_position_tasks(
+            balanced_populations=balanced_populations,
+            datasets=datasets,
+            signal_source=args.signal_source,
+            cv=args.cv,
+            n_positions=args.position_classes,
+            n_subsamples=args.balanced_subsamples,
+            n_jobs=args.balanced_n_jobs,
+        )
+        results.update(
+            {
+                "balanced_session_population_averaged": balanced_averaged_session,
+                "balanced_summary_population_averaged": summarise_session_results(balanced_averaged_session),
+                "balanced_session_population_temporal": balanced_temporal_session,
+                "balanced_summary_population_temporal": summarise_temporal_session_results(balanced_temporal_session),
+                "balanced_session_population_position": balanced_position_session,
+                "balanced_summary_population_position": summarise_session_results(balanced_position_session),
+            }
+        )
+    print(f"Saving decoding outputs to {args.save_dir}", flush=True)
     save_results(results, args.save_dir)
     return results
 

@@ -6,7 +6,12 @@ from matplotlib_venn import venn3
 from src.AUDVIS import AUDVIS, Behavior, load_in_data
 from src.Analyze import Analyze, neuron_typesVENN_analysis
 import src.analysis_utils as anut
-from src.utils import get_sig_label, hierBootstrapWrapper, mean_diff
+from src.utils import (
+    MIN_BOOTSTRAP_NEURONS_PER_SESSION,
+    get_sig_label,
+    hierBootstrapWrapper,
+    mean_diff,
+)
 from typing import Literal
 from scipy.io.matlab import loadmat
 from tqdm import tqdm
@@ -784,7 +789,8 @@ def Quantification(df_long: pd.DataFrame,
         )
         stats_params = dict(animals = arDF['session_id'],
                             Nboot = 10000,
-                            dist_comparison = mean_diff)
+                            dist_comparison = mean_diff,
+                            min_neurons_per_session = MIN_BOOTSTRAP_NEURONS_PER_SESSION)
         annot_bw.apply_test(**stats_params).annotate()
 
         # then: Wilcoxon signed‑rank (paired) for within‑group
@@ -1361,7 +1367,7 @@ def make_neuron_session_group_area_DF(pre_post:Literal['pre', 'post', 'both'] = 
 
 if __name__ == '__main__':
     make_neuron_session_group_area_DF()
-    breakpoint()
+    # breakpoint()
     ### Venn diagram of neuron classes in in the 4 different regions
     NGDF, ARdict, SESSdict = by_areas_VENN(svg=True, pre_post='pre')
 
@@ -1386,5 +1392,3 @@ if __name__ == '__main__':
 
     # # # Recorded neurons plot
     recordedNeurons(svg=True)
-
-    

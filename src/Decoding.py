@@ -236,52 +236,6 @@ class Decoder:
                 )
         return pd.DataFrame(rows)
 
-    def learning_curve(
-        self,
-        *,
-        signal: np.ndarray,
-        labels: np.ndarray,
-        neuron_indices: np.ndarray | Iterable[int] | None = None,
-        neuron_counts: Iterable[int] | None = None,
-        n_boot: int = 100,
-        summary_reducer: Callable[[np.ndarray], float] = np.nanmean,
-        **decode_kwargs: Any,
-    ) -> pd.DataFrame:
-        signal = np.asarray(signal)
-        all_neurons = self._resolve_axis_indices(signal.shape[-1], neuron_indices)
-        if all_neurons.size == 0:
-            return pd.DataFrame()
-
-        if neuron_counts is None:
-            max_count = all_neurons.size
-            n_steps = min(8, max_count)
-            neuron_counts = np.unique(
-                np.linspace(1, max_count, num=n_steps, dtype=int)
-            ).tolist()
-
-        rows = []
-        for n_neurons in neuron_counts:
-            if n_neurons > all_neurons.size:
-                continue
-            for boot in range(n_boot):
-                sampled = np.sort(
-                    self.rng.choice(all_neurons, size=n_neurons, replace=False)
-                )
-                result = self.decode(
-                    signal=signal,
-                    labels=labels,
-                    neuron_indices=sampled,
-                    **decode_kwargs,
-                )
-                rows.append(
-                    {
-                        "n_neurons": int(n_neurons),
-                        "bootstrap": boot,
-                        "score": result.scalar_score(summary_reducer),
-                    }
-                )
-        return pd.DataFrame(rows)
-
     def _decode_aggregated(
         self,
         *,

@@ -2,7 +2,12 @@ from src.GLM_new import design_matrix, clean_group_signal
 from src.AUDVIS import Behavior, AUDVIS, load_in_data
 from src.VisualAreas import Areas
 from src.analysis_utils import plot_avrg_trace, fluorescence_response, proportion_significance_test
-from src.utils import get_sig_label, hierBootstrapWrapper, mean_diff
+from src.utils import (
+    MIN_BOOTSTRAP_NEURONS_PER_SESSION,
+    get_sig_label,
+    hierBootstrapWrapper,
+    mean_diff,
+)
 from src.glm_utils import drives_loader, glmSUPPLEMENT
 
 import pickle
@@ -408,7 +413,8 @@ class EvAnalysis:
             )
             stats_params = dict(animals = regdf['session_id'],
                                 Nboot = 10000,
-                                dist_comparison = mean_diff)
+                                dist_comparison = mean_diff,
+                                min_neurons_per_session = MIN_BOOTSTRAP_NEURONS_PER_SESSION)
             annot_bw.apply_test(**stats_params).annotate()
 
             # second: within-group comparison
@@ -800,7 +806,8 @@ def driveQuantPlot(savedir:str):
         )
         stats_params = dict(animals = regDF['session_id'],
                             Nboot = 10000,
-                            dist_comparison = mean_diff)
+                            dist_comparison = mean_diff,
+                            min_neurons_per_session = MIN_BOOTSTRAP_NEURONS_PER_SESSION)
         annot_bw.apply_test(**stats_params).annotate()
 
         # second: within-group comparison
@@ -905,4 +912,3 @@ if __name__ == '__main__':
 
     # Analysis 4) Plot
     driveQuantPlot(savedir=EVa.saveDIR)
-    

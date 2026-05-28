@@ -5,18 +5,26 @@ import math
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 from sklearn.decomposition import PCA
 
+DPCA_IMPORT_ERROR: Exception | None = None
+
+try:
+    from dPCA.dPCA import dPCA as DPCA
+except ImportError as exc:  # pragma: no cover - runtime dependency check
+    DPCA = None
+    DPCA_IMPORT_ERROR = exc
+
 from src import PLOTSDIR
 from src.Analyze import Analyze
 from src.AUDVIS import AUDVIS, Behavior, load_in_data
 from src.GLM_new import clean_group_signal
-from src.Population import PopulationAnalysis, SessionPCAResult
+from src.Population import PopulationAnalysis
 from src.VisualAreas import Areas
 
 
@@ -69,6 +77,19 @@ class GroupEmbeddingDataset:
     feature_time: np.ndarray
 
 
+@dataclass
+class SessionDPCAResult:
+    group: str
+    session_index: int
+    session_name: str
+    method: str
+    plot_key: str
+    trial_labels: np.ndarray
+    transformed: np.ndarray
+    explained_variance_ratio: np.ndarray
+    estimator: Any
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pre-post", default="both", choices=("pre", "post", "both"))
@@ -79,6 +100,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--plot-dim", type=int, default=2, choices=(2, 3))
     parser.add_argument("--pool", action="store_true")
     parser.add_argument("--pool-by-area", action="store_true")
+    parser.add_argument(
+        "--manifold-method",
+        default="dpca",
+        choices=("pca", "dpca"),
+    )
+    parser.add_argument(
+        "--dpca-marginalization",
+        default="st",
+        choices=("t", "s", "ts", "st"),
+    )
     parser.add_argument(
         "--fit-trial-types",
         nargs="+",
@@ -333,6 +364,185 @@ def resolve_time_indices(
     return indices
 
 
+def require_dpca() -> None:
+    if DPCA is None:
+        raise ImportError(
+            "dPCA could not be imported. Install nin with its dependencies and ensure "
+            f"`dPCA` runtime requirements are available. Original error: {DPCA_IMPORT_ERROR!r}"
+        )
+
+
+def build_dpca_estimator(
+    *,
+    n_components: int,
+    n_fit_conditions: int,
+    plot_key: str,
+) -> Any:
+    require_dpca()
+    if n_fit_conditions == 1:
+        if plot_key != "t":
+            raise ValueError(
+                f"dPCA marginalization `{plot_key}` requires multiple fit conditions; "
+                "use `--dpca-marginalization t` when fitting a single condition."
+            )
+        return DPCA(labels="ts", n_components=n_components, regularizer=None)
+
+    if plot_key == "st":
+        return DPCA(
+            labels="ts",
+            join={"st": ["s", "ts"]},
+            n_components=n_components,
+            regularizer=None,
+        )
+
+    if plot_key not in {"s", "ts"}:
+        raise ValueError(
+            f"dPCA marginalization `{plot_key}` is incompatible with multi-condition fits. "
+            "Use `s`, `ts`, or `st`."
+        )
+    return DPCA(labels="ts", n_components=n_components, regularizer=None)
+
+
+def ensure_array_components(
+    array: np.ndarray,
+    plot_dim: int,
+    context: str,
+) -> None:
+    if array.shape[0] < plot_dim:
+        raise ValueError(
+            f"{context} only produced {array.shape[0]} component(s); "
+            f"need at least {plot_dim} for the requested plot."
+        )
+
+
+def fit_pca_trajectory_result(
+    *,
+    group: str,
+    session_index: int,
+    session_name: str,
+    av: AUDVIS,
+    native_trial_traces: OrderedDict[str, np.ndarray],
+    fit_trial_groups: OrderedDict[str, tuple[int, ...]],
+    fit_time_indices: np.ndarray,
+    n_components: int,
+) -> SessionDPCAResult:
+    fit_tensor, valid_neurons, _ = build_fit_tensor(
+        av,
+        native_trial_traces,
+        fit_trial_groups=fit_trial_groups,
+        fit_time_indices=fit_time_indices,
+    )
+    fit_matrix = fit_tensor.transpose(2, 1, 0).reshape(-1, fit_tensor.shape[0])
+    pca = PCA(n_components=min(n_components, *fit_matrix.shape))
+    pca.fit(fit_matrix)
+
+    projection_tensor, trial_labels = build_projection_tensor(
+        native_trial_traces,
+        valid_neurons=valid_neurons,
+    )
+    transformed = np.stack(
+        [
+            pca.transform(projection_tensor[:, :, trial_index].T).T
+            for trial_index in range(projection_tensor.shape[2])
+        ],
+        axis=2,
+    )
+    return SessionDPCAResult(
+        group=group,
+        session_index=session_index,
+        session_name=session_name,
+        method="pca",
+        plot_key="PCA",
+        trial_labels=trial_labels,
+        transformed=transformed,
+        explained_variance_ratio=np.asarray(pca.explained_variance_ratio_),
+        estimator=pca,
+    )
+
+
+def build_native_trial_average_traces(
+    population: PopulationAnalysis,
+    *,
+    session_index: int,
+    session_indices: list[int] | None = None,
+    neuron_mask: np.ndarray | None = None,
+) -> OrderedDict[str, np.ndarray]:
+    native_trial_order = get_trial_type_order(population.av)
+
+    if session_indices is None:
+        session_indices = [session_index]
+
+    pooled_parts = {label: [] for label in native_trial_order}
+    for session in population.iter_sessions(session_indices=session_indices):
+        if session.session_index != session_index and len(session_indices) == 1:
+            continue
+        session_signal, _ = population._select_neurons(session)
+        if neuron_mask is not None:
+            local_keep = np.isin(session.neuron_ids, neuron_mask)
+            if not np.any(local_keep):
+                continue
+            session_signal = session_signal[:, :, local_keep]
+        grouped_signal = population._group_session_signal(
+            session_signal,
+            session.trial_types,
+            native_trial_order,
+        )
+        for label, tt_signal in grouped_signal.items():
+            if tt_signal.shape[0] == 0:
+                continue
+            pooled_parts[label].append(np.nanmean(tt_signal, axis=0))
+
+    return OrderedDict(
+        (label, np.concatenate(parts, axis=1))
+        for label, parts in pooled_parts.items()
+        if parts
+    )
+
+
+def build_fit_tensor(
+    av: AUDVIS,
+    native_trial_traces: OrderedDict[str, np.ndarray],
+    *,
+    fit_trial_groups: OrderedDict[str, tuple[int, ...]],
+    fit_time_indices: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    fit_blocks = []
+    fit_labels = []
+
+    for fit_label, component_tts in fit_trial_groups.items():
+        native_labels = [str(av.int_to_str_trials_map[tt]) for tt in component_tts]
+        traces = [native_trial_traces[label] for label in native_labels if label in native_trial_traces]
+        if not traces:
+            continue
+        fit_trace = np.nanmean(np.stack(traces, axis=0), axis=0)
+        fit_blocks.append(np.moveaxis(fit_trace[fit_time_indices], 1, 0)[:, :, None])
+        fit_labels.append(fit_label)
+
+    if not fit_blocks:
+        raise ValueError("No fit trial groups had available data.")
+
+    fit_tensor = np.concatenate(fit_blocks, axis=2)
+    valid_neurons = np.isfinite(fit_tensor).all(axis=(1, 2))
+    fit_tensor = fit_tensor[valid_neurons]
+    return fit_tensor, valid_neurons, np.asarray(fit_labels, dtype=object)
+
+
+def build_projection_tensor(
+    native_trial_traces: OrderedDict[str, np.ndarray],
+    *,
+    valid_neurons: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    trial_labels = np.asarray(list(native_trial_traces), dtype=object)
+    tensor = np.stack(
+        [
+            np.moveaxis(trace[:, valid_neurons], 1, 0)
+            for trace in native_trial_traces.values()
+        ],
+        axis=2,
+    )
+    return tensor, trial_labels
+
+
 def scatter_coords(
     ax: plt.Axes,
     coords: np.ndarray,
@@ -466,14 +676,6 @@ def plot_pooled_embeddings(
     plt.close(fig)
 
 
-def ensure_components(result: SessionPCAResult, plot_dim: int) -> None:
-    if result.scores.shape[1] < plot_dim:
-        raise ValueError(
-            f"{result.session_name} only produced {result.scores.shape[1]} PCA component(s); "
-            f"need at least {plot_dim} for the requested plot."
-        )
-
-
 def add_start_end_markers(
     ax: plt.Axes,
     coords: np.ndarray,
@@ -582,8 +784,8 @@ def add_trial_boundary_markers(
 
 
 def plot_group_manifold_grid(
-    population: PopulationAnalysis,
-    manifolds: OrderedDict[str, SessionPCAResult],
+    av: AUDVIS,
+    manifolds: OrderedDict[str, SessionDPCAResult],
     *,
     fit_time: tuple[float, float],
     plot_dim: int,
@@ -603,20 +805,18 @@ def plot_group_manifold_grid(
     axes_flat = axes.ravel()
 
     plot_indices, time_axis = resolve_plot_indices(
-        population.av,
-        population.signal.shape[1],
+        av,
+        manifolds[session_names[0]].transformed.shape[1],
         plot_time=plot_time,
     )
 
     all_coords = []
     all_trajectories = {}
     for session_name, result in manifolds.items():
-        trajectories = population.project_average_trajectories(result)
         trimmed = OrderedDict()
-        for trial_type, coords in trajectories.items():
-            if coords.shape[1] < plot_dim:
-                continue
-            coords = coords[plot_indices, :plot_dim]
+        for trial_index, trial_type in enumerate(result.trial_labels):
+            coords = result.transformed[:plot_dim, :, trial_index].T
+            coords = coords[plot_indices]
             trimmed[trial_type] = coords
             all_coords.append(coords)
         all_trajectories[session_name] = trimmed
@@ -632,8 +832,8 @@ def plot_group_manifold_grid(
         mins = maxs = np.zeros(plot_dim)
 
     ordered_trial_types = [
-        str(population.av.int_to_str_trials_map[tt])
-        for tt in sorted(population.av.int_to_str_trials_map)
+        str(av.int_to_str_trials_map[tt])
+        for tt in sorted(av.int_to_str_trials_map)
     ]
     trial_type_palette = {
         trial_type: plt.get_cmap("tab10")(idx % 10)
@@ -673,7 +873,8 @@ def plot_group_manifold_grid(
         set_axis_limits(ax, mins, maxs, plot_dim)
         set_embedding_axis_labels(ax, plot_dim)
         ax.set_title(
-            f"{result.session_name}\nvar={np.sum(result.explained_variance_ratio[:plot_dim]):.2f}"
+            f"{result.session_name}\n"
+            f"{result.plot_key} var={np.sum(result.explained_variance_ratio[:plot_dim]):.2f}"
         )
 
     for ax in axes_flat[n_sessions:]:
@@ -729,9 +930,9 @@ def plot_group_manifold_grid(
         fontsize=8,
     )
     fig.suptitle(
-        f"{population.av.NAME} neural manifolds by session\n"
+        f"{manifolds[session_names[0]].group} {manifolds[session_names[0]].method.upper()} manifolds by session\n"
         f"Fit {fit_time[0]:.2f} to {fit_time[1]:.2f} s; plotted {plot_time[0]:.2f} to {plot_time[1]:.2f} s; "
-        "circles mark plotted-window start, X marks plotted-window end",
+        f"showing `{manifolds[session_names[0]].plot_key}`",
         y=0.98,
     )
     fig.tight_layout(rect=(0, 0.08, 1, 0.94))
@@ -775,15 +976,89 @@ def build_pooled_group_traces(
     )
 
 
+def fit_session_dpca_results(
+    population: PopulationAnalysis,
+    *,
+    manifold_method: str,
+    fit_trial_groups: OrderedDict[str, tuple[int, ...]],
+    session_indices: list[int] | None,
+    n_components: int,
+    fit_time: tuple[float, float],
+    plot_key: str,
+) -> OrderedDict[str, SessionDPCAResult]:
+    fit_time_indices = resolve_time_indices(
+        population.av,
+        population.signal.shape[1],
+        time_window=fit_time,
+    )
+    results: OrderedDict[str, SessionDPCAResult] = OrderedDict()
+
+    for session in population.iter_sessions(session_indices=session_indices):
+        native_trial_traces = build_native_trial_average_traces(
+            population,
+            session_index=session.session_index,
+        )
+        if manifold_method == "pca":
+            result = fit_pca_trajectory_result(
+                group=population.av.NAME,
+                session_index=session.session_index,
+                session_name=session.session_name,
+                av=population.av,
+                native_trial_traces=native_trial_traces,
+                fit_trial_groups=fit_trial_groups,
+                fit_time_indices=fit_time_indices,
+                n_components=n_components,
+            )
+        else:
+            fit_tensor, valid_neurons, _ = build_fit_tensor(
+                population.av,
+                native_trial_traces,
+                fit_trial_groups=fit_trial_groups,
+                fit_time_indices=fit_time_indices,
+            )
+            estimator = build_dpca_estimator(
+                n_components=n_components,
+                n_fit_conditions=fit_tensor.shape[2],
+                plot_key=plot_key,
+            )
+            estimator.fit(fit_tensor)
+            projection_tensor, trial_labels = build_projection_tensor(
+                native_trial_traces,
+                valid_neurons=valid_neurons,
+            )
+            transformed = estimator.transform(projection_tensor, marginalization=plot_key)
+            result = SessionDPCAResult(
+                group=population.av.NAME,
+                session_index=session.session_index,
+                session_name=session.session_name,
+                method="dpca",
+                plot_key=plot_key,
+                trial_labels=trial_labels,
+                transformed=transformed,
+                explained_variance_ratio=np.asarray(estimator.explained_variance_ratio_[plot_key]),
+                estimator=estimator,
+            )
+        ensure_array_components(
+            result.transformed,
+            plot_dim=min(n_components, 3),
+            context=f"{session.session_name} {result.plot_key}",
+        )
+        results[session.session_name] = result
+
+    return results
+
+
 def fit_pooled_group_manifold(
     population: PopulationAnalysis,
     *,
+    manifold_method: str,
     fit_trial_groups: OrderedDict[str, tuple[int, ...]],
     session_indices: list[int] | None,
     n_components: int,
     neuron_mask: np.ndarray | None = None,
     fit_time: tuple[float, float] = (0.0, 1.0),
-) -> tuple[PCA, OrderedDict[str, np.ndarray]]:
+    plot_key: str = "st",
+) -> tuple[SessionDPCAResult, OrderedDict[str, np.ndarray]]:
     native_trial_traces = build_pooled_group_traces(
         population,
         session_indices=session_indices,
@@ -796,35 +1071,58 @@ def fit_pooled_group_manifold(
         population.signal.shape[1],
         time_window=fit_time,
     )
-
-    fit_blocks = []
-    for fit_label, component_tts in fit_trial_groups.items():
-        native_labels = [population.av.int_to_str_trials_map[tt] for tt in component_tts]
-        traces = [native_trial_traces[str(label)] for label in native_labels]
-        fit_trace = np.nanmean(np.stack(traces, axis=0), axis=0)
-        fit_blocks.append(fit_trace[fit_time_indices])
-
-    fit_matrix = np.vstack(fit_blocks)
-    valid_neurons = np.isfinite(fit_matrix).all(axis=0)
-    fit_matrix = fit_matrix[:, valid_neurons]
-    if fit_matrix.shape[0] < 2 or fit_matrix.shape[1] < 2:
-        raise ValueError(
-            f"Pooled manifold fit for {population.av.NAME} produced matrix {fit_matrix.shape}, too small for PCA."
+    if manifold_method == "pca":
+        result = fit_pca_trajectory_result(
+            group=population.av.NAME,
+            session_index=-1,
+            session_name=population.av.NAME,
+            av=population.av,
+            native_trial_traces=native_trial_traces,
+            fit_trial_groups=fit_trial_groups,
+            fit_time_indices=fit_time_indices,
+            n_components=n_components,
         )
+    else:
+        fit_tensor, valid_neurons, _ = build_fit_tensor(
+            population.av,
+            native_trial_traces,
+            fit_trial_groups=fit_trial_groups,
+            fit_time_indices=fit_time_indices,
+        )
+        estimator = build_dpca_estimator(
+            n_components=n_components,
+            n_fit_conditions=fit_tensor.shape[2],
+            plot_key=plot_key,
+        )
+        estimator.fit(fit_tensor)
 
-    pca = PCA(n_components=min(n_components, *fit_matrix.shape))
-    pca.fit(fit_matrix)
-
+        projection_tensor, trial_labels = build_projection_tensor(
+            native_trial_traces,
+            valid_neurons=valid_neurons,
+        )
+        transformed = estimator.transform(projection_tensor, marginalization=plot_key)
+        result = SessionDPCAResult(
+            group=population.av.NAME,
+            session_index=-1,
+            session_name=population.av.NAME,
+            method="dpca",
+            plot_key=plot_key,
+            trial_labels=trial_labels,
+            transformed=transformed,
+            explained_variance_ratio=np.asarray(estimator.explained_variance_ratio_[plot_key]),
+            estimator=estimator,
+        )
     projected = OrderedDict(
-        (label, trace[:, valid_neurons])
+        (label, trace)
         for label, trace in native_trial_traces.items()
     )
-    return pca, projected
+    return result, projected
 
 
 def plot_pooled_group_manifold(
     population: PopulationAnalysis,
     *,
+    manifold_method: str,
     fit_trial_groups: OrderedDict[str, tuple[int, ...]],
     session_indices: list[int] | None,
     n_components: int,
@@ -832,6 +1130,7 @@ def plot_pooled_group_manifold(
     plot_dim: int,
     plot_time: tuple[float, float],
     save_path: Path,
+    plot_key: str,
     by_area: bool = False,
 ) -> None:
     plot_indices, time_axis = resolve_plot_indices(
@@ -850,24 +1149,36 @@ def plot_pooled_group_manifold(
     axes_flat = axes.ravel()
 
     projected_by_panel: OrderedDict[str, OrderedDict[str, np.ndarray]] = OrderedDict()
+    results_by_panel: OrderedDict[str, SessionDPCAResult] = OrderedDict()
     all_projected = []
     for panel_name in panel_names:
         neuron_mask = area_map.get(panel_name) if by_area else None
         try:
-            pca, native_trial_traces = fit_pooled_group_manifold(
+            result, native_trial_traces = fit_pooled_group_manifold(
                 population,
+                manifold_method=manifold_method,
                 fit_trial_groups=fit_trial_groups,
                 session_indices=session_indices,
                 n_components=n_components,
                 neuron_mask=neuron_mask,
                 fit_time=fit_time,
+                plot_key=plot_key,
             )
         except ValueError:
             projected_by_panel[panel_name] = OrderedDict()
             continue
+        ensure_array_components(
+            result.transformed,
+            plot_dim=plot_dim,
+            context=f"{population.av.NAME} {panel_name} {result.plot_key}",
+        )
+        results_by_panel[panel_name] = result
         projected = OrderedDict(
-            (label, pca.transform(trace[plot_indices])[:, :plot_dim])
-            for label, trace in native_trial_traces.items()
+            (
+                str(trial_label),
+                result.transformed[:plot_dim, plot_indices, trial_index].T,
+            )
+            for trial_index, trial_label in enumerate(result.trial_labels)
         )
         projected_by_panel[panel_name] = projected
         all_projected.extend(projected.values())
@@ -924,7 +1235,14 @@ def plot_pooled_group_manifold(
                 )
         set_axis_limits(ax, mins, maxs, plot_dim)
         set_embedding_axis_labels(ax, plot_dim)
-        ax.set_title(panel_name if by_area else population.av.NAME)
+        result = results_by_panel.get(panel_name)
+        if result is None:
+            ax.set_title(panel_name if by_area else population.av.NAME)
+        else:
+            ax.set_title(
+                f"{panel_name if by_area else population.av.NAME}\n"
+                f"{result.plot_key} var={np.sum(result.explained_variance_ratio[:plot_dim]):.2f}"
+            )
 
     for ax in axes_flat[len(panel_names):]:
         ax.set_axis_off()
@@ -979,11 +1297,15 @@ def plot_pooled_group_manifold(
         fontsize=8,
     )
     fit_slug = fit_trial_types_slug(tuple(fit_trial_groups))
-    panel_note = "separate PCA per area pooled across sessions" if by_area else "single PCA pooled across sessions"
+    panel_note = (
+        f"separate {manifold_method.upper()} per area pooled across sessions"
+        if by_area
+        else f"single {manifold_method.upper()} pooled across sessions"
+    )
     fig.suptitle(
         f"{population.av.NAME} pooled manifold across sessions\n"
-        f"{panel_note}; fit on {fit_slug}, PCA fit window {fit_time[0]:.2f} to {fit_time[1]:.2f} s, "
-        f"plotted {plot_time[0]:.2f} to {plot_time[1]:.2f} s",
+        f"{panel_note}; fit on {fit_slug}, fit window {fit_time[0]:.2f} to {fit_time[1]:.2f} s, "
+        f"plotted {plot_time[0]:.2f} to {plot_time[1]:.2f} s; showing `{plot_key}`",
         y=0.98,
     )
     fig.tight_layout(rect=(0, 0.08, 1, 0.94))
@@ -998,6 +1320,8 @@ def main() -> None:
 
     n_components = max(args.n_components, args.plot_dim)
     color_by = tuple(args.color_by)
+    manifold_method = args.manifold_method
+    dpca_marginalization = args.dpca_marginalization
     fit_time = tuple(args.fit_time)
     plot_time = tuple(args.plot_time)
     fit_trial_types = tuple(args.fit_trial_types)
@@ -1007,7 +1331,7 @@ def main() -> None:
     embeddings_save_dir = save_root / "pooled_embeddings" / args.signal_source
     pool_mode = args.pool or args.pool_by_area
     manifold_mode_dir = "pooled_by_area" if args.pool_by_area else ("pooled" if pool_mode else "sessionwise")
-    manifolds_save_dir = save_root / "manifolds" / args.signal_source / manifold_mode_dir / f"fit_{fit_slug}"
+    manifolds_save_dir = save_root / "manifolds" / args.signal_source / manifold_method / manifold_mode_dir / f"fit_{fit_slug}"
     embeddings_save_dir.mkdir(parents=True, exist_ok=True)
     manifolds_save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1031,7 +1355,7 @@ def main() -> None:
 
     embedding_datasets: OrderedDict[str, GroupEmbeddingDataset] = OrderedDict()
     populations: OrderedDict[str, PopulationAnalysis] = OrderedDict()
-    manifold_results: OrderedDict[str, OrderedDict[str, SessionPCAResult]] = OrderedDict()
+    manifold_results: OrderedDict[str, OrderedDict[str, SessionDPCAResult]] = OrderedDict()
 
     for group_name in selected_groups:
         av = loaded[group_name]
@@ -1052,18 +1376,15 @@ def main() -> None:
         population = PopulationAnalysis(av, signal=signal, baseline_correct=True)
         populations[group_name] = population
         if not pool_mode:
-            manifolds = population.neural_manifold(
-                trial_groups=fit_trial_groups,
+            manifolds = fit_session_dpca_results(
+                population,
+                manifold_method=manifold_method,
+                fit_trial_groups=fit_trial_groups,
                 session_indices=args.session_indices,
-                time_window=resolve_time_indices(
-                    av,
-                    population.signal.shape[1],
-                    time_window=fit_time,
-                ),
                 n_components=n_components,
+                fit_time=fit_time,
+                plot_key=dpca_marginalization,
             )
-            for result in manifolds.values():
-                ensure_components(result, args.plot_dim)
             manifold_results[group_name] = manifolds
 
     projected_datasets, _ = prepare_projection_datasets(embedding_datasets)
@@ -1082,13 +1403,19 @@ def main() -> None:
 
     for group_name in selected_groups:
         if pool_mode:
+            method_suffix = (
+                f"dpca_{dpca_marginalization}"
+                if manifold_method == "dpca"
+                else "pca"
+            )
             manifold_name = (
-                f"{group_name}_neural_manifold_"
+                f"{group_name}_neural_manifold_{manifold_method}_"
                 f"{'pooled_by_area' if args.pool_by_area else 'pooled'}_"
-                f"{args.signal_source}_{args.plot_dim}d.png"
+                f"{method_suffix}_{args.signal_source}_{args.plot_dim}d.png"
             )
             plot_pooled_group_manifold(
                 populations[group_name],
+                manifold_method=manifold_method,
                 fit_trial_groups=fit_trial_groups,
                 session_indices=args.session_indices,
                 n_components=n_components,
@@ -1096,12 +1423,21 @@ def main() -> None:
                 plot_dim=args.plot_dim,
                 plot_time=plot_time,
                 save_path=manifolds_save_dir / manifold_name,
+                plot_key=dpca_marginalization,
                 by_area=args.pool_by_area,
             )
         else:
-            manifold_name = f"{group_name}_neural_manifold_sessions_{args.signal_source}_{args.plot_dim}d.png"
+            method_suffix = (
+                f"dpca_{dpca_marginalization}"
+                if manifold_method == "dpca"
+                else "pca"
+            )
+            manifold_name = (
+                f"{group_name}_neural_manifold_{manifold_method}_sessions_"
+                f"{method_suffix}_{args.signal_source}_{args.plot_dim}d.png"
+            )
             plot_group_manifold_grid(
-                populations[group_name],
+                loaded[group_name],
                 manifold_results[group_name],
                 fit_time=fit_time,
                 plot_dim=args.plot_dim,
@@ -1111,6 +1447,9 @@ def main() -> None:
         print(f"Saved {group_name} manifold plot to {manifolds_save_dir / manifold_name}")
 
     print(f"Manifold fit trial types: {fit_slug}")
+    print(f"Manifold method: {manifold_method}")
+    if manifold_method == "dpca":
+        print(f"Manifold dPCA marginalization: {dpca_marginalization}")
     print(f"Saved pooled embeddings to {embeddings_save_dir / pooled_name}")
 
 
